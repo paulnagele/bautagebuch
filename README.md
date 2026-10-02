@@ -11,7 +11,8 @@ there are four tabs:
   added, renamed and deleted under "Manage categories". Shows funding secured, spent annd
   remaining, a money-flow diagram from funding sources to expense
   categories, and a planned budget per expense category next to what has
-  been spent.
+  been spent. The money-flow diagram also shows the planned but not yet
+  spent part of each category, hatched.
 - **Timetable** – the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). The calendar must be public to be visible
   to everyone using the app.
