@@ -59,16 +59,22 @@ async function uploadPending({ photos, files, date }, folderPath, onProgress) {
     ...photos.map((item, index) => ({ item, index, list: 'photos' })),
     ...files.map((item, index) => ({ item, index, list: 'files' })),
   ].filter((job) => job.item.blob)
+  // Progress by bytes, so one large photo on a slow connection still moves.
+  const totalBytes = jobs.reduce((sum, job) => sum + job.item.blob.size, 0) || 1
+  let doneBytes = 0
   for (const [n, { item, index, list }] of jobs.entries()) {
-    onProgress(n + 1)
+    const report = (loaded) =>
+      onProgress({ current: n + 1, total: jobs.length, fraction: (doneBytes + loaded) / totalBytes })
+    report(0)
     const folderId = await getEntryFolderId(folderPath)
     const { blob, ...rest } = item
     const fileId =
       list === 'photos'
-        ? await uploadPhoto(blob, `${date} Bautagebuch ${newId()}${extension(blob)}`, folderId)
-        : await uploadFile(blob, `${date} ${blob.name}`, folderId)
+        ? await uploadPhoto(blob, `${date} Bautagebuch ${newId()}${extension(blob)}`, folderId, report)
+        : await uploadFile(blob, `${date} ${blob.name}`, folderId, report)
+    doneBytes += blob.size
     uploaded[list] = uploaded[list].with(index, { ...rest, fileId })
-    onProgress(n + 1, { ...uploaded })
+    onProgress({ current: n + 1, total: jobs.length, fraction: doneBytes / totalBytes }, { ...uploaded })
   }
   return uploaded
 }
@@ -186,6 +192,8 @@ function Diary({ user, focusEntryId, onFocused }) {
   const [editingId, setEditingId] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(null)
+  const errorRef = useRef(null)
   const [lightbox, setLightbox] = useState(null)
   const categoryStore = useCollection('finance_categories', {
     fromRow: categoryFromRow,
@@ -291,6 +299,20 @@ function Diary({ user, focusEntryId, onFocused }) {
     setForm({ ...form, photos: form.photos.filter((p) => p.key !== key) })
   }
 
+  // Bring a failed upload's message into view once the overlay closes.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [error])
+
+  // While saving, warn before the page is closed or reloaded, which would
+  // cancel the upload.
+  useEffect(() => {
+    if (!busy) return
+    const warn = (e) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [busy])
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.date || !form.work.trim()) {
@@ -333,14 +355,19 @@ function Diary({ user, focusEntryId, onFocused }) {
         await connectDrive(user.email)
         const createdAt = original?.createdAt
         const folderPath = entryFolderPath(form.type, editingId ? createdAt : null)
-        uploaded = await uploadPending(form, folderPath, (done, sofar) => {
+        uploaded = await uploadPending(form, folderPath, (progress, sofar) => {
+          setUploadProgress(progress)
           setBusy(
-            pending === 1 ? 'Wird hochgeladen…' : `Upload ${done} von ${pending} läuft…`,
+            pending === 1
+              ? 'Wird hochgeladen…'
+              : `Datei ${progress.current} von ${progress.total} wird hochgeladen…`,
           )
           // Remember finished uploads so a retry does not upload them twice.
           if (sofar) setForm((f) => ({ ...f, ...sofar }))
         })
+        setUploadProgress(null)
       } catch (err) {
+        setUploadProgress(null)
         setBusy('')
         setError(`Upload fehlgeschlagen: ${err.message}`)
         return
@@ -462,6 +489,20 @@ function Diary({ user, focusEntryId, onFocused }) {
 
   return (
     <section className="tab-content">
+      {busy && (
+        <div className="busy-overlay" role="alertdialog" aria-modal="true" aria-live="polite" aria-label={busy}>
+          <div className="busy-box">
+            <span className="spinner busy-spinner" aria-hidden="true" />
+            <p>{busy}</p>
+            {uploadProgress && (
+              <div className="busy-bar" aria-hidden="true">
+                <div style={{ width: `${Math.round(uploadProgress.fraction * 100)}%` }} />
+              </div>
+            )}
+            <p className="muted busy-note">Bitte die Seite nicht schließen.</p>
+          </div>
+        </div>
+      )}
       <form className="card form-grid" onSubmit={handleSubmit} noValidate>
         <h2>{editingId ? 'Eintrag bearbeiten' : 'Neuer Tagebucheintrag'}</h2>
 
@@ -608,7 +649,7 @@ function Diary({ user, focusEntryId, onFocused }) {
         )}
 
         {error && (
-          <p className="error full" role="alert">
+          <p ref={errorRef} className="error full" role="alert">
             {error}
           </p>
         )}
