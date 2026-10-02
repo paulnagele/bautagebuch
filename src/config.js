@@ -7,14 +7,12 @@ export const config = {
   googleClientId: env.VITE_GOOGLE_CLIENT_ID || '',
   supabaseUrl: env.VITE_SUPABASE_URL || '',
   supabaseAnonKey: env.VITE_SUPABASE_ANON_KEY || '',
-  driveFolderId: env.VITE_DRIVE_FOLDER_ID || '',
 }
 
 const NAMES = {
   googleClientId: 'VITE_GOOGLE_CLIENT_ID',
   supabaseUrl: 'VITE_SUPABASE_URL',
   supabaseAnonKey: 'VITE_SUPABASE_ANON_KEY',
-  driveFolderId: 'VITE_DRIVE_FOLDER_ID',
 }
 
 export const missingConfig = Object.keys(NAMES)

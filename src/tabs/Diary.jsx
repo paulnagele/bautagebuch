@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { formatDate, newId, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
 import { compressImage } from '../images.js'
-import { connectDrive, driveFolderUrl, uploadPhoto } from '../drive.js'
+import { connectDrive, driveFolderUrl, getDriveFolderId, uploadPhoto } from '../drive.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
 const WEATHER_OPTIONS = ['Sunny', 'Cloudy', 'Rain', 'Snow', 'Wind', 'Frost']
@@ -48,9 +48,14 @@ function Diary({ user }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [lightbox, setLightbox] = useState(null)
+  const [folderId, setFolderId] = useState(null)
   const fileInput = useRef(null)
 
   const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date))
+
+  useEffect(() => {
+    getDriveFolderId().then(setFolderId, () => {})
+  }, [])
 
   useEffect(() => {
     if (!lightbox) return
@@ -314,11 +319,13 @@ function Diary({ user }) {
         </ul>
       )}
 
-      <p className="muted drive-link">
-        <a href={driveFolderUrl} target="_blank" rel="noreferrer">
-          Open the photo folder in Google Drive ↗
-        </a>
-      </p>
+      {folderId && (
+        <p className="muted drive-link">
+          <a href={driveFolderUrl(folderId)} target="_blank" rel="noreferrer">
+            Open the photo folder in Google Drive ↗
+          </a>
+        </p>
+      )}
 
       {lightbox && (
         <div

@@ -6,6 +6,7 @@
 
 import { config } from './config.js'
 import { googleReady } from './google.js'
+import { supabase } from './supabase.js'
 
 const SCOPE = 'https://www.googleapis.com/auth/drive'
 const TOKEN_KEY = 'bautagebuch.driveToken'
@@ -13,7 +14,32 @@ const PHOTO_CACHE = 'bautagebuch-photos-v1'
 const API = 'https://www.googleapis.com/drive/v3/files'
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files'
 
-export const driveFolderUrl = `https://drive.google.com/drive/folders/${config.driveFolderId}`
+// ---- photo folder -----------------------------------------------------------
+
+// The folder ID is stored in the database (app_settings), so only signed-in
+// members can see it; it is not in the repository or the public site.
+let folderIdRequest = null
+
+export function getDriveFolderId() {
+  if (!folderIdRequest) {
+    folderIdRequest = supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'drive_folder_id')
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) throw new Error(`Could not load the photo folder setting: ${error.message}`)
+        if (!data) throw new Error('The photo folder is not set up yet (see README, app_settings).')
+        return data.value
+      })
+    folderIdRequest.catch(() => (folderIdRequest = null))
+  }
+  return folderIdRequest
+}
+
+export function driveFolderUrl(folderId) {
+  return `https://drive.google.com/drive/folders/${folderId}`
+}
 
 // ---- access token ---------------------------------------------------------
 
@@ -48,6 +74,7 @@ function validToken() {
 // Called on sign-out: forgets the token and the photos kept on this device.
 export function disconnectDrive() {
   setToken(null)
+  folderIdRequest = null
   photoCache.clear()
   if (window.caches) caches.delete(PHOTO_CACHE).catch(() => {})
 }
@@ -136,7 +163,7 @@ export async function uploadPhoto(blob, name) {
   const metadata = {
     name,
     mimeType: blob.type || 'image/jpeg',
-    parents: [config.driveFolderId],
+    parents: [await getDriveFolderId()],
   }
   const body = new Blob([
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,

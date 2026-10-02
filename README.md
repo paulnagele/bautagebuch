@@ -38,9 +38,9 @@ there are four tabs:
 
 ## Setup
 
-Three of the settings below are public, so they are kept in
-`.env.production`, which is committed. The photo folder ID is a
-repository secret instead (see step 4).
+The three settings below are public (they end up in the browser anyway),
+so they are kept in `.env.production`, which is committed. The photo
+folder ID is not one of them; it is stored in the database (see step 4).
 
 ### 1. Google Cloud (sign-in and Drive access)
 
@@ -109,12 +109,15 @@ VITE_SUPABASE_URL=<Project URL from step 3>
 VITE_SUPABASE_ANON_KEY=<anon / publishable key from step 3>
 ```
 
-The photo folder ID is kept out of the repository so nobody can find the
-folder from GitHub: add it as a **repository secret** named
-`DRIVE_FOLDER_ID` (*Settings → Secrets and variables → Actions →
-Secrets*). The deploy fails with a clear error if it is missing. For local
-development, put `VITE_DRIVE_FOLDER_ID=<folder ID>` in `.env.local`
-(ignored by git).
+The photo folder ID is kept out of the repository and the public site: it
+is stored in the database, where only signed-in members can read it. Once
+the migrations have run, add it in the Supabase **SQL Editor**:
+
+```sql
+insert into public.app_settings (key, value)
+values ('drive_folder_id', '<folder ID from step 2>')
+on conflict (key) do update set value = excluded.value;
+```
 
 Commit to `main`; the GitHub Actions workflow deploys the site. (Repository
 variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`
