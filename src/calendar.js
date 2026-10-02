@@ -1,12 +1,13 @@
 // The project's Google Calendar ("Bauzeitplan"). Everyone sees it as an
-// embedded calendar on the Zeitplan tab. Diary appointments are added,
-// changed and deleted there with the person's own Google account, so the
-// calendar must be shared with each member with "Make changes to events".
+// embedded calendar on the Zeitplan tab. Diary appointments, to-dos and
+// defects are added, changed and deleted there with the person's own
+// Google account, so the calendar must be shared with each member with "Make changes to events".
 // The calendar ID is stored in the database (app_settings, key
 // calendar_id), not in the repository.
 // https://developers.google.com/workspace/calendar/api/v3/reference/events
 
 import { config } from './config.js'
+import { entryType, typeKey } from './diaryTypes.js'
 import { createGoogleAccess } from './google.js'
 import { getSetting } from './settings.js'
 
@@ -45,11 +46,13 @@ async function eventsUrl(path = '') {
   return `${API}/${encodeURIComponent(await getCalendarId())}/events${path}`
 }
 
-// ---- diary appointments -------------------------------------------------------
+// ---- diary entries ------------------------------------------------------------
 //
-// Each diary entry of kind "Termin" has an event in the calendar; its ID
-// is kept in the entry's details (calendarEventId). Date and time are in
-// the project's time zone, whatever time zone the device is set to.
+// Diary entries of kind "Termin" have an event in the calendar, and so do
+// "Aufgabe" and "Mangel" entries with a due date (all day on that date).
+// The event's ID is kept in the entry's details (calendarEventId). Date
+// and time are in the project's time zone, whatever time zone the device
+// is set to.
 
 function addDays(date, days) {
   const d = new Date(`${date}T12:00:00Z`)
@@ -73,30 +76,58 @@ function eventTimes(date, time) {
   }
 }
 
-// The event for an appointment entry: its first line as the title, the
-// whole text and who takes part as the description.
-function appointmentEvent({ date, work, details }) {
+function shorten(line) {
+  return line.length > 100 ? `${line.slice(0, 99)}…` : line
+}
+
+// The event for a diary entry ({ type, date, work, details }), or null if
+// it has none. Appointments: the first line of the text as the title, the
+// whole text and who takes part as the description. To-dos and defects:
+// "Aufgabe: …" / "Mangel: …" on the due date, with "✓" once done.
+function entryEvent({ type, date, work, details }) {
   const [firstLine] = work.split('\n')
-  const title = firstLine.length > 100 ? `${firstLine.slice(0, 99)}…` : firstLine
-  const description = [work, details.participants && `Mit: ${details.participants}`, 'Aus dem Bautagebuch']
-    .filter(Boolean)
-    .join('\n\n')
-  return {
-    summary: title,
-    location: details.location ?? '',
-    description,
-    ...eventTimes(date, details.time),
+  const footer = 'Aus dem Bautagebuch'
+  if (typeKey(type) === 'appointment') {
+    return {
+      summary: shorten(firstLine),
+      location: details.location ?? '',
+      description: [work, details.participants && `Mit: ${details.participants}`, footer]
+        .filter(Boolean)
+        .join('\n\n'),
+      ...eventTimes(date, details.time),
+    }
   }
+  const { label, progress } = entryType(type)
+  const due = progress && details[progress.due]
+  if (!due) return null
+  const done = details[progress.field] === progress.done
+  return {
+    summary: `${done ? '✓ ' : ''}${label}: ${shorten(firstLine)}`,
+    location: '',
+    description: [work, details.responsible && `Zuständig: ${details.responsible}`, footer]
+      .filter(Boolean)
+      .join('\n\n'),
+    ...eventTimes(due, ''),
+  }
+}
+
+export function entryHasEvent(entry) {
+  return entryEvent(entry) !== null
 }
 
 // The nulls only matter when changing an event (they clear the other kind
 // of time); a new event does not need them.
 const withoutNulls = (key, value) => (value === null ? undefined : value)
 
-// Creates or updates the appointment's event and returns its ID. An event
-// deleted in Google Calendar meanwhile is created again.
-export async function saveAppointmentEvent(entry, eventId) {
-  const body = appointmentEvent(entry)
+// Creates, updates or deletes the entry's event to match the entry and
+// returns its ID (null when it has none). An event deleted in Google
+// Calendar meanwhile is created again.
+export async function syncEntryEvent(entry, eventId) {
+  const body = entryEvent(entry)
+  if (!body) {
+    if (eventId) await deleteEntryEvent(eventId)
+    return null
+  }
   if (eventId) {
     try {
       await calendar.fetch(await eventsUrl(`/${encodeURIComponent(eventId)}`), {
@@ -117,7 +148,7 @@ export async function saveAppointmentEvent(entry, eventId) {
   return (await response.json()).id
 }
 
-export async function deleteAppointmentEvent(eventId) {
+export async function deleteEntryEvent(eventId) {
   try {
     await calendar.fetch(await eventsUrl(`/${encodeURIComponent(eventId)}`), { method: 'DELETE' })
   } catch (err) {

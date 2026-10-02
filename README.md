@@ -14,8 +14,9 @@ there are four tabs:
   been spent. The money-flow diagram also shows the planned but not yet
   spent part of each category, hatched.
 - **Timetable** – the project's Google Calendar, embedded
-  (`src/tabs/Timetable.jsx`). Diary entries of kind "Termin" are added
-  to it automatically. The calendar must be public to be visible to
+  (`src/tabs/Timetable.jsx`). Diary entries of kind "Termin", and
+  "Aufgabe" and "Mangel" entries with a due date, are added to it
+  automatically. The calendar must be public to be visible to
   everyone using the app.
 - **Contacts** – the people involved in the build (contractors, trades,
   architect, authorities) with role, company, phone, email and notes.
@@ -40,7 +41,9 @@ there are four tabs:
   open them through the folder's sharing.
 - **Timetable**: the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). Saving a diary "Termin" adds or updates
-  its event in the calendar, and deleting the entry deletes the event,
+  its event in the calendar; an "Aufgabe" or "Mangel" with a due date
+  becomes an all-day event on that date ("Mangel: …", with "✓" once
+  fixed or done). Deleting the entry deletes the event,
   with the signed-in person's own Google account (Calendar API,
   `src/calendar.js`); the app asks for calendar access the first time.
   Changes made directly in Google Calendar are not copied back to the
@@ -94,7 +97,7 @@ Create a calendar for the build (e.g. "Bauzeitplan"). In its settings:
 - **Access permissions for events**: *Make available to public*, so the
   embedded calendar shows for everyone.
 - **Share with specific people**: add every family member with
-  *Make changes to events*, so their diary appointments can be added.
+  *Make changes to events*, so their diary entries can be added.
 - **Integrate calendar → Calendar ID** (e.g. `…@group.calendar.google.com`)
   is needed in step 4.
 

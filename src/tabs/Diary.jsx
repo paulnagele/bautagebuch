@@ -19,7 +19,7 @@ import {
   uploadFile,
   uploadPhoto,
 } from '../drive.js'
-import { connectCalendar, deleteAppointmentEvent, saveAppointmentEvent } from '../calendar.js'
+import { connectCalendar, deleteEntryEvent, entryHasEvent, syncEntryEvent } from '../calendar.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
 // Stored in English so existing entries keep working; shown in German.
@@ -104,6 +104,13 @@ async function uploadPending({ photos, files, date }, folderPath, onProgress) {
     onProgress(n + 1, { ...uploaded })
   }
   return uploaded
+}
+
+// Which entries also go into the Google Calendar (see calendar.js).
+const CALENDAR_HINTS = {
+  appointment: 'Termine werden auch im Google Kalender (Zeitplan) eingetragen.',
+  todo: 'Aufgaben werden am Tag „Erledigen bis“ im Google Kalender (Zeitplan) eingetragen.',
+  defect: 'Mängel mit „Zu beheben bis“ werden an diesem Tag im Google Kalender (Zeitplan) eingetragen.',
 }
 
 function emptyForm(type = 'status') {
@@ -315,16 +322,17 @@ function Diary({ user }) {
     }
     setError('')
 
-    // Appointments also go into the Google Calendar (Zeitplan). Connect
-    // first, while the click still counts as user action, otherwise the
-    // browser blocks Google's popup. If the calendar fails, the entry is
-    // still saved, with a note.
+    // Appointments, and to-dos and defects with a due date, also go into
+    // the Google Calendar (Zeitplan). Connect first, while the click still
+    // counts as user action, otherwise the browser blocks Google's popup.
+    // If the calendar fails, the entry is still saved, with a note.
     const original = entries.find((e) => e.id === editingId)
     const oldEventId = original?.details.calendarEventId
-    const isAppointment = form.type === 'appointment'
+    const calendarEntry = { type: form.type, date: form.date, work: form.work.trim(), details }
+    const hasEvent = entryHasEvent(calendarEntry)
     let calendarProblem = ''
     let calendarConnected = false
-    if (isAppointment || oldEventId) {
+    if (hasEvent || oldEventId) {
       try {
         await connectCalendar(user.email)
         calendarConnected = true
@@ -357,18 +365,10 @@ function Diary({ user }) {
     }
 
     setBusy('Wird gespeichert…')
-    let calendarEventId = isAppointment ? oldEventId : undefined
+    let calendarEventId = hasEvent ? oldEventId : null
     if (calendarConnected) {
       try {
-        if (isAppointment) {
-          calendarEventId = await saveAppointmentEvent(
-            { date: form.date, work: form.work.trim(), details },
-            oldEventId,
-          )
-        } else {
-          // No longer an appointment: remove it from the calendar.
-          await deleteAppointmentEvent(oldEventId)
-        }
+        calendarEventId = await syncEntryEvent(calendarEntry, oldEventId)
       } catch (err) {
         calendarProblem = err.message
       }
@@ -425,11 +425,24 @@ function Diary({ user }) {
 
   async function toggleDone(entry) {
     const { field, done } = entryType(entry.type).progress
+    const details = { ...entry.details, [field]: isOpen(entry) ? done : 'open' }
+    // The calendar event shows "✓" once done.
+    let calendarProblem = ''
+    if (entryHasEvent({ ...entry, details }) || details.calendarEventId) {
+      try {
+        await connectCalendar(user.email)
+        const eventId = await syncEntryEvent({ ...entry, details }, details.calendarEventId)
+        if (eventId) details.calendarEventId = eventId
+        else delete details.calendarEventId
+      } catch (err) {
+        calendarProblem = err.message
+      }
+    }
     try {
-      await update(entry.id, {
-        ...entry,
-        details: { ...entry.details, [field]: isOpen(entry) ? done : 'open' },
-      })
+      await update(entry.id, { ...entry, details })
+      if (calendarProblem) {
+        window.alert(`Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${calendarProblem}`)
+      }
     } catch (err) {
       window.alert(err.message)
     }
@@ -443,15 +456,15 @@ function Diary({ user }) {
     const expenseNote =
       typeKey(entry.type) === 'expense' ? ' Die Ausgabe wird auch aus den Finanzen gelöscht.' : ''
     const eventId = entry.details.calendarEventId
-    const calendarNote = eventId ? ' Der Termin wird auch aus dem Google Kalender gelöscht.' : ''
+    const calendarNote = eventId ? ' Er wird auch aus dem Google Kalender gelöscht.' : ''
     if (!window.confirm(`Diesen Tagebucheintrag löschen?${calendarNote}${expenseNote}${photoNote}`)) return
     if (eventId) {
       try {
         await connectCalendar(user.email)
-        await deleteAppointmentEvent(eventId)
+        await deleteEntryEvent(eventId)
       } catch (err) {
         const question =
-          `Der Termin konnte nicht aus dem Google Kalender gelöscht werden (${err.message}). ` +
+          `Der Eintrag konnte nicht aus dem Google Kalender gelöscht werden (${err.message}). ` +
           'Den Eintrag trotzdem löschen?'
         if (!window.confirm(question)) return
       }
@@ -590,8 +603,8 @@ function Diary({ user }) {
           </div>
         </div>
 
-        {form.type === 'appointment' && (
-          <p className="form-hint muted full">Termine werden auch im Google Kalender (Zeitplan) eingetragen.</p>
+        {CALENDAR_HINTS[form.type] && (
+          <p className="form-hint muted full">{CALENDAR_HINTS[form.type]}</p>
         )}
 
         {error && (
