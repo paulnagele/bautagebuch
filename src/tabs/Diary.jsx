@@ -31,8 +31,9 @@ function fromRow(row) {
     date: row.entry_date,
     weather: row.weather,
     workers: row.workers ?? '',
-    work: row.work,
-    notes: row.notes,
+    // Entries have one text; notes from before (or from an older app
+    // version) are shown as part of it and merged into it when saved.
+    work: row.notes ? `${row.work}\n\n${row.notes}` : row.work,
     details: row.details ?? {},
     photoIds: row.photo_ids ?? [],
     files: row.files ?? [],
@@ -49,7 +50,7 @@ function toRow(entry) {
     weather: siteInfo ? entry.weather : '',
     workers: !siteInfo || entry.workers === '' ? null : Number(entry.workers),
     work: entry.work,
-    notes: entry.notes,
+    notes: '',
     details: entry.details,
     photo_ids: entry.photoIds,
     files: entry.files,
@@ -105,7 +106,6 @@ function emptyForm(type = 'status') {
     weather: 'Sunny',
     workers: '',
     work: '',
-    notes: '',
     details: defaultDetails(type),
     photos: [],
     // files: { key, fileId, name } in Drive, or { key, blob, name } new.
@@ -333,7 +333,6 @@ function Diary({ user }) {
       weather: form.weather,
       workers: form.workers,
       work: form.work.trim(),
-      notes: form.notes.trim(),
       details,
       photoIds: uploaded.photos.map((p) => p.fileId),
       files: uploaded.files.map((f) => ({ id: f.fileId, name: f.name })),
@@ -366,7 +365,6 @@ function Diary({ user }) {
       weather: entry.weather || 'Sunny',
       workers: String(entry.workers),
       work: entry.work,
-      notes: entry.notes,
       details: defaultDetails(entry.type, entry.details),
       photos: entry.photoIds.map((fileId) => ({ key: fileId, fileId })),
       files: entry.files.map((f) => ({ key: f.id, fileId: f.id, name: f.name })),
@@ -460,11 +458,7 @@ function Diary({ user }) {
         ))}
         <label className="full">
           {formType.textLabel}
-          <textarea rows="3" value={form.work} onChange={setField('work')} />
-        </label>
-        <label className="full">
-          {formType.notesLabel}
-          <textarea rows="2" value={form.notes} onChange={setField('notes')} />
+          <textarea rows="4" value={form.work} onChange={setField('work')} />
         </label>
 
         <div className="full photo-field">
@@ -631,7 +625,6 @@ function Diary({ user }) {
                 <span className="muted">{meta.join(' · ')}</span>
               </div>
               <p className="entry-text">{entry.work}</p>
-              {entry.notes && <p className="entry-text muted">{entry.notes}</p>}
               {entry.photoIds.length > 0 && (
                 <ul className="thumb-grid entry-photos">
                   {entry.photoIds.map((fileId, i) => {
