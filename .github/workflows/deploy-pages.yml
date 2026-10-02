@@ -23,11 +23,19 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm run build
+      - name: Build
+        run: |
+          if [ -z "$VITE_GOOGLE_CLIENT_ID" ]; then
+            echo "::warning title=Google sign-in not configured::No GOOGLE_CLIENT_ID repository variable or secret found. The site is built in demo mode. Add it under Settings → Secrets and variables → Actions (repository level, not an environment)."
+          else
+            echo "Google sign-in configured (client ID ending in …${VITE_GOOGLE_CLIENT_ID: -30})."
+          fi
+          npm run build
         env:
-          # Set under Settings → Secrets and variables → Actions → Variables.
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
-          VITE_ALLOWED_EMAILS: ${{ vars.ALLOWED_EMAILS }}
+          # Repository-level Actions variable (preferred) or secret named
+          # GOOGLE_CLIENT_ID; optional ALLOWED_EMAILS likewise.
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
+          VITE_ALLOWED_EMAILS: ${{ vars.ALLOWED_EMAILS || secrets.ALLOWED_EMAILS }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true

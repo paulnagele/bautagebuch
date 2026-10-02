@@ -44,7 +44,9 @@ mode instead.
 
    No redirect URIs are needed. Copy the **Client ID**.
 4. **GitHub**: in the repository go to **Settings → Secrets and
-   variables → Actions → Variables** and add:
+   variables → Actions → Variables** and add *repository* variables
+   (not environment variables; a repository secret with the same name
+   also works):
    - `GOOGLE_CLIENT_ID` – the Client ID from step 3
    - `ALLOWED_EMAILS` (optional) – comma-separated Google accounts that
      may sign in, e.g. `anna@gmail.com,ben@gmail.com`
