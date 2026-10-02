@@ -457,6 +457,38 @@ td.date {
   text-align: center;
 }
 
+.image-missing {
+  padding: 0.25rem;
+  background: var(--bg);
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+}
+
+.image-missing:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.image-loading {
+  border-radius: 6px;
+  background: var(--track);
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--muted);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .image-button {
   display: block;
   width: 100%;
@@ -851,8 +883,128 @@ tr.editing td {
   font-weight: 600;
 }
 
+.flow-detail-label {
+  font-size: 11.5px;
+}
+
+/* Labels drawn over flows get an outline in the card colour. */
+.flow-label.halo {
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.flow-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flow-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.flow-toggle:has(input:disabled) {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .flow-canvas svg.narrow .flow-label {
   font-size: 11px;
+}
+
+/* Finances: planned budget per category */
+.budget-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.budget-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+
+.budget-total {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-hint {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.budget-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.budget-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.budget-row:last-child {
+  border-bottom: none;
+}
+
+.budget-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.budget-name {
+  flex: 1;
+  min-width: 8rem;
+  overflow-wrap: anywhere;
+}
+
+.budget-detail {
+  justify-content: space-between;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-amounts {
+  white-space: nowrap;
+}
+
+.budget-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.budget-edit input {
+  width: 8rem;
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.budget-meter {
+  height: 6px;
 }
 
 /* Contacts */
