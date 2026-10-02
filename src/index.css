@@ -641,6 +641,41 @@ td.date {
   gap: 0.5rem;
 }
 
+.people-input {
+  position: relative;
+}
+
+.people-suggestions {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  font-weight: normal;
+}
+
+.people-suggestions li {
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+}
+
+.people-suggestions li.active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.people-suggestions .muted {
+  font-size: 0.8rem;
+}
+
 .upload-buttons {
   display: flex;
   gap: 0.5rem;

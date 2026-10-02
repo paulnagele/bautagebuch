@@ -9,6 +9,8 @@ const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: '
 //   kind: 'text' | 'date' | 'time' | 'select' | 'amount' (euros, > 0)
 //   options: a select's choices { value: label }, or
 //   optionsFrom: a list the diary loads, e.g. 'expenseCategories'
+//   suggestFrom: free text for people, with names from that list (e.g.
+//     'contacts') suggested while typing; several separated by commas
 //   required: must be filled in before saving
 //   summary(value): optional, how the value reads in the list
 //   pill: show a select's value as a coloured label (`.state-<value>`)
@@ -103,7 +105,13 @@ export const ENTRY_TYPES = {
     fields: [
       { key: 'time', label: 'Uhrzeit', kind: 'time', summary: (v) => `${v} Uhr` },
       { key: 'location', label: 'Ort', kind: 'text' },
-      { key: 'participants', label: 'Mit wem', kind: 'text', summary: (v) => `mit ${v}` },
+      {
+        key: 'participants',
+        label: 'Mit wem',
+        kind: 'text',
+        suggestFrom: 'contacts',
+        summary: (v) => `mit ${v}`,
+      },
     ],
   },
   expense: {

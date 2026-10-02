@@ -10,6 +10,7 @@ import {
   typeKey,
 } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
+import PeopleInput from '../components/PeopleInput.jsx'
 import { fromRow, toRow } from '../diaryEntries.js'
 import {
   connectDrive,
@@ -120,7 +121,18 @@ function categoryToRow(category) {
   return { type: category.type, name: category.name, sort_order: category.sortOrder }
 }
 
-function DetailField({ field, value, options, onChange }) {
+function contactFromRow(row) {
+  return { id: row.id, name: row.name, role: row.role ?? '', company: row.company ?? '' }
+}
+
+function contactToRow(contact) {
+  return { name: contact.name, role: contact.role, company: contact.company }
+}
+
+function DetailField({ field, value, options, lists, onChange }) {
+  if (field.suggestFrom) {
+    return <PeopleInput value={value} onChange={onChange} contacts={lists[field.suggestFrom] ?? []} />
+  }
   if (field.kind === 'amount') {
     return (
       <input type="number" min="0" step="0.01" inputMode="decimal" value={value} onChange={onChange} />
@@ -155,6 +167,10 @@ function checkDetails(type, formDetails, lists) {
   for (const field of entryType(type).fields) {
     if (field.kind === 'select' && !details[field.key]) {
       details[field.key] = Object.keys(fieldOptions(field, '', lists))[0] ?? ''
+    }
+    if (field.suggestFrom) {
+      // Drop the ", " left after picking the last suggestion.
+      details[field.key] = details[field.key].replace(/[\s,]+$/, '')
     }
     if (field.kind === 'amount' && details[field.key] !== '') {
       details[field.key] = Math.round(Number(details[field.key]) * 100) / 100
@@ -199,6 +215,7 @@ function Diary({ user, focusEntryId, onFocused }) {
     fromRow: categoryFromRow,
     toRow: categoryToRow,
   })
+  const contactStore = useCollection('contacts', { fromRow: contactFromRow, toRow: contactToRow })
   const [folderId, setFolderId] = useState(null)
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openOnly', false)
@@ -224,6 +241,7 @@ function Diary({ user, focusEntryId, onFocused }) {
       .filter((c) => c.type === 'expense')
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de'))
       .map((c) => c.name),
+    contacts: contactStore.rows,
   }
 
 
@@ -551,6 +569,7 @@ function Diary({ user, focusEntryId, onFocused }) {
               field={field}
               value={form.details[field.key] ?? ''}
               options={field.kind === 'select' ? fieldOptions(field, form.details[field.key], lists) : null}
+              lists={lists}
               onChange={setDetail(field.key)}
             />
           </label>
