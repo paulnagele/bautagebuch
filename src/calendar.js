@@ -1,7 +1,8 @@
 // The project's Google Calendar ("Bauzeitplan"). Everyone sees it as an
-// embedded calendar on the Zeitplan tab. Diary appointments, to-dos and
-// defects are added, changed and deleted there with the person's own
-// Google account, so the calendar must be shared with each member with "Make changes to events".
+// embedded calendar on the Zeitplan tab. Diary appointments, to-dos,
+// defects and the milestones are added, changed and deleted there with
+// the person's own Google account, so the calendar must be shared with
+// each member with "Make changes to events".
 // The calendar ID is stored in the database (app_settings, key
 // calendar_id), not in the repository.
 // https://developers.google.com/workspace/calendar/api/v3/reference/events
@@ -119,13 +120,28 @@ export function entryHasEvent(entry) {
 // of time); a new event does not need them.
 const withoutNulls = (key, value) => (value === null ? undefined : value)
 
-// Creates, updates or deletes the entry's event to match the entry and
-// returns its ID (null when it has none). An event deleted in Google
-// Calendar meanwhile is created again.
-export async function syncEntryEvent(entry, eventId) {
-  const body = entryEvent(entry)
+// ---- milestones -----------------------------------------------------------------
+//
+// Each milestone on the Zeitplan tab is an all-day event on its date,
+// "Meilenstein: …", with "✓" once reached.
+
+function milestoneEvent({ name, date, reached }) {
+  return {
+    summary: `${reached ? '✓ ' : ''}Meilenstein: ${shorten(name)}`,
+    location: '',
+    description: 'Meilenstein aus dem Bautagebuch',
+    ...eventTimes(date, ''),
+  }
+}
+
+// ---- API calls ------------------------------------------------------------------
+
+// Creates, updates or deletes the event to match `body` (null: no event)
+// and returns its ID (null when there is none). An event deleted in
+// Google Calendar meanwhile is created again.
+async function syncEvent(body, eventId) {
   if (!body) {
-    if (eventId) await deleteEntryEvent(eventId)
+    if (eventId) await deleteEvent(eventId)
     return null
   }
   if (eventId) {
@@ -148,7 +164,15 @@ export async function syncEntryEvent(entry, eventId) {
   return (await response.json()).id
 }
 
-export async function deleteEntryEvent(eventId) {
+export function syncEntryEvent(entry, eventId) {
+  return syncEvent(entryEvent(entry), eventId)
+}
+
+export function syncMilestoneEvent(milestone, eventId) {
+  return syncEvent(milestoneEvent(milestone), eventId)
+}
+
+export async function deleteEvent(eventId) {
   try {
     await calendar.fetch(await eventsUrl(`/${encodeURIComponent(eventId)}`), { method: 'DELETE' })
   } catch (err) {
