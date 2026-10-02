@@ -97,27 +97,73 @@ function emptyForm(type = 'expense') {
 
 // Funding sources in list order (plus any no longer in the list), coloured
 // by position so colours stay put when amounts change.
-function flowSources(sourceNames, totals, unfunded) {
-  const ordered = [...sourceNames, ...[...totals.keys()].filter((n) => !sourceNames.includes(n))]
+const DETAILS_PER_NODE = 3
+
+// The entries behind one source or category, grouped by description: the
+// largest few, the rest combined as "+ n more".
+function entryDetails(items) {
+  const totals = sumBy(items, 'description')
+  const sorted = [...totals.entries()]
+    .map(([name, value]) => ({ name, value }))
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value)
+  if (sorted.length <= DETAILS_PER_NODE + 1) return sorted
+  const shown = sorted.slice(0, DETAILS_PER_NODE)
+  const rest = sorted.slice(DETAILS_PER_NODE)
+  return [
+    ...shown,
+    { name: `+ ${rest.length} more`, value: rest.reduce((sum, d) => sum + d.value, 0) },
+  ]
+}
+
+function itemsByCategory(items) {
+  const groups = new Map()
+  for (const item of items) {
+    if (!groups.has(item.category)) groups.set(item.category, [])
+    groups.get(item.category).push(item)
+  }
+  return groups
+}
+
+// Funding sources in list order (plus any no longer in the list), coloured
+// by position so colours stay put when amounts change.
+function flowSources(sourceNames, funding, unfunded) {
+  const groups = itemsByCategory(funding)
+  const ordered = [...sourceNames, ...[...groups.keys()].filter((n) => !sourceNames.includes(n))]
   const nodes = []
-  let other = 0
+  const folded = []
   ordered.forEach((name, i) => {
-    const value = totals.get(name) ?? 0
+    const items = groups.get(name) ?? []
+    const value = items.reduce((sum, item) => sum + item.amount, 0)
     if (value <= 0) return
-    if (i < SERIES_COLORS.length) nodes.push({ name, value, color: SERIES_COLORS[i] })
-    else other += value
+    if (i < SERIES_COLORS.length) {
+      nodes.push({ name, value, color: SERIES_COLORS[i], details: entryDetails(items) })
+    } else {
+      folded.push(...items)
+    }
   })
-  if (other > 0) nodes.push({ name: 'More sources', value: other, color: OTHER_COLOR })
+  if (folded.length > 0) {
+    nodes.push({
+      name: 'More sources',
+      value: folded.reduce((sum, item) => sum + item.amount, 0),
+      color: OTHER_COLOR,
+      details: entryDetails(folded),
+    })
+  }
   if (unfunded > 0) nodes.push({ name: 'Not yet funded', value: unfunded, kind: 'unfunded' })
   return nodes
 }
 
 // Expense categories, largest first, then what is left over.
-function flowTargets(totals, unspent) {
-  const nodes = [...totals.entries()]
-    .filter(([, value]) => value > 0)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, value]) => ({ name, value }))
+function flowTargets(expenses, unspent) {
+  const nodes = [...itemsByCategory(expenses).entries()]
+    .map(([name, items]) => ({
+      name,
+      value: items.reduce((sum, item) => sum + item.amount, 0),
+      details: entryDetails(items),
+    }))
+    .filter((node) => node.value > 0)
+    .sort((a, b) => b.value - a.value)
   if (unspent > 0) nodes.push({ name: 'Not yet spent', value: unspent, kind: 'unspent' })
   return nodes
 }
@@ -315,10 +361,10 @@ function Finances() {
       <MoneyFlow
         sources={flowSources(
           fundingCategories.map((c) => c.name),
-          sumBy(funding, 'category'),
+          funding,
           Math.max(0, totalSpent - totalFunding),
         )}
-        targets={flowTargets(sumBy(expenses, 'category'), Math.max(0, totalFunding - totalSpent))}
+        targets={flowTargets(expenses, Math.max(0, totalFunding - totalSpent))}
         total={Math.max(totalFunding, totalSpent)}
         format={(value) => euros.format(value)}
         formatShare={(share) => percent.format(share)}
