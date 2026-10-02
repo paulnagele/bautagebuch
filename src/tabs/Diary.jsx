@@ -228,6 +228,7 @@ function Diary({ user }) {
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openOnly', false)
   const fileInput = useRef(null)
+  const cameraInput = useRef(null)
   const attachInput = useRef(null)
 
   const counts = Object.fromEntries(
@@ -582,8 +583,25 @@ function Diary({ user }) {
             hidden
             onChange={addFiles}
           />
+          {/* Opens the camera directly; the gallery picker on some phones has no camera option. */}
+          <input
+            ref={cameraInput}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={addFiles}
+          />
           <input ref={attachInput} type="file" multiple hidden onChange={addAttachments} />
           <div className="upload-buttons">
+            <button
+              type="button"
+              className="secondary camera-button"
+              onClick={() => cameraInput.current.click()}
+              disabled={Boolean(busy)}
+            >
+              Foto aufnehmen
+            </button>
             <button
               type="button"
               className="secondary"
