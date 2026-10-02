@@ -11,6 +11,7 @@ import {
   uploadFile,
   uploadPhoto,
 } from '../drive.js'
+import { connectCalendar, deleteAppointmentEvent, saveAppointmentEvent } from '../calendar.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
 // Stored in English so existing entries keep working; shown in German.
@@ -303,6 +304,24 @@ function Diary({ user }) {
     }
     setError('')
 
+    // Appointments also go into the Google Calendar (Zeitplan). Connect
+    // first, while the click still counts as user action, otherwise the
+    // browser blocks Google's popup. If the calendar fails, the entry is
+    // still saved, with a note.
+    const original = entries.find((e) => e.id === editingId)
+    const oldEventId = original?.details.calendarEventId
+    const isAppointment = form.type === 'appointment'
+    let calendarProblem = ''
+    let calendarConnected = false
+    if (isAppointment || oldEventId) {
+      try {
+        await connectCalendar(user.email)
+        calendarConnected = true
+      } catch (err) {
+        calendarProblem = err.message
+      }
+    }
+
     const pending = [...form.photos, ...form.files].filter((p) => p.blob).length
     let uploaded = { photos: form.photos, files: form.files }
     if (pending > 0) {
@@ -310,7 +329,7 @@ function Diary({ user }) {
         // Must run first, while the click still counts as user action,
         // otherwise the browser blocks Google's popup.
         await connectDrive(user.email)
-        const createdAt = entries.find((e) => e.id === editingId)?.createdAt
+        const createdAt = original?.createdAt
         const folderPath = entryFolderPath(form.type, editingId ? createdAt : null)
         uploaded = await uploadPending(form, folderPath, (done, sofar) => {
           setBusy(
@@ -327,13 +346,29 @@ function Diary({ user }) {
     }
 
     setBusy('Wird gespeichert…')
+    let calendarEventId = isAppointment ? oldEventId : undefined
+    if (calendarConnected) {
+      try {
+        if (isAppointment) {
+          calendarEventId = await saveAppointmentEvent(
+            { date: form.date, work: form.work.trim(), details },
+            oldEventId,
+          )
+        } else {
+          // No longer an appointment: remove it from the calendar.
+          await deleteAppointmentEvent(oldEventId)
+        }
+      } catch (err) {
+        calendarProblem = err.message
+      }
+    }
     const entry = {
       type: form.type,
       date: form.date,
       weather: form.weather,
       workers: form.workers,
       work: form.work.trim(),
-      details,
+      details: calendarEventId ? { ...details, calendarEventId } : details,
       photoIds: uploaded.photos.map((p) => p.fileId),
       files: uploaded.files.map((f) => ({ id: f.fileId, name: f.name })),
     }
@@ -344,6 +379,9 @@ function Diary({ user }) {
         await insert(entry)
       }
       resetForm()
+      if (calendarProblem) {
+        setError(`Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${calendarProblem}`)
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -393,7 +431,20 @@ function Diary({ user }) {
         : ''
     const expenseNote =
       typeKey(entry.type) === 'expense' ? ' Die Ausgabe wird auch aus den Finanzen gelöscht.' : ''
-    if (!window.confirm(`Diesen Tagebucheintrag löschen?${expenseNote}${photoNote}`)) return
+    const eventId = entry.details.calendarEventId
+    const calendarNote = eventId ? ' Der Termin wird auch aus dem Google Kalender gelöscht.' : ''
+    if (!window.confirm(`Diesen Tagebucheintrag löschen?${calendarNote}${expenseNote}${photoNote}`)) return
+    if (eventId) {
+      try {
+        await connectCalendar(user.email)
+        await deleteAppointmentEvent(eventId)
+      } catch (err) {
+        const question =
+          `Der Termin konnte nicht aus dem Google Kalender gelöscht werden (${err.message}). ` +
+          'Den Eintrag trotzdem löschen?'
+        if (!window.confirm(question)) return
+      }
+    }
     try {
       await remove(entry.id)
       if (editingId === entry.id) resetForm()
@@ -527,6 +578,10 @@ function Diary({ user }) {
             </button>
           </div>
         </div>
+
+        {form.type === 'appointment' && (
+          <p className="form-hint muted full">Termine werden auch im Google Kalender (Zeitplan) eingetragen.</p>
+        )}
 
         {error && (
           <p className="error full" role="alert">

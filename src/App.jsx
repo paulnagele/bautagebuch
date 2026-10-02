@@ -5,6 +5,8 @@ import SetupNeeded from './pages/SetupNeeded.jsx'
 import { missingConfig } from './config.js'
 import { supabase } from './supabase.js'
 import { disconnectDrive } from './drive.js'
+import { disconnectCalendar } from './calendar.js'
+import { forgetSettings } from './settings.js'
 
 function userFromSession(session) {
   const { id, email, user_metadata: meta = {} } = session.user
@@ -64,6 +66,8 @@ function AuthGate() {
 
   async function handleLogout() {
     disconnectDrive()
+    disconnectCalendar()
+    forgetSettings()
     await supabase.auth.signOut()
   }
 
