@@ -58,21 +58,21 @@ function DrivePhoto({ fileId, blob, alt, className, onOpen }) {
     const connectAndRetry = () => connectDrive().then(loadFallback, () => {})
     return (
       <button type="button" className={`${className} image-missing`} onClick={connectAndRetry}>
-        Tap to load photo
+        Zum Laden tippen
       </button>
     )
   }
   if (current.status === 'failed') {
     return (
       <button type="button" className={`${className} image-missing`} onClick={loadFallback}>
-        Photo not loaded. Tap to retry
+        Foto nicht geladen. Zum Wiederholen tippen
       </button>
     )
   }
   if (current.status === 'loading') {
     return (
       <span className={`${className} image-loading`}>
-        <span className="spinner" aria-label="Loading photo" />
+        <span className="spinner" aria-label="Foto wird geladen" />
       </span>
     )
   }

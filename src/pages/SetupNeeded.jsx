@@ -3,9 +3,9 @@ function SetupNeeded({ missing }) {
     <main className="login-page">
       <div className="login-card">
         <h1>Bautagebuch</h1>
-        <p className="subtitle">Setup not finished</p>
+        <p className="subtitle">Einrichtung nicht abgeschlossen</p>
         <div className="notice">
-          <p>This build is missing the following settings:</p>
+          <p>In diesem Build fehlen folgende Einstellungen:</p>
           <ul>
             {missing.map((name) => (
               <li key={name}>
@@ -14,7 +14,7 @@ function SetupNeeded({ missing }) {
             ))}
           </ul>
           <p>
-            See “Setup” in the{' '}
+            Siehe „Setup“ in der{' '}
             <a href="https://github.com/paulnagele/bautagebuch#setup">README</a>.
           </p>
         </div>

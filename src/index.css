@@ -1043,7 +1043,12 @@ tr.editing td {
 
 /* Keep all four tabs visible on phones. */
 @media (max-width: 480px) {
+  /* Tight enough that the four German tab names fit on a phone. */
+  .tabs {
+    gap: 0;
+  }
+
   .tabs .tab {
-    padding: 0.6rem 0.5rem;
+    padding: 0.6rem 0.4rem;
   }
 }

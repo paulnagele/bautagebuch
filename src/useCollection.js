@@ -103,13 +103,13 @@ export function friendlyError(error) {
   // "permission denied for table …": the table lacks grants for signed-in
   // users, i.e. the database migrations have not all been applied.
   if (/permission denied for (table|function|schema)/i.test(error.message)) {
-    return 'The database is not fully set up: signed-in users have no access to its tables. Apply the database migrations (GitHub → Actions → Apply Supabase migrations).'
+    return 'Die Datenbank ist nicht vollständig eingerichtet: Angemeldete Benutzer haben keinen Zugriff auf ihre Tabellen. Bitte die Datenbank-Migrationen ausführen (GitHub → Actions → Apply Supabase migrations).'
   }
   if (error.code === '42501' || /row-level security/i.test(error.message)) {
-    return 'You do not have access to this data. Ask the project owner to add your email address as a member.'
+    return 'Du hast keinen Zugriff auf diese Daten. Bitte den Projektinhaber, deine E-Mail-Adresse als Mitglied hinzuzufügen.'
   }
   if (error.code === '23505') {
-    return 'An entry with this name already exists.'
+    return 'Ein Eintrag mit diesem Namen existiert bereits.'
   }
   if (
     error.code === 'PGRST205' ||
@@ -117,13 +117,16 @@ export function friendlyError(error) {
     error.code === 'PGRST202' ||
     error.code === 'PGRST204'
   ) {
-    return 'The database is missing a newer table or function. Apply the database migrations (GitHub → Actions → Apply Supabase migrations).'
+    return 'In der Datenbank fehlt eine neuere Tabelle oder Funktion. Bitte die Datenbank-Migrationen ausführen (GitHub → Actions → Apply Supabase migrations).'
   }
   if (error.code === 'PGRST116') {
-    return 'The entry no longer exists or you do not have access to it.'
+    return 'Der Eintrag existiert nicht mehr oder du hast keinen Zugriff darauf.'
+  }
+  if (error.code === 'P0002') {
+    return 'Die Kategorie wurde nicht gefunden.'
   }
   if (/Failed to fetch|NetworkError/i.test(error.message)) {
-    return 'Could not reach the server. Check your internet connection.'
+    return 'Der Server ist nicht erreichbar. Bitte die Internetverbindung prüfen.'
   }
   return error.message
 }

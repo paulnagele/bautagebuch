@@ -52,7 +52,7 @@ function Contacts() {
   const [query, setQuery] = useState('')
   const formRef = useRef(null)
 
-  const sorted = [...contacts].sort((a, b) => a.name.localeCompare(b.name))
+  const sorted = [...contacts].sort((a, b) => a.name.localeCompare(b.name, 'de'))
   const shown = sorted.filter((contact) => matches(contact, query))
 
   function setField(field) {
@@ -63,7 +63,7 @@ function Contacts() {
     e.preventDefault()
     const contact = Object.fromEntries(FIELDS.map((field) => [field, form[field].trim()]))
     if (!contact.name) {
-      setError('Please enter a name.')
+      setError('Bitte einen Namen eingeben.')
       return
     }
     setSaving(true)
@@ -96,7 +96,7 @@ function Contacts() {
   }
 
   async function handleDelete(contact) {
-    if (!window.confirm(`Delete the contact "${contact.name}"?`)) return
+    if (!window.confirm(`Den Kontakt „${contact.name}“ löschen?`)) return
     try {
       await remove(contact.id)
       if (editingId === contact.id) resetForm()
@@ -108,37 +108,37 @@ function Contacts() {
   return (
     <section className="tab-content">
       <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
-        <h2>{editingId ? 'Edit contact' : 'New contact'}</h2>
+        <h2>{editingId ? 'Kontakt bearbeiten' : 'Neuer Kontakt'}</h2>
         <label>
           Name
           <input type="text" value={form.name} onChange={setField('name')} autoComplete="off" />
         </label>
         <label>
-          Role / trade
+          Rolle / Gewerk
           <input
             type="text"
-            placeholder="e.g. Electrician, Architect"
+            placeholder="z. B. Elektriker, Architektin"
             value={form.role}
             onChange={setField('role')}
           />
         </label>
         <label>
-          Company
+          Firma
           <input type="text" value={form.company} onChange={setField('company')} />
         </label>
         <label>
-          Phone
+          Telefon
           <input type="tel" value={form.phone} onChange={setField('phone')} autoComplete="off" />
         </label>
         <label>
-          Email
+          E-Mail
           <input type="email" value={form.email} onChange={setField('email')} autoComplete="off" />
         </label>
         <label className="full">
-          Notes
+          Notizen
           <textarea
             rows={2}
-            placeholder="e.g. Best reached in the morning, quote from 12 March"
+            placeholder="z. B. Am besten vormittags erreichbar, Angebot vom 12. März"
             value={form.notes}
             onChange={setField('notes')}
           />
@@ -152,11 +152,11 @@ function Contacts() {
 
         <div className="form-actions full">
           <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add contact'}
+            {saving ? 'Wird gespeichert…' : editingId ? 'Änderungen speichern' : 'Kontakt hinzufügen'}
           </button>
           {editingId && (
             <button type="button" className="secondary" onClick={resetForm} disabled={saving}>
-              Cancel
+              Abbrechen
             </button>
           )}
         </div>
@@ -166,22 +166,22 @@ function Contacts() {
         <input
           type="search"
           className="contact-search"
-          placeholder="Search contacts"
-          aria-label="Search contacts"
+          placeholder="Kontakte durchsuchen"
+          aria-label="Kontakte durchsuchen"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
       )}
 
-      {status === 'loading' && <p className="empty">Loading contacts…</p>}
+      {status === 'loading' && <p className="empty">Kontakte werden geladen…</p>}
       {status === 'error' && (
         <p className="error" role="alert">
           {loadError}
         </p>
       )}
-      {status === 'ready' && contacts.length === 0 && <p className="empty">No contacts yet.</p>}
+      {status === 'ready' && contacts.length === 0 && <p className="empty">Noch keine Kontakte.</p>}
       {contacts.length > 0 && shown.length === 0 && (
-        <p className="empty">No contacts match “{query.trim()}”.</p>
+        <p className="empty">Keine Kontakte passen zu „{query.trim()}“.</p>
       )}
 
       {shown.length > 0 && (
@@ -206,10 +206,10 @@ function Contacts() {
               {contact.notes && <p className="entry-text muted">{contact.notes}</p>}
               <div className="entry-actions">
                 <button type="button" className="link" onClick={() => startEdit(contact)}>
-                  Edit
+                  Bearbeiten
                 </button>
                 <button type="button" className="link danger" onClick={() => handleDelete(contact)}>
-                  Delete
+                  Löschen
                 </button>
               </div>
             </li>

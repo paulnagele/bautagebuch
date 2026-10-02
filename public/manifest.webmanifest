@@ -1,5 +1,6 @@
 {
   "name": "Bautagebuch",
+  "lang": "de",
   "short_name": "Bautagebuch",
   "start_url": "./",
   "display": "standalone",

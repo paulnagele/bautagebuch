@@ -28,8 +28,8 @@ export function getDriveFolderId() {
       .eq('key', 'drive_folder_id')
       .maybeSingle()
       .then(({ data, error }) => {
-        if (error) throw new Error(`Could not load the photo folder setting: ${error.message}`)
-        if (!data) throw new Error('The photo folder is not set up yet (see README, app_settings).')
+        if (error) throw new Error(`Die Einstellung für den Fotoordner konnte nicht geladen werden: ${error.message}`)
+        if (!data) throw new Error('Der Fotoordner ist noch nicht eingerichtet (siehe README, app_settings).')
         return data.value
       })
     folderIdRequest.catch(() => (folderIdRequest = null))
@@ -86,7 +86,7 @@ export function connectDrive(email) {
   const existing = validToken()
   if (existing) return Promise.resolve(existing)
   if (!googleReady()) {
-    return Promise.reject(new Error('Google is still loading. Please try again in a moment.'))
+    return Promise.reject(new Error('Google wird noch geladen. Bitte gleich noch einmal versuchen.'))
   }
   return new Promise((resolve, reject) => {
     const client = window.google.accounts.oauth2.initTokenClient({
@@ -95,11 +95,11 @@ export function connectDrive(email) {
       login_hint: email,
       callback: (response) => {
         if (response.error) {
-          reject(new Error(`Google Drive access was not granted (${response.error}).`))
+          reject(new Error(`Der Zugriff auf Google Drive wurde nicht erlaubt (${response.error}).`))
           return
         }
         if (!window.google.accounts.oauth2.hasGrantedAllScopes(response, SCOPE)) {
-          reject(new Error('Please allow access to Google Drive to use photos.'))
+          reject(new Error('Bitte den Zugriff auf Google Drive erlauben, um Fotos zu verwenden.'))
           return
         }
         setToken({
@@ -112,8 +112,8 @@ export function connectDrive(email) {
         reject(
           new Error(
             err?.type === 'popup_failed_to_open'
-              ? 'The Google popup was blocked. Please allow popups for this site.'
-              : 'Google Drive sign-in was cancelled.',
+              ? 'Das Google-Fenster wurde blockiert. Bitte Pop-ups für diese Seite erlauben.'
+              : 'Die Google-Drive-Anmeldung wurde abgebrochen.',
           ),
         )
       },
@@ -126,14 +126,14 @@ export function connectDrive(email) {
 
 async function driveFetch(url, options = {}) {
   const accessToken = validToken()
-  if (!accessToken) throw new Error('Not connected to Google Drive.')
+  if (!accessToken) throw new Error('Nicht mit Google Drive verbunden.')
   const response = await fetch(url, {
     ...options,
     headers: { ...options.headers, Authorization: `Bearer ${accessToken}` },
   })
   if (response.status === 401) {
     setToken(null)
-    throw new Error('The Google Drive session expired. Please connect again.')
+    throw new Error('Die Google-Drive-Sitzung ist abgelaufen. Bitte erneut verbinden.')
   }
   if (!response.ok) {
     let detail = ''
@@ -142,7 +142,7 @@ async function driveFetch(url, options = {}) {
     } catch {
       // Not JSON.
     }
-    const error = new Error(detail || `Google Drive request failed (${response.status}).`)
+    const error = new Error(detail || `Google-Drive-Anfrage fehlgeschlagen (${response.status}).`)
     error.status = response.status
     throw error
   }
@@ -197,7 +197,7 @@ export async function uploadPhoto(blob, name) {
 // Thrown when a photo can only be loaded with the person's own Drive access.
 export class NeedsDriveError extends Error {
   constructor() {
-    super('Connect Google Drive to load this photo.')
+    super('Google Drive verbinden, um dieses Foto zu laden.')
     this.needsDrive = true
   }
 }

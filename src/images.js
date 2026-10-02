@@ -16,7 +16,7 @@ export async function compressImage(file) {
   bitmap.close()
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error('Could not process image.'))),
+      (blob) => (blob ? resolve(blob) : reject(new Error('Bild konnte nicht verarbeitet werden.'))),
       'image/jpeg',
       QUALITY,
     )

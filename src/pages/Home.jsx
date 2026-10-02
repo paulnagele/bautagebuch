@@ -7,10 +7,10 @@ import Timetable from '../tabs/Timetable.jsx'
 import Contacts from '../tabs/Contacts.jsx'
 
 const TABS = [
-  { id: 'diary', label: 'Diary', component: Diary },
-  { id: 'finances', label: 'Finances', component: Finances },
-  { id: 'timetable', label: 'Timetable', component: Timetable },
-  { id: 'contacts', label: 'Contacts', component: Contacts },
+  { id: 'diary', label: 'Tagebuch', component: Diary },
+  { id: 'finances', label: 'Finanzen', component: Finances },
+  { id: 'timetable', label: 'Zeitplan', component: Timetable },
+  { id: 'contacts', label: 'Kontakte', component: Contacts },
 ]
 
 function Home({ user, onLogout }) {
@@ -39,7 +39,7 @@ function Home({ user, onLogout }) {
             {user.name ?? user.email}
           </span>
           <button type="button" className="secondary" onClick={onLogout}>
-            Sign out
+            Abmelden
           </button>
         </div>
       </header>

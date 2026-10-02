@@ -44,12 +44,12 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
     const used = usage.get(category.name) ?? 0
     if (used > 0) {
       setMessage(
-        `“${category.name}” is used by ${used} transaction${used === 1 ? '' : 's'}. ` +
-          'Rename it, or change those transactions first.',
+        `„${category.name}“ wird von ${used} Buchung${used === 1 ? '' : 'en'} verwendet. ` +
+          'Benenne sie um oder ändere zuerst diese Buchungen.',
       )
       return
     }
-    if (!window.confirm(`Delete the category “${category.name}”?`)) return
+    if (!window.confirm(`Die Kategorie „${category.name}“ löschen?`)) return
     await run(() => onDelete(category.id))
   }
 
@@ -64,14 +64,14 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
               <li key={category.id}>
                 <form className="category-row" onSubmit={handleRename}>
                   <input
-                    aria-label={`New name for ${category.name}`}
+                    aria-label={`Neuer Name für ${category.name}`}
                     value={editing.name}
                     onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                     disabled={busy}
                     autoFocus
                   />
                   <button type="submit" className="link" disabled={busy}>
-                    Save
+                    Speichern
                   </button>
                   <button
                     type="button"
@@ -79,7 +79,7 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
                     onClick={() => setEditing(null)}
                     disabled={busy}
                   >
-                    Cancel
+                    Abbrechen
                   </button>
                 </form>
               </li>
@@ -100,7 +100,7 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
                     }}
                     disabled={busy}
                   >
-                    Rename
+                    Umbenennen
                   </button>
                   <button
                     type="button"
@@ -108,7 +108,7 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
                     onClick={() => handleDelete(category)}
                     disabled={busy}
                   >
-                    Delete
+                    Löschen
                   </button>
                 </>
               )}
@@ -119,14 +119,14 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
       {!readOnly && (
         <form className="category-row category-add" onSubmit={handleAdd}>
           <input
-            aria-label={`New ${title.toLowerCase()}`}
-            placeholder="New name"
+            aria-label={`${title}: neuer Eintrag`}
+            placeholder="Neuer Name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             disabled={busy}
           />
           <button type="submit" className="secondary" disabled={busy || !newName.trim()}>
-            Add
+            Hinzufügen
           </button>
         </form>
       )}
@@ -142,19 +142,19 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
 function CategoryManager({ expense, funding, usage, readOnly, notice, onAdd, onRename, onDelete }) {
   return (
     <details className="card category-manager">
-      <summary>Manage categories</summary>
+      <summary>Kategorien verwalten</summary>
       {notice && (
         <p className="error" role="alert">
           {notice}
         </p>
       )}
       <p className="muted category-hint">
-        The number next to a category shows how many transactions use it. Renaming a category
-        also renames it in those transactions.
+        Die Zahl neben einer Kategorie zeigt, wie viele Buchungen sie verwenden. Beim Umbenennen
+        wird die Kategorie auch in diesen Buchungen umbenannt.
       </p>
       <div className="category-columns">
         <CategoryList
-          title="Expense categories"
+          title="Ausgabenkategorien"
           categories={expense}
           usage={usage.expense}
           readOnly={readOnly}
@@ -163,7 +163,7 @@ function CategoryManager({ expense, funding, usage, readOnly, notice, onAdd, onR
           onDelete={onDelete}
         />
         <CategoryList
-          title="Funding sources"
+          title="Finanzierungsquellen"
           categories={funding}
           usage={usage.funding}
           readOnly={readOnly}
