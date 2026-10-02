@@ -630,6 +630,20 @@ td.date {
   gap: 0.5rem;
 }
 
+.upload-buttons {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 420px;
+}
+
+/* Always side by side; on narrow phones a label may wrap inside its button. */
+.upload-buttons button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 0.5rem;
+}
+
 .thumb-grid {
   list-style: none;
   margin: 0;
