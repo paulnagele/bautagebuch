@@ -462,7 +462,7 @@ function Diary({ user }) {
         </label>
 
         <div className="full photo-field">
-          <span className="field-label">Fotos</span>
+          <span className="field-label">Fotos und Dateien</span>
           {form.photos.length > 0 && (
             <ul className="thumb-grid">
               {form.photos.map((photo) => (
@@ -481,26 +481,6 @@ function Diary({ user }) {
               ))}
             </ul>
           )}
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={addFiles}
-          />
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => fileInput.current.click()}
-            disabled={Boolean(busy)}
-          >
-            Fotos hinzufügen
-          </button>
-        </div>
-
-        <div className="full photo-field">
-          <span className="field-label">Dateien</span>
           {form.files.length > 0 && (
             <ul className="file-list">
               {form.files.map((file) => (
@@ -519,15 +499,33 @@ function Diary({ user }) {
               ))}
             </ul>
           )}
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={addFiles}
+          />
           <input ref={attachInput} type="file" multiple hidden onChange={addAttachments} />
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => attachInput.current.click()}
-            disabled={Boolean(busy)}
-          >
-            Dateien hinzufügen
-          </button>
+          <div className="upload-buttons">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => fileInput.current.click()}
+              disabled={Boolean(busy)}
+            >
+              Fotos hinzufügen
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => attachInput.current.click()}
+              disabled={Boolean(busy)}
+            >
+              Dateien hinzufügen
+            </button>
+          </div>
         </div>
 
         {error && (
