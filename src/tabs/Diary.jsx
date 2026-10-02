@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { formatDate, newId, today } from '../storage.js'
+import { formatDate, newId, today, usePersistentState } from '../storage.js'
+import { ENTRY_TYPES, TYPE_KEYS, defaultDetails, entryType, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
 import { connectDrive, driveFolderUrl, getDriveFolderId, uploadPhoto } from '../drive.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
@@ -18,23 +19,28 @@ const WEATHER_OPTIONS = Object.keys(WEATHER_LABELS)
 function fromRow(row) {
   return {
     id: row.id,
+    type: row.entry_type ?? 'status',
     date: row.entry_date,
     weather: row.weather,
     workers: row.workers ?? '',
     work: row.work,
     notes: row.notes,
+    details: row.details ?? {},
     photoIds: row.photo_ids ?? [],
     author: row.author_name,
   }
 }
 
 function toRow(entry) {
+  const siteInfo = entryType(entry.type).siteInfo
   return {
+    entry_type: entry.type,
     entry_date: entry.date,
-    weather: entry.weather,
-    workers: entry.workers === '' ? null : Number(entry.workers),
+    weather: siteInfo ? entry.weather : '',
+    workers: !siteInfo || entry.workers === '' ? null : Number(entry.workers),
     work: entry.work,
     notes: entry.notes,
+    details: entry.details,
     photo_ids: entry.photoIds,
     updated_at: new Date().toISOString(),
   }
@@ -46,10 +52,54 @@ function extension(file) {
   return match ? match[0].toLowerCase() : '.jpg'
 }
 
-function emptyForm() {
+function emptyForm(type = 'status') {
   // photos: { key, fileId } for photos already in Drive,
   //         { key, blob } for new ones that still need uploading.
-  return { date: today(), weather: 'Sunny', workers: '', work: '', notes: '', photos: [] }
+  return {
+    type,
+    date: today(),
+    weather: 'Sunny',
+    workers: '',
+    work: '',
+    notes: '',
+    details: defaultDetails(type),
+    photos: [],
+  }
+}
+
+// Newest first; entries on the same day by time (appointments), then by
+// when they were written.
+function compareEntries(a, b) {
+  return (
+    b.date.localeCompare(a.date) ||
+    (b.details.time ?? '').localeCompare(a.details.time ?? '')
+  )
+}
+
+function DetailField({ field, value, onChange }) {
+  if (field.kind === 'select') {
+    return (
+      <select value={value} onChange={onChange}>
+        {Object.entries(field.options).map(([key, label]) => (
+          <option key={key} value={key}>
+            {label}
+          </option>
+        ))}
+      </select>
+    )
+  }
+  return <input type={field.kind} value={value} onChange={onChange} />
+}
+
+// The extra fields of an entry as short texts for the list ("14:00 Uhr", …).
+function detailSummaries(entry) {
+  return entryType(entry.type)
+    .fields.filter((field) => !field.pill && entry.details[field.key])
+    .map((field) => {
+      const value = entry.details[field.key]
+      if (field.summary) return field.summary(value)
+      return field.kind === 'select' ? (field.options[value] ?? value) : value
+    })
 }
 
 function Diary({ user }) {
@@ -63,9 +113,20 @@ function Diary({ user }) {
   const [busy, setBusy] = useState('')
   const [lightbox, setLightbox] = useState(null)
   const [folderId, setFolderId] = useState(null)
+  const [filter, setFilter] = usePersistentState('diary.filter', 'all')
+  const [openOnly, setOpenOnly] = usePersistentState('diary.openDefectsOnly', false)
   const fileInput = useRef(null)
 
-  const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date))
+  const counts = Object.fromEntries(
+    TYPE_KEYS.map((key) => [key, entries.filter((e) => typeKey(e.type) === key).length]),
+  )
+  const openDefects = entries.filter((e) => e.type === 'defect' && e.details.state !== 'fixed').length
+  const activeFilter = filter === 'all' || TYPE_KEYS.includes(filter) ? filter : 'all'
+  const sorted = entries
+    .filter((e) => activeFilter === 'all' || typeKey(e.type) === activeFilter)
+    .filter((e) => !(activeFilter === 'defect' && openOnly && e.details.state === 'fixed'))
+    .sort(compareEntries)
+  const formType = entryType(form.type)
 
   useEffect(() => {
     getDriveFolderId().then(setFolderId, () => {})
@@ -80,6 +141,20 @@ function Diary({ user }) {
 
   function setField(field) {
     return (e) => setForm({ ...form, [field]: e.target.value })
+  }
+
+  function setDetail(key) {
+    return (e) => setForm({ ...form, details: { ...form.details, [key]: e.target.value } })
+  }
+
+  function chooseType(type) {
+    setForm({
+      ...form,
+      type,
+      weather: form.weather || 'Sunny',
+      details: defaultDetails(type, form.details),
+    })
+    setError('')
   }
 
   // Photos are uploaded as picked, in full size and quality.
@@ -99,7 +174,8 @@ function Diary({ user }) {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.date || !form.work.trim()) {
-      setError('Bitte Datum und ausgeführte Arbeiten eingeben.')
+      const { dateLabel, textLabel } = entryType(form.type)
+      setError(`Bitte ${dateLabel} und „${textLabel}“ ausfüllen.`)
       return
     }
     setError('')
@@ -131,11 +207,13 @@ function Diary({ user }) {
 
     setBusy('Wird gespeichert…')
     const entry = {
+      type: form.type,
       date: form.date,
       weather: form.weather,
       workers: form.workers,
       work: form.work.trim(),
       notes: form.notes.trim(),
+      details: defaultDetails(form.type, form.details),
       photoIds: photos.map((p) => p.fileId),
     }
     try {
@@ -153,23 +231,38 @@ function Diary({ user }) {
   }
 
   function resetForm() {
-    setForm(emptyForm())
+    // Keep the chosen kind: several defects are often noted in a row.
+    setForm(emptyForm(form.type))
     setEditingId(null)
     setError('')
   }
 
   function startEdit(entry) {
     setForm({
+      type: typeKey(entry.type),
       date: entry.date,
-      weather: entry.weather,
+      weather: entry.weather || 'Sunny',
       workers: String(entry.workers),
       work: entry.work,
       notes: entry.notes,
+      details: defaultDetails(entry.type, entry.details),
       photos: entry.photoIds.map((fileId) => ({ key: fileId, fileId })),
     })
     setEditingId(entry.id)
     setError('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  async function toggleDefect(entry) {
+    const fixed = entry.details.state === 'fixed'
+    try {
+      await update(entry.id, {
+        ...entry,
+        details: { ...entry.details, state: fixed ? 'open' : 'fixed' },
+      })
+    } catch (err) {
+      window.alert(err.message)
+    }
   }
 
   async function handleDelete(entry) {
@@ -188,30 +281,60 @@ function Diary({ user }) {
       <form className="card form-grid" onSubmit={handleSubmit} noValidate>
         <h2>{editingId ? 'Eintrag bearbeiten' : 'Neuer Tagebucheintrag'}</h2>
 
+        <div className="full type-picker" role="radiogroup" aria-label="Art des Eintrags">
+          {TYPE_KEYS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="radio"
+              aria-checked={form.type === key}
+              className={`type-option type-${key}${form.type === key ? ' selected' : ''}`}
+              onClick={() => chooseType(key)}
+              disabled={Boolean(busy)}
+            >
+              {ENTRY_TYPES[key].label}
+            </button>
+          ))}
+        </div>
+
         <label>
-          Datum
+          {formType.dateLabel}
           <input type="date" value={form.date} onChange={setField('date')} />
         </label>
-        <label>
-          Wetter
-          <select value={form.weather} onChange={setField('weather')}>
-            {WEATHER_OPTIONS.map((w) => (
-              <option key={w} value={w}>
-                {WEATHER_LABELS[w]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Arbeiter vor Ort
-          <input type="number" min="0" value={form.workers} onChange={setField('workers')} />
-        </label>
+        {formType.siteInfo && (
+          <>
+            <label>
+              Wetter
+              <select value={form.weather} onChange={setField('weather')}>
+                {WEATHER_OPTIONS.map((w) => (
+                  <option key={w} value={w}>
+                    {WEATHER_LABELS[w]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Arbeiter vor Ort
+              <input type="number" min="0" value={form.workers} onChange={setField('workers')} />
+            </label>
+          </>
+        )}
+        {formType.fields.map((field) => (
+          <label key={field.key}>
+            {field.label}
+            <DetailField
+              field={field}
+              value={form.details[field.key] ?? ''}
+              onChange={setDetail(field.key)}
+            />
+          </label>
+        ))}
         <label className="full">
-          Ausgeführte Arbeiten
+          {formType.textLabel}
           <textarea rows="3" value={form.work} onChange={setField('work')} />
         </label>
         <label className="full">
-          Notizen / Vorkommnisse
+          {formType.notesLabel}
           <textarea rows="2" value={form.notes} onChange={setField('notes')} />
         </label>
 
@@ -277,22 +400,75 @@ function Diary({ user }) {
           {loadError}
         </p>
       )}
-      {status === 'ready' && sorted.length === 0 && <p className="empty">Noch keine Tagebucheinträge.</p>}
+      {entries.length > 0 && (
+        <div className="diary-filter">
+          <div className="filter-chips" role="group" aria-label="Einträge filtern">
+            {['all', ...TYPE_KEYS].map((key) => (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={activeFilter === key}
+                className={activeFilter === key ? 'chip active' : 'chip'}
+                onClick={() => setFilter(key)}
+              >
+                {key === 'all' ? 'Alle' : ENTRY_TYPES[key].plural}{' '}
+                <span className="chip-count">{key === 'all' ? entries.length : counts[key]}</span>
+              </button>
+            ))}
+          </div>
+          {activeFilter === 'defect' && (
+            <label className="open-only">
+              <input
+                type="checkbox"
+                checked={openOnly}
+                onChange={(e) => setOpenOnly(e.target.checked)}
+              />
+              Nur offene ({openDefects})
+            </label>
+          )}
+        </div>
+      )}
+
+      {status === 'ready' && entries.length === 0 && <p className="empty">Noch keine Tagebucheinträge.</p>}
+      {status === 'ready' && entries.length > 0 && sorted.length === 0 && (
+        <p className="empty">Keine passenden Einträge.</p>
+      )}
 
       {sorted.length > 0 && (
         <ul className="entry-list">
-          {sorted.map((entry) => (
+          {sorted.map((entry) => {
+            const type = entryType(entry.type)
+            const key = typeKey(entry.type)
+            const meta = [
+              ...(type.siteInfo
+                ? [
+                    WEATHER_LABELS[entry.weather] ?? entry.weather,
+                    entry.workers !== '' && `${entry.workers} Arbeiter`,
+                  ]
+                : []),
+              ...detailSummaries(entry),
+              entry.author,
+            ].filter(Boolean)
+            const pills = type.fields.filter((f) => f.pill && entry.details[f.key])
+            return (
             <li
               key={entry.id}
-              className={entry.id === editingId ? 'card entry editing' : 'card entry'}
+              className={`card entry type-${key}${entry.id === editingId ? ' editing' : ''}`}
             >
               <div className="entry-head">
-                <strong>{formatDate(entry.date)}</strong>
-                <span className="muted">
-                  {WEATHER_LABELS[entry.weather] ?? entry.weather}
-                  {entry.workers !== '' && ` · ${entry.workers} Arbeiter`}
-                  {entry.author && ` · ${entry.author}`}
+                <span className="entry-title">
+                  <span className={`type-badge type-${key}`}>{type.label}</span>
+                  <strong>{formatDate(entry.date)}</strong>
+                  {pills.map((f) => (
+                    <span key={f.key} className={`state-pill state-${entry.details[f.key]}`}>
+                      {f.options[entry.details[f.key]] ?? entry.details[f.key]}
+                    </span>
+                  ))}
+                  {key === 'appointment' && entry.date >= today() && (
+                    <span className="state-pill state-upcoming">Bevorstehend</span>
+                  )}
                 </span>
+                <span className="muted">{meta.join(' · ')}</span>
               </div>
               <p className="entry-text">{entry.work}</p>
               {entry.notes && <p className="entry-text muted">{entry.notes}</p>}
@@ -314,6 +490,11 @@ function Diary({ user }) {
                 </ul>
               )}
               <div className="entry-actions">
+                {key === 'defect' && (
+                  <button type="button" className="link" onClick={() => toggleDefect(entry)}>
+                    {entry.details.state === 'fixed' ? 'Wieder öffnen' : 'Als behoben markieren'}
+                  </button>
+                )}
                 <button type="button" className="link" onClick={() => startEdit(entry)}>
                   Bearbeiten
                 </button>
@@ -322,7 +503,8 @@ function Diary({ user }) {
                 </button>
               </div>
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
 
