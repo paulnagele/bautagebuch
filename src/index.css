@@ -648,6 +648,17 @@ td.date {
   max-width: 420px;
 }
 
+/* Taking a photo only makes sense on phones and tablets. */
+.upload-buttons .camera-button {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .upload-buttons .camera-button {
+    display: block;
+  }
+}
+
 /* Always side by side; on narrow phones a label may wrap inside its button. */
 .upload-buttons button {
   flex: 1 1 0;
