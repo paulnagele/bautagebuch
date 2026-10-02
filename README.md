@@ -8,7 +8,7 @@ there are three tabs:
   shared Google Drive folder.
 - **Finances** – record funding (own funds, bank loan, housing subsidy,
   …) and expenses by category; categories and funding sources can be
-  added, renamed and deleted under "Manage categories". Shows funding secured, spent and
+  added, renamed and deleted under "Manage categories". Shows funding secured, spent annd
   remaining, a money-flow diagram from funding sources to expense
   categories, and a planned budget per expense category next to what has
   been spent.
@@ -26,7 +26,9 @@ there are three tabs:
   `supabase/migrations/`.
 - **Photos**: uploaded to a shared Google Drive folder with the signed-in
   person's own Google account. The database only keeps the Drive file IDs.
-  Viewing photos asks once per browser session for Google Drive access.
+  Photos are kept on each device once seen, so they show instantly and
+  offline; only photos new to a device need Google Drive access (asked
+  for at most once an hour).
 - **Timetable**: the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`).
 
