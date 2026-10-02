@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { formatDate, newId, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
 import { compressImage } from '../images.js'
-import { connectDrive, driveFolderUrl, uploadPhoto, useDriveConnected } from '../drive.js'
+import { connectDrive, driveFolderUrl, uploadPhoto, usePhotosNeedDrive } from '../drive.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
 const WEATHER_OPTIONS = ['Sunny', 'Cloudy', 'Rain', 'Snow', 'Wind', 'Frost']
@@ -43,7 +43,7 @@ function Diary({ user }) {
     'diary_entries',
     { fromRow, toRow },
   )
-  const driveConnected = useDriveConnected()
+  const photosNeedDrive = usePhotosNeedDrive()
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
   const [error, setError] = useState('')
@@ -52,7 +52,6 @@ function Diary({ user }) {
   const fileInput = useRef(null)
 
   const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date))
-  const hasPhotos = entries.some((entry) => entry.photoIds.length > 0)
 
   useEffect(() => {
     if (!lightbox) return
@@ -270,9 +269,9 @@ function Diary({ user }) {
         </div>
       </form>
 
-      {hasPhotos && !driveConnected && (
+      {photosNeedDrive && (
         <div className="card drive-bar">
-          <span>Photos are stored in Google Drive.</span>
+          <span>Some photos are not on this device yet. They load from Google Drive.</span>
           <button type="button" className="secondary" onClick={showPhotos}>
             Show photos
           </button>
