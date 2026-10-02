@@ -212,6 +212,27 @@ button.secondary:hover {
   font-weight: 600;
 }
 
+.install-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid #f5b301;
+  border-radius: 8px;
+}
+
+.install-hint > span {
+  flex: 1 1 14rem;
+}
+
+.install-hint button.link {
+  color: var(--muted);
+}
+
 /* Shared building blocks */
 .tab-content {
   display: flex;
