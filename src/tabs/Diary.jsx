@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatDate, newId, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
-import { compressImage } from '../images.js'
 import { connectDrive, driveFolderUrl, getDriveFolderId, uploadPhoto } from '../drive.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
@@ -41,6 +40,12 @@ function toRow(entry) {
   }
 }
 
+// Keeps the original file type in the Drive file name (".jpg", ".heic", …).
+function extension(file) {
+  const match = /\.[a-z0-9]+$/i.exec(file.name ?? '')
+  return match ? match[0].toLowerCase() : '.jpg'
+}
+
 function emptyForm() {
   // photos: { key, fileId } for photos already in Drive,
   //         { key, blob } for new ones that still need uploading.
@@ -77,23 +82,14 @@ function Diary({ user }) {
     return (e) => setForm({ ...form, [field]: e.target.value })
   }
 
-  async function addFiles(e) {
+  // Photos are uploaded as picked, in full size and quality.
+  function addFiles(e) {
     const files = [...e.target.files].filter((f) => f.type.startsWith('image/'))
     e.target.value = ''
     if (files.length === 0) return
-    setBusy('Fotos werden vorbereitet…')
     setError('')
-    try {
-      const added = []
-      for (const file of files) {
-        added.push({ key: newId(), blob: await compressImage(file) })
-      }
-      setForm((f) => ({ ...f, photos: [...f.photos, ...added] }))
-    } catch {
-      setError('Eines der Bilder konnte nicht gelesen werden. Bitte eine JPEG- oder PNG-Datei versuchen.')
-    } finally {
-      setBusy('')
-    }
+    const added = files.map((file) => ({ key: newId(), blob: file }))
+    setForm((f) => ({ ...f, photos: [...f.photos, ...added] }))
   }
 
   function removeFormPhoto(key) {
@@ -121,7 +117,7 @@ function Diary({ user }) {
           if (!photo.blob) continue
           done += 1
           setBusy(`Foto ${done} von ${pending.length} wird hochgeladen…`)
-          const fileId = await uploadPhoto(photo.blob, `${form.date} Bautagebuch ${newId()}.jpg`)
+          const fileId = await uploadPhoto(photo.blob, `${form.date} Bautagebuch ${newId()}${extension(photo.blob)}`)
           photos[index] = { key: photo.key, fileId }
           // Remember finished uploads so a retry does not upload them twice.
           setForm((f) => ({ ...f, photos: [...photos] }))
