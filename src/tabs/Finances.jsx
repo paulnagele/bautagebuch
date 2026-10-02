@@ -170,16 +170,32 @@ function flowSources(sourceNames, funding, unfunded) {
 }
 
 // Expense categories, largest first, then what is left over.
-function flowTargets(expenses, unspent) {
-  const nodes = [...itemsByCategory(expenses).entries()]
-    .map(([name, items]) => ({
-      name,
-      value: items.reduce((sum, item) => sum + item.amount, 0),
-      details: entryDetails(items),
-    }))
+// Expense categories, largest first, then what is left over. A category
+// with a plan it has not used up yet also gets the open rest of that plan
+// (`planned`), drawn hatched next to what was spent.
+function flowTargets(expenses, categories, funding) {
+  const groups = itemsByCategory(expenses)
+  const plans = new Map(
+    categories.filter((c) => c.plannedAmount != null).map((c) => [c.name, c.plannedAmount]),
+  )
+  const names = [...new Set([...groups.keys(), ...plans.keys()])]
+  const nodes = names
+    .map((name) => {
+      const items = groups.get(name) ?? []
+      const spent = items.reduce((sum, item) => sum + item.amount, 0)
+      const planned = Math.max(0, (plans.get(name) ?? 0) - spent)
+      return { name, value: spent + planned, spent, planned, details: entryDetails(items) }
+    })
     .filter((node) => node.value > 0)
     .sort((a, b) => b.value - a.value)
-  if (unspent > 0) nodes.push({ name: 'Noch nicht ausgegeben', value: unspent, kind: 'unspent' })
+  const used = nodes.reduce((sum, node) => sum + node.value, 0)
+  if (funding > used) {
+    nodes.push({
+      name: plans.size > 0 ? 'Noch nicht verplant' : 'Noch nicht ausgegeben',
+      value: funding - used,
+      kind: 'unspent',
+    })
+  }
   return nodes
 }
 
@@ -219,6 +235,12 @@ function Finances() {
       ]
     : categoryStore.rows
   const expenseCategories = categoryRows.filter((c) => c.type === 'expense').sort(byOrder)
+  // What the plans still expect to be spent, beyond what already was.
+  const spentByCategory = sumBy(expenses, 'category')
+  const plannedOpen = expenseCategories.reduce(
+    (sum, c) => sum + Math.max(0, (c.plannedAmount ?? 0) - (spentByCategory.get(c.name) ?? 0)),
+    0,
+  )
   const fundingCategories = categoryRows.filter((c) => c.type === 'funding').sort(byOrder)
   const baseCategories = (form.type === 'funding' ? fundingCategories : expenseCategories).map(
     (c) => c.name,
@@ -378,17 +400,17 @@ function Finances() {
         sources={flowSources(
           fundingCategories.map((c) => c.name),
           funding,
-          Math.max(0, totalSpent - totalFunding),
+          Math.max(0, totalSpent + plannedOpen - totalFunding),
         )}
-        targets={flowTargets(expenses, Math.max(0, totalFunding - totalSpent))}
-        total={Math.max(totalFunding, totalSpent)}
+        targets={flowTargets(expenses, expenseCategories, totalFunding)}
+        total={Math.max(totalFunding, totalSpent + plannedOpen)}
         format={(value) => euros.format(value)}
         formatShare={(share) => percent.format(share)}
       />
 
       <BudgetPlan
         categories={expenseCategories}
-        spent={sumBy(expenses, 'category')}
+        spent={spentByCategory}
         funding={totalFunding}
         readOnly={categoriesMissing}
         format={(value) => euros.format(value)}

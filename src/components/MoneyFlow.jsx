@@ -7,6 +7,11 @@ import { usePersistentState } from '../storage.js'
 // Unspent money shows as "Not yet spent"; spending beyond the secured
 // funding shows as "Not yet funded", so both sides always add up.
 //
+// An expense category with a plan it has not used up yet also carries the
+// open rest of the plan (`planned`), drawn hatched below what was spent.
+// That planned money comes out of the unspent funding, or adds to "Not yet
+// funded" when the funding does not cover it.
+//
 // With "Show entries" on (and enough width), an outer column on each side
 // breaks every source and category down into its entries, grouped by
 // description.
@@ -151,12 +156,14 @@ function DetailLabel({ x, y, anchor, name, amount, title }) {
 
 // sources / targets: [{ name, value, color?, kind?, details? }] with value > 0.
 // details: [{ name, value }] — the entries that make up the node.
+// Targets may also have `spent` and `planned` (value = spent + planned).
 function MoneyFlow({ sources, targets, total, format, formatShare }) {
   const [ref, measuredWidth] = useWidth()
   const width = measuredWidth > 0 ? Math.max(measuredWidth, MIN_WIDTH) : 0
   const [bind, tooltip] = useTooltip()
   const [showDetails, setShowDetails] = usePersistentState('bautagebuch.flowDetails', true)
 
+  const hasPlan = targets.some((n) => n.planned > 0)
   const hasDetails = [...sources, ...targets].some((n) => n.details?.length > 0)
   const detailsFit = width >= DETAIL_MIN_WIDTH
   const detailsOn = showDetails && hasDetails && detailsFit
@@ -174,6 +181,18 @@ function MoneyFlow({ sources, targets, total, format, formatShare }) {
           />
           Einträge anzeigen
         </label>
+      )}
+      {hasPlan && total > 0 && (
+        <ul className="flow-legend">
+          <li>
+            <span className="flow-swatch" aria-hidden="true" />
+            Ausgegeben
+          </li>
+          <li>
+            <span className="flow-swatch planned" aria-hidden="true" />
+            Geplant, noch offen
+          </li>
+        </ul>
       )}
     </div>
   )
@@ -260,7 +279,30 @@ function MoneyFlow({ sources, targets, total, format, formatShare }) {
   const outerLeftLinks = detailsOn ? detailLinks(outerLeft, outerLeftOffset, leftOffset) : []
   const outerRightLinks = detailsOn ? detailLinks(outerRight, outerRightOffset, rightOffset) : []
 
-  const describe = (n) => `${n.name}: ${format(n.value)} (${formatShare(n.value / total)})`
+  const describe = (n) =>
+    n.planned > 0
+      ? `${n.name}: ${format(n.spent)} von ${format(n.value)} ausgegeben, ` +
+        `${format(n.planned)} geplant und noch offen`
+      : `${n.name}: ${format(n.value)} (${formatShare(n.value / total)})`
+  const describePlanned = (n) =>
+    `${n.name}: ${format(n.planned)} geplant und noch offen (Plan ${format(n.value)})`
+  // Spent and planned parts of a target, top to bottom.
+  const parts = (n) =>
+    n.planned > 0
+      ? [
+          { h: n.spent * scale, planned: false },
+          { h: n.planned * scale, planned: true },
+        ].filter((p) => p.h > 0)
+      : [{ h: n.value * scale, planned: false }]
+  // "spent von plan" where it fits next to the node, else just what was spent.
+  const amountOf = (n, space) => {
+    if (!(n.planned > 0)) return format(n.value)
+    const options = [
+      `${format(n.spent)} von ${format(n.value)}`,
+      `${format(n.spent)} / ${format(n.value)}`,
+    ]
+    return options.find((text) => textWidth(text, fontSize) <= space) ?? format(n.spent)
+  }
   const describeDetail = (d) =>
     `${d.name} (${d.parent.name}): ${format(d.value)} (${formatShare(d.value / total)})`
   const nodeClass = (n) => `flow-node ${n.kind ?? ''}`
@@ -295,6 +337,17 @@ function MoneyFlow({ sources, targets, total, format, formatShare }) {
               `Verwendung: ${targets.map(describe).join('; ')}.`
             }
           >
+            <defs>
+              <pattern
+                id="flow-hatch"
+                patternUnits="userSpaceOnUse"
+                width="6"
+                height="6"
+                patternTransform="rotate(45)"
+              >
+                <line className="flow-hatch-line" x1="0" y1="0" x2="0" y2="6" />
+              </pattern>
+            </defs>
             {outerLeftLinks.map(({ node, y0, y1, offset }, i) => (
               <path
                 key={`ol-${i}`}
@@ -313,14 +366,27 @@ function MoneyFlow({ sources, targets, total, format, formatShare }) {
                 {...bind(describe(node))}
               />
             ))}
-            {outLinks.map(({ node, y0, y1 }) => (
-              <path
-                key={`out-${node.name}`}
-                className={linkClass(node)}
-                d={band(hubX + NODE_W, y0, y1, rightX, node.y + rightOffset, node.y + rightOffset + node.h)}
-                {...bind(describe(node))}
-              />
-            ))}
+            {outLinks.flatMap(({ node, y0, y1 }) => {
+              // A planned node's own height can exceed its scaled value
+              // (2px minimum); keep its parts in proportion to y0..y1.
+              let a = y0
+              let b = node.y + rightOffset
+              const k = node.h / (y1 - y0 || 1)
+              return parts(node).map((part) => {
+                const h = part.h
+                const path = (
+                  <path
+                    key={`out-${node.name}-${part.planned}`}
+                    className={part.planned ? 'flow-link planned' : linkClass(node)}
+                    d={band(hubX + NODE_W, a, a + h, rightX, b, b + h * k)}
+                    {...bind(part.planned ? describePlanned(node) : describe(node))}
+                  />
+                )
+                a += h
+                b += h * k
+                return path
+              })
+            })}
             {outerRightLinks.map(({ node, y0, y1, offset }, i) => (
               <path
                 key={`or-${i}`}
@@ -383,21 +449,42 @@ function MoneyFlow({ sources, targets, total, format, formatShare }) {
 
             {right.nodes.map((n) => (
               <g key={`r-${n.name}`}>
-                <rect
-                  className={nodeClass(n)}
-                  x={rightX}
-                  y={n.y + rightOffset}
-                  width={NODE_W}
-                  height={n.h}
-                  rx="3"
-                />
+                {n.planned > 0 ? (
+                  <>
+                    {n.spent > 0 && (
+                      <rect
+                        className={nodeClass(n)}
+                        x={rightX}
+                        y={n.y + rightOffset}
+                        width={NODE_W}
+                        height={(n.spent / n.value) * n.h}
+                      />
+                    )}
+                    <rect
+                      className="flow-node planned"
+                      x={rightX + 0.5}
+                      y={n.y + rightOffset + (n.spent / n.value) * n.h + 0.5}
+                      width={NODE_W - 1}
+                      height={Math.max(0, (n.planned / n.value) * n.h - 1)}
+                    />
+                  </>
+                ) : (
+                  <rect
+                    className={nodeClass(n)}
+                    x={rightX}
+                    y={n.y + rightOffset}
+                    width={NODE_W}
+                    height={n.h}
+                    rx="3"
+                  />
+                )}
                 <NodeLabel
                   x={rightLabel.x}
                   y={n.y + rightOffset + n.h / 2}
                   anchor={rightLabel.anchor}
                   halo={rightLabel.halo}
                   name={fitText(n.name, rightLabel.space, fontSize)}
-                  amount={format(n.value)}
+                  amount={amountOf(n, rightLabel.space)}
                   title={describe(n)}
                 />
               </g>

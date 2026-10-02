@@ -1122,6 +1122,64 @@ tr.editing td {
   opacity: 0.6;
 }
 
+/* Planned but not yet spent: hatched in the text colour. */
+.flow-hatch-line {
+  stroke: var(--text);
+  stroke-width: 2;
+  stroke-opacity: 0.35;
+}
+
+.flow-link.planned {
+  fill: url(#flow-hatch);
+  fill-opacity: 1;
+}
+
+.flow-link.planned:hover,
+.flow-link.planned:focus-visible {
+  fill: url(#flow-hatch);
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.flow-node.planned {
+  fill: url(#flow-hatch);
+  stroke: var(--muted);
+}
+
+.flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.flow-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.flow-swatch {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  background: var(--muted);
+}
+
+.flow-swatch.planned {
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--text) 35%, transparent) 0 2px,
+    transparent 2px 4.2px
+  );
+  border: 1px solid var(--muted);
+}
+
 .flow-canvas svg.narrow .flow-label {
   font-size: 11px;
 }
