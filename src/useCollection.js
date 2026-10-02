@@ -76,7 +76,12 @@ export function friendlyError(error) {
   if (error.code === '23505') {
     return 'An entry with this name already exists.'
   }
-  if (error.code === 'PGRST205' || error.code === '42P01' || error.code === 'PGRST202') {
+  if (
+    error.code === 'PGRST205' ||
+    error.code === '42P01' ||
+    error.code === 'PGRST202' ||
+    error.code === 'PGRST204'
+  ) {
     return 'The database is missing a newer table or function. Apply the database migrations (GitHub → Actions → Apply Supabase migrations).'
   }
   if (error.code === 'PGRST116') {

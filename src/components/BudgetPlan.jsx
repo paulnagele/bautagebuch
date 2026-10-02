@@ -1,0 +1,162 @@
+import { useState } from 'react'
+
+// Planned budget per expense category next to what was actually spent.
+// `categories` are the expense categories (with `plannedAmount`, null when
+// no plan is set); `spent` maps a category name to the amount spent.
+// Spending in categories that are no longer in the list is shown too, so
+// the totals always match the transactions. `funding` is the secured funding,
+// to warn when the plan needs more money than is secured.
+function BudgetPlan({ categories, spent, funding, readOnly, format, onSetPlan }) {
+  const [editing, setEditing] = useState(null) // { id, value }
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const names = new Set(categories.map((c) => c.name))
+  const rows = [
+    ...categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      planned: c.plannedAmount,
+      spent: spent.get(c.name) ?? 0,
+      editable: !readOnly,
+    })),
+    ...[...spent.entries()]
+      .filter(([name, value]) => !names.has(name) && value > 0)
+      .map(([name, value]) => ({ id: `gone-${name}`, name, planned: null, spent: value })),
+  ]
+  const totalPlanned = rows.reduce((s, r) => s + (r.planned ?? 0), 0)
+  const totalSpent = rows.reduce((s, r) => s + r.spent, 0)
+  const anyPlan = rows.some((r) => r.planned !== null)
+
+  function startEdit(row) {
+    setMessage('')
+    setEditing({ id: row.id, value: row.planned === null ? '' : String(row.planned) })
+  }
+
+  async function handleSave(e) {
+    e.preventDefault()
+    const text = editing.value.trim()
+    const amount = text === '' ? null : Math.round(Number(text) * 100) / 100
+    if (amount !== null && !(amount >= 0)) {
+      setMessage('Please enter an amount of 0 or more, or leave it empty to remove the plan.')
+      return
+    }
+    setBusy(true)
+    setMessage('')
+    try {
+      await onSetPlan(editing.id, amount)
+      setEditing(null)
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card budget-plan">
+      <div className="budget-head">
+        <h2>Budget by category</h2>
+        {anyPlan && (
+          <span className="muted budget-total">
+            {format(totalSpent)} of {format(totalPlanned)} planned
+          </span>
+        )}
+      </div>
+      {anyPlan && totalPlanned > funding && (
+        <p className="negative budget-hint">
+          ⚠ The plan needs {format(totalPlanned - funding)} more than the secured funding.
+        </p>
+      )}
+      {!anyPlan && (
+        <p className="muted budget-hint">
+          {readOnly
+            ? 'Planned amounts can be set once the database is up to date.'
+            : 'Set a planned amount per category to compare it with what has been spent.'}
+        </p>
+      )}
+      <ul className="budget-list">
+        {rows.map((row) => {
+          const share = row.planned > 0 ? row.spent / row.planned : row.spent > 0 ? Infinity : 0
+          const over = row.planned !== null && row.spent > row.planned
+          const left = (row.planned ?? 0) - row.spent
+          return (
+            <li key={row.id} className="budget-row">
+              <div className="budget-line">
+                <span className="budget-name">{row.name}</span>
+                {editing?.id === row.id ? (
+                  <form className="budget-edit" onSubmit={handleSave}>
+                    <input
+                      type="number"
+                      min="0"
+                      step="100"
+                      inputMode="decimal"
+                      placeholder="No plan"
+                      aria-label={`Planned amount for ${row.name} (€)`}
+                      value={editing.value}
+                      onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                      disabled={busy}
+                      autoFocus
+                    />
+                    <button type="submit" className="link" disabled={busy}>
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => setEditing(null)}
+                      disabled={busy}
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  row.editable && (
+                    <button type="button" className="link" onClick={() => startEdit(row)}>
+                      {row.planned === null ? 'Set plan' : 'Edit plan'}
+                    </button>
+                  )
+                )}
+              </div>
+              {row.planned !== null && (
+                <div
+                  className="meter budget-meter"
+                  role="meter"
+                  aria-label={`Share of the ${row.name} budget spent`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(Math.min(share, 9.99) * 100)}
+                >
+                  <span
+                    className={over ? 'meter-fill over' : 'meter-fill'}
+                    style={{ width: `${Math.min(share, 1) * 100}%` }}
+                  />
+                </div>
+              )}
+              <div className="budget-line budget-detail">
+                {row.planned === null ? (
+                  <span className="muted">No plan</span>
+                ) : (
+                  <span className={over ? 'negative' : 'muted'}>
+                    {over ? `${format(-left)} over plan` : `${format(left)} left`}
+                  </span>
+                )}
+                <span className="budget-amounts">
+                  {format(row.spent)}
+                  {row.planned !== null && <span className="muted"> of {format(row.planned)}</span>}
+                </span>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+      {message && (
+        <p className="error" role="alert">
+          {message}
+        </p>
+      )}
+    </div>
+  )
+}
+
+export default BudgetPlan

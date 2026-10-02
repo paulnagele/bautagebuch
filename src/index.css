@@ -854,3 +854,89 @@ tr.editing td {
 .flow-canvas svg.narrow .flow-label {
   font-size: 11px;
 }
+
+/* Finances: planned budget per category */
+.budget-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.budget-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+
+.budget-total {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-hint {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.budget-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.budget-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.budget-row:last-child {
+  border-bottom: none;
+}
+
+.budget-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.budget-name {
+  flex: 1;
+  min-width: 8rem;
+  overflow-wrap: anywhere;
+}
+
+.budget-detail {
+  justify-content: space-between;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-amounts {
+  white-space: nowrap;
+}
+
+.budget-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.budget-edit input {
+  width: 8rem;
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.budget-meter {
+  height: 6px;
+}
