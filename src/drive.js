@@ -106,7 +106,31 @@ function shareByLink(fileId) {
 
 // Resumable upload, so full-size photos and large files go through
 // (simple multipart uploads are limited to 5 MB).
-async function upload(blob, name, mimeType, folderId) {
+// Sends the file to a resumable upload session. XMLHttpRequest instead of
+// fetch because only it reports upload progress. The session URL itself
+// authorizes the upload, so no access token is needed here.
+function sendWithProgress(url, blob, mimeType, onBytes) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    xhr.setRequestHeader('Content-Type', mimeType)
+    xhr.responseType = 'json'
+    xhr.upload.onprogress = (e) => onBytes?.(e.loaded)
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300 && xhr.response?.id) {
+        onBytes?.(blob.size)
+        resolve(xhr.response.id)
+        return
+      }
+      const detail = xhr.response?.error?.message
+      reject(new Error(detail || `Google-Drive-Upload fehlgeschlagen (${xhr.status}).`))
+    }
+    xhr.onerror = () => reject(new Error('Keine Verbindung. Bitte Internetverbindung prüfen.'))
+    xhr.send(blob)
+  })
+}
+
+async function upload(blob, name, mimeType, folderId, onBytes) {
   const session = await driveFetch(`${UPLOAD_API}?uploadType=resumable&supportsAllDrives=true`, {
     method: 'POST',
     headers: {
@@ -117,21 +141,16 @@ async function upload(blob, name, mimeType, folderId) {
   })
   const uploadUrl = session.headers.get('Location')
   if (!uploadUrl) throw new Error('Google Drive hat keine Upload-Adresse geliefert.')
-  const response = await driveFetch(`${uploadUrl}&fields=id`, {
-    method: 'PUT',
-    headers: { 'Content-Type': mimeType },
-    body: blob,
-  })
-  const { id } = await response.json()
-  return id
+  return sendWithProgress(`${uploadUrl}&fields=id`, blob, mimeType, onBytes)
 }
 
-export function uploadFile(file, name, folderId) {
-  return upload(file, name, file.type || 'application/octet-stream', folderId)
+// onBytes(loaded) reports how many bytes of the file are sent so far.
+export function uploadFile(file, name, folderId, onBytes) {
+  return upload(file, name, file.type || 'application/octet-stream', folderId, onBytes)
 }
 
-export async function uploadPhoto(blob, name, folderId) {
-  const id = await upload(blob, name, blob.type || 'image/jpeg', folderId)
+export async function uploadPhoto(blob, name, folderId, onBytes) {
+  const id = await upload(blob, name, blob.type || 'image/jpeg', folderId, onBytes)
   await shareByLink(id).catch(() => {}) // still viewable via the fallback
   // The uploader already has the photo: keep it so it shows right away.
   photoCache.set(id, Promise.resolve(URL.createObjectURL(blob)))
