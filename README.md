@@ -4,11 +4,13 @@ A React app (Vite) for keeping a construction diary. After signing in
 there are three tabs:
 
 - **Diary** – write and edit daily site entries (date, weather, workers
-  on site, work carried out, notes).
-- **Finances** – record income and expenses by category, with totals and
-  the current balance.
-- **Timetable** – schedule tasks with trade, start/end date and status;
-  overdue tasks are flagged.
+  on site, work carried out, notes) with photos.
+- **Finances** – record funding (own funds, bank loan, housing subsidy,
+  …) and expenses by category. Shows funding secured, spent and
+  remaining, how the project is financed and where the money goes.
+- **Timetable** – the project's Google Calendar, embedded
+  (`src/tabs/Timetable.jsx`). The calendar must be public to be visible
+  to everyone using the app.
 
 ## Getting started
 
@@ -30,7 +32,8 @@ authentication is available.
 
 There is no backend yet, so all entries are saved in the browser's
 `localStorage`, separately per signed-in email address
-(`src/storage.js`). Data stays on that device and browser only and is
+(`src/storage.js`). Diary photos are resized to at most 1600 px and kept
+in IndexedDB (`src/imageStore.js`). Data stays on that device and browser only and is
 lost if site data is cleared.
 
 ## Deployment
