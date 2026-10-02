@@ -37,6 +37,46 @@ export function getDriveFolderId() {
   return folderIdRequest
 }
 
+// Other files (PDFs, plans, offers, …) go to their own folder: the one set
+// as 'drive_files_folder_id' in app_settings, otherwise a "Dateien" folder
+// inside the photo folder, created on first use. It inherits the photo
+// folder's sharing, so every member can open the files. Unlike photos,
+// files are not shared by link.
+const FILES_FOLDER_NAME = 'Dateien'
+const FOLDER_TYPE = 'application/vnd.google-apps.folder'
+let filesFolderRequest = null
+
+export function getFilesFolderId() {
+  if (!filesFolderRequest) {
+    filesFolderRequest = (async () => {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'drive_files_folder_id')
+        .maybeSingle()
+      if (data?.value) return data.value
+      const parent = await getDriveFolderId()
+      const query = `name = '${FILES_FOLDER_NAME}' and '${parent}' in parents and mimeType = '${FOLDER_TYPE}' and trashed = false`
+      const found = await driveFetch(
+        `${API}?q=${encodeURIComponent(query)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+      ).then((r) => r.json())
+      if (found.files?.length) return found.files[0].id
+      const created = await driveFetch(`${API}?fields=id&supportsAllDrives=true`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: FILES_FOLDER_NAME, mimeType: FOLDER_TYPE, parents: [parent] }),
+      }).then((r) => r.json())
+      return created.id
+    })()
+    filesFolderRequest.catch(() => (filesFolderRequest = null))
+  }
+  return filesFolderRequest
+}
+
+export function driveFileUrl(fileId) {
+  return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`
+}
+
 export function driveFolderUrl(folderId) {
   return `https://drive.google.com/drive/folders/${folderId}`
 }
@@ -75,6 +115,7 @@ function validToken() {
 export function disconnectDrive() {
   setToken(null)
   folderIdRequest = null
+  filesFolderRequest = null
   photoCache.clear()
   if (window.caches) caches.delete(PHOTO_CACHE).catch(() => {})
 }
@@ -158,17 +199,16 @@ function shareByLink(fileId) {
   })
 }
 
-// Resumable upload, so full-size photos of any size go through (simple
-// multipart uploads are limited to 5 MB).
-export async function uploadPhoto(blob, name) {
-  const mimeType = blob.type || 'image/jpeg'
+// Resumable upload, so full-size photos and large files go through
+// (simple multipart uploads are limited to 5 MB).
+async function upload(blob, name, mimeType, folderId) {
   const session = await driveFetch(`${UPLOAD_API}?uploadType=resumable&supportsAllDrives=true`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json; charset=UTF-8',
       'X-Upload-Content-Type': mimeType,
     },
-    body: JSON.stringify({ name, mimeType, parents: [await getDriveFolderId()] }),
+    body: JSON.stringify({ name, mimeType, parents: [folderId] }),
   })
   const uploadUrl = session.headers.get('Location')
   if (!uploadUrl) throw new Error('Google Drive hat keine Upload-Adresse geliefert.')
@@ -178,6 +218,15 @@ export async function uploadPhoto(blob, name) {
     body: blob,
   })
   const { id } = await response.json()
+  return id
+}
+
+export async function uploadFile(file, name) {
+  return upload(file, name, file.type || 'application/octet-stream', await getFilesFolderId())
+}
+
+export async function uploadPhoto(blob, name) {
+  const id = await upload(blob, name, blob.type || 'image/jpeg', await getDriveFolderId())
   await shareByLink(id).catch(() => {}) // still viewable via the fallback
   // The uploader already has the photo: keep it so it shows right away.
   photoCache.set(id, Promise.resolve(URL.createObjectURL(blob)))

@@ -119,6 +119,13 @@ values ('drive_folder_id', '<folder ID from step 2>')
 on conflict (key) do update set value = excluded.value;
 ```
 
+Files attached to diary entries (PDFs, plans, offers) go to a separate
+folder. By default the app creates a folder named "Dateien" inside the
+photo folder on first use; it has the same sharing as the photo folder.
+Unlike photos, files are not shared by link. To use another folder
+instead, share it with every member as Editor and add its ID as
+`drive_files_folder_id` the same way.
+
 Commit to `main`; the GitHub Actions workflow deploys the site. (Repository
 variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`
 override these values if set.) If anything is missing,

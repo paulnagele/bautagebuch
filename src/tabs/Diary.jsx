@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { formatDate, newId, today, usePersistentState } from '../storage.js'
 import { ENTRY_TYPES, TYPE_KEYS, defaultDetails, entryType, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
-import { connectDrive, driveFolderUrl, getDriveFolderId, uploadPhoto } from '../drive.js'
+import {
+  connectDrive,
+  driveFileUrl,
+  driveFolderUrl,
+  getDriveFolderId,
+  uploadFile,
+  uploadPhoto,
+} from '../drive.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
 // Stored in English so existing entries keep working; shown in German.
@@ -27,6 +34,7 @@ function fromRow(row) {
     notes: row.notes,
     details: row.details ?? {},
     photoIds: row.photo_ids ?? [],
+    files: row.files ?? [],
     author: row.author_name,
   }
 }
@@ -42,6 +50,7 @@ function toRow(entry) {
     notes: entry.notes,
     details: entry.details,
     photo_ids: entry.photoIds,
+    files: entry.files,
     updated_at: new Date().toISOString(),
   }
 }
@@ -52,20 +61,26 @@ function extension(file) {
   return match ? match[0].toLowerCase() : '.jpg'
 }
 
-// Uploads the photos not yet in Drive, one after another. onProgress(n)
-// runs before the n-th upload, onProgress(n, photos) after it.
-async function uploadPending(formPhotos, date, onProgress) {
-  const photos = [...formPhotos]
-  let done = 0
-  for (const [index, photo] of photos.entries()) {
-    if (!photo.blob) continue
-    done += 1
-    onProgress(done)
-    const fileId = await uploadPhoto(photo.blob, `${date} Bautagebuch ${newId()}${extension(photo.blob)}`)
-    photos[index] = { key: photo.key, fileId }
-    onProgress(done, [...photos])
+// Uploads the photos and files not yet in Drive, one after another.
+// onProgress(n) runs before the n-th upload, onProgress(n, uploaded) after
+// it, with the form's photos and files as far as they are uploaded.
+async function uploadPending({ photos, files }, date, onProgress) {
+  const uploaded = { photos: [...photos], files: [...files] }
+  const jobs = [
+    ...photos.map((item, index) => ({ item, index, list: 'photos' })),
+    ...files.map((item, index) => ({ item, index, list: 'files' })),
+  ].filter((job) => job.item.blob)
+  for (const [n, { item, index, list }] of jobs.entries()) {
+    onProgress(n + 1)
+    const { blob, ...rest } = item
+    const fileId =
+      list === 'photos'
+        ? await uploadPhoto(blob, `${date} Bautagebuch ${newId()}${extension(blob)}`)
+        : await uploadFile(blob, `${date} ${blob.name}`)
+    uploaded[list] = uploaded[list].with(index, { ...rest, fileId })
+    onProgress(n + 1, { ...uploaded })
   }
-  return photos
+  return uploaded
 }
 
 function emptyForm(type = 'status') {
@@ -80,6 +95,8 @@ function emptyForm(type = 'status') {
     notes: '',
     details: defaultDetails(type),
     photos: [],
+    // files: { key, fileId, name } in Drive, or { key, blob, name } new.
+    files: [],
   }
 }
 
@@ -182,6 +199,7 @@ function Diary({ user }) {
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openDefectsOnly', false)
   const fileInput = useRef(null)
+  const attachInput = useRef(null)
 
   const counts = Object.fromEntries(
     TYPE_KEYS.map((key) => [key, entries.filter((e) => typeKey(e.type) === key).length]),
@@ -240,6 +258,20 @@ function Diary({ user }) {
     setForm((f) => ({ ...f, photos: [...f.photos, ...added] }))
   }
 
+  // Any kind of file (PDF, plan, offer, …), kept in Drive's file folder.
+  function addAttachments(e) {
+    const picked = [...e.target.files]
+    e.target.value = ''
+    if (picked.length === 0) return
+    setError('')
+    const added = picked.map((file) => ({ key: newId(), blob: file, name: file.name }))
+    setForm((f) => ({ ...f, files: [...f.files, ...added] }))
+  }
+
+  function removeFormFile(key) {
+    setForm({ ...form, files: form.files.filter((f) => f.key !== key) })
+  }
+
   function removeFormPhoto(key) {
     setForm({ ...form, photos: form.photos.filter((p) => p.key !== key) })
   }
@@ -258,21 +290,23 @@ function Diary({ user }) {
     }
     setError('')
 
-    const pending = form.photos.filter((p) => p.blob)
-    let photos = form.photos
-    if (pending.length > 0) {
+    const pending = [...form.photos, ...form.files].filter((p) => p.blob).length
+    let uploaded = { photos: form.photos, files: form.files }
+    if (pending > 0) {
       try {
         // Must run first, while the click still counts as user action,
         // otherwise the browser blocks Google's popup.
         await connectDrive(user.email)
-        photos = await uploadPending(form.photos, form.date, (done, sofar) => {
-          setBusy(`Foto ${done} von ${pending.length} wird hochgeladen…`)
+        uploaded = await uploadPending(form, form.date, (done, sofar) => {
+          setBusy(
+            pending === 1 ? 'Wird hochgeladen…' : `Upload ${done} von ${pending} läuft…`,
+          )
           // Remember finished uploads so a retry does not upload them twice.
-          if (sofar) setForm((f) => ({ ...f, photos: sofar }))
+          if (sofar) setForm((f) => ({ ...f, ...sofar }))
         })
       } catch (err) {
         setBusy('')
-        setError(`Foto-Upload fehlgeschlagen: ${err.message}`)
+        setError(`Upload fehlgeschlagen: ${err.message}`)
         return
       }
     }
@@ -286,7 +320,8 @@ function Diary({ user }) {
       work: form.work.trim(),
       notes: form.notes.trim(),
       details,
-      photoIds: photos.map((p) => p.fileId),
+      photoIds: uploaded.photos.map((p) => p.fileId),
+      files: uploaded.files.map((f) => ({ id: f.fileId, name: f.name })),
     }
     try {
       if (editingId) {
@@ -319,6 +354,7 @@ function Diary({ user }) {
       notes: entry.notes,
       details: defaultDetails(entry.type, entry.details),
       photos: entry.photoIds.map((fileId) => ({ key: fileId, fileId })),
+      files: entry.files.map((f) => ({ key: f.id, fileId: f.id, name: f.name })),
     })
     setEditingId(entry.id)
     setError('')
@@ -338,7 +374,10 @@ function Diary({ user }) {
   }
 
   async function handleDelete(entry) {
-    const photoNote = entry.photoIds.length > 0 ? ' Die Fotos bleiben im Google-Drive-Ordner.' : ''
+    const photoNote =
+      entry.photoIds.length > 0 || entry.files.length > 0
+        ? ' Fotos und Dateien bleiben in Google Drive.'
+        : ''
     const expenseNote =
       typeKey(entry.type) === 'expense' ? ' Die Ausgabe wird auch aus den Finanzen gelöscht.' : ''
     if (!window.confirm(`Diesen Tagebucheintrag löschen?${expenseNote}${photoNote}`)) return
@@ -448,6 +487,37 @@ function Diary({ user }) {
             disabled={Boolean(busy)}
           >
             Fotos hinzufügen
+          </button>
+        </div>
+
+        <div className="full photo-field">
+          <span className="field-label">Dateien</span>
+          {form.files.length > 0 && (
+            <ul className="file-list">
+              {form.files.map((file) => (
+                <li key={file.key} className="file-chip">
+                  <span className="file-name">{file.name}</span>
+                  <button
+                    type="button"
+                    className="link danger"
+                    aria-label={`${file.name} entfernen`}
+                    onClick={() => removeFormFile(file.key)}
+                    disabled={Boolean(busy)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <input ref={attachInput} type="file" multiple hidden onChange={addAttachments} />
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => attachInput.current.click()}
+            disabled={Boolean(busy)}
+          >
+            Dateien hinzufügen
           </button>
         </div>
 
@@ -562,6 +632,23 @@ function Diary({ user }) {
                       </li>
                     )
                   })}
+                </ul>
+              )}
+              {entry.files.length > 0 && (
+                <ul className="file-list entry-files">
+                  {entry.files.map((file) => (
+                    <li key={file.id}>
+                      <a
+                        className="file-chip"
+                        href={driveFileUrl(file.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <span aria-hidden="true">📄</span>
+                        <span className="file-name">{file.name}</span>
+                      </a>
+                    </li>
+                  ))}
                 </ul>
               )}
               <div className="entry-actions">

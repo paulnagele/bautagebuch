@@ -368,6 +368,56 @@ button.link.danger {
   margin-top: 0.5rem;
 }
 
+/* Diary files */
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-width: 100%;
+}
+
+.entry-files {
+  margin-top: 0.75rem;
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.25rem 0.4rem 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+a.file-chip {
+  padding-right: 0.6rem;
+}
+
+a.file-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-chip button.link {
+  padding: 0 0.3rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
 /* Diary entry kinds. Each kind sets --type; add a line for a new kind. */
 .type-status {
   --type: var(--series-1);
