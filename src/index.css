@@ -112,31 +112,27 @@ button.secondary:hover {
   color: var(--muted);
 }
 
-.login-card label {
-  margin-bottom: 0.25rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.login-card input {
-  font: inherit;
-  margin-bottom: 1rem;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-}
-
-.login-card input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-
 .login-card .error {
-  margin: 0 0 1rem;
+  margin: 1rem 0 0;
   color: var(--error);
   font-size: 0.9rem;
+}
+
+.login-card .google-button {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.login-card .notice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.login-card .notice p {
+  margin: 0;
 }
 
 /* App shell */
@@ -165,6 +161,13 @@ button.secondary:hover {
   align-items: center;
   gap: 0.75rem;
   min-width: 0;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .user-email {

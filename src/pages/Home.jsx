@@ -24,7 +24,12 @@ function Home({ user, onLogout }) {
       <header className="app-header">
         <h1>Bautagebuch</h1>
         <div className="user-menu">
-          <span className="user-email">{user.email}</span>
+          {user.picture && (
+            <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />
+          )}
+          <span className="user-email" title={user.email}>
+            {user.name ?? user.email}
+          </span>
           <button type="button" className="secondary" onClick={onLogout}>
             Sign out
           </button>

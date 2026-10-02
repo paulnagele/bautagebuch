@@ -24,6 +24,10 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run build
+        env:
+          # Set under Settings → Secrets and variables → Actions → Variables.
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          VITE_ALLOWED_EMAILS: ${{ vars.ALLOWED_EMAILS }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true

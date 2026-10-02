@@ -21,12 +21,41 @@ npm run dev
 
 Then open http://localhost:5173.
 
-## Login
+## Google sign-in
 
-There is no backend yet. `src/pages/Login.jsx` uses a placeholder
-`fakeAuthenticate` function that accepts any valid email address with a
-password of at least 6 characters. Replace it with a real API call once
-authentication is available.
+Users sign in with their Google account ("Sign in with Google", Google
+Identity Services). Only name, email address and profile picture are
+requested. Without a configured Client ID the login page offers a demo
+mode instead.
+
+### One-time setup
+
+1. Open the [Google Cloud Console](https://console.cloud.google.com/),
+   create a project (e.g. "Bautagebuch").
+2. **Google Auth Platform → Branding**: enter an app name and support
+   email. **Audience**: choose *External*. Either add every family member
+   under *Test users*, or click *Publish app* (no Google review is needed
+   for name/email sign-in).
+3. **Google Auth Platform → Clients → Create client**: type *Web
+   application*. Under **Authorized JavaScript origins** add:
+   - `https://paulnagele.github.io`
+   - `http://localhost:5173` (local development)
+   - `http://localhost:4173` (local `npm run preview`)
+
+   No redirect URIs are needed. Copy the **Client ID**.
+4. **GitHub**: in the repository go to **Settings → Secrets and
+   variables → Actions → Variables** and add:
+   - `GOOGLE_CLIENT_ID` – the Client ID from step 3
+   - `ALLOWED_EMAILS` (optional) – comma-separated Google accounts that
+     may sign in, e.g. `anna@gmail.com,ben@gmail.com`
+
+   Then re-run the "Deploy to GitHub Pages" workflow (Actions tab).
+5. **Local development**: copy `.env.example` to `.env.local` and fill in
+   the same values.
+
+The Client ID is not a secret. Note that without a backend the allowlist
+is only checked in the browser; real access control comes with the
+backend.
 
 ## Data storage
 
