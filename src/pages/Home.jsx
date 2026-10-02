@@ -5,6 +5,7 @@ import Diary from '../tabs/Diary.jsx'
 import Finances from '../tabs/Finances.jsx'
 import Timetable from '../tabs/Timetable.jsx'
 import Contacts from '../tabs/Contacts.jsx'
+import InstallHint from '../components/InstallHint.jsx'
 
 const TABS = [
   { id: 'diary', label: 'Tagebuch', component: Diary },
@@ -43,6 +44,8 @@ function Home({ user, onLogout }) {
           </button>
         </div>
       </header>
+
+      <InstallHint />
 
       <nav className="tabs" role="tablist">
         {TABS.map((tab) => (
