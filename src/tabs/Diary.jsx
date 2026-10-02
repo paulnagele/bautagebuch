@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatDate, newId, today, usePersistentState } from '../storage.js'
-import { ENTRY_TYPES, TYPE_KEYS, defaultDetails, entryType, typeKey } from '../diaryTypes.js'
+import {
+  ENTRY_TYPES,
+  TYPE_KEYS,
+  defaultDetails,
+  entryType,
+  isOpen,
+  isOverdue,
+  typeKey,
+} from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
 import {
   connectDrive,
@@ -210,19 +218,22 @@ function Diary({ user }) {
   })
   const [folderId, setFolderId] = useState(null)
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
-  const [openOnly, setOpenOnly] = usePersistentState('diary.openDefectsOnly', false)
+  const [openOnly, setOpenOnly] = usePersistentState('diary.openOnly', false)
   const fileInput = useRef(null)
   const attachInput = useRef(null)
 
   const counts = Object.fromEntries(
     TYPE_KEYS.map((key) => [key, entries.filter((e) => typeKey(e.type) === key).length]),
   )
-  const openDefects = entries.filter((e) => e.type === 'defect' && e.details.state !== 'fixed').length
   const activeFilter = filter === 'all' || TYPE_KEYS.includes(filter) ? filter : 'all'
-  const sorted = entries
-    .filter((e) => activeFilter === 'all' || typeKey(e.type) === activeFilter)
-    .filter((e) => !(activeFilter === 'defect' && openOnly && e.details.state === 'fixed'))
+  // Kinds that get done (defects, to-dos) can be narrowed to open ones.
+  const canFilterOpen = Boolean(ENTRY_TYPES[activeFilter]?.progress)
+  const ofFilter = entries.filter((e) => activeFilter === 'all' || typeKey(e.type) === activeFilter)
+  const openCount = ofFilter.filter(isOpen).length
+  const sorted = ofFilter
+    .filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
     .sort(compareEntries)
+  const todayDate = today()
   const formType = entryType(form.type)
   const lists = {
     expenseCategories: categoryStore.rows
@@ -374,12 +385,12 @@ function Diary({ user }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  async function toggleDefect(entry) {
-    const fixed = entry.details.state === 'fixed'
+  async function toggleDone(entry) {
+    const { field, done } = entryType(entry.type).progress
     try {
       await update(entry.id, {
         ...entry,
-        details: { ...entry.details, state: fixed ? 'open' : 'fixed' },
+        details: { ...entry.details, [field]: isOpen(entry) ? done : 'open' },
       })
     } catch (err) {
       window.alert(err.message)
@@ -568,14 +579,14 @@ function Diary({ user }) {
               </button>
             ))}
           </div>
-          {activeFilter === 'defect' && (
+          {canFilterOpen && (
             <label className="open-only">
               <input
                 type="checkbox"
                 checked={openOnly}
                 onChange={(e) => setOpenOnly(e.target.checked)}
               />
-              Nur offene ({openDefects})
+              Nur offene ({openCount})
             </label>
           )}
         </div>
@@ -616,7 +627,10 @@ function Diary({ user }) {
                       {f.options[entry.details[f.key]] ?? entry.details[f.key]}
                     </span>
                   ))}
-                  {key === 'appointment' && entry.date >= today() && (
+                  {isOverdue(entry, todayDate) && (
+                    <span className="state-pill state-overdue">Überfällig</span>
+                  )}
+                  {key === 'appointment' && entry.date >= todayDate && (
                     <span className="state-pill state-upcoming">Bevorstehend</span>
                   )}
                 </span>
@@ -658,9 +672,9 @@ function Diary({ user }) {
                 </ul>
               )}
               <div className="entry-actions">
-                {key === 'defect' && (
-                  <button type="button" className="link" onClick={() => toggleDefect(entry)}>
-                    {entry.details.state === 'fixed' ? 'Wieder öffnen' : 'Als behoben markieren'}
+                {type.progress && (
+                  <button type="button" className="link" onClick={() => toggleDone(entry)}>
+                    {isOpen(entry) ? type.progress.markDone : type.progress.reopen}
                   </button>
                 )}
                 <button type="button" className="link" onClick={() => startEdit(entry)}>
