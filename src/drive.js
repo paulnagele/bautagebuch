@@ -18,7 +18,7 @@ const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files'
 
 // One Drive folder is configured (e.g. "Haus"). A diary entry's photos
 // and files go into <kind>/<creation date> below it, e.g.
-// Haus/Mangel/2026.10.02. The app finds or creates these folders on
+// Haus/Mangel/2026_10_02. The app finds or creates these folders on
 // upload; they inherit the configured folder's sharing. The folder ID is
 // stored in the database (app_settings), so only signed-in members can
 // see it; it is not in the repository or the public site.
@@ -59,7 +59,7 @@ async function findOrCreateFolder(parent, name) {
 }
 
 // The folder for one path below the configured folder, e.g.
-// ['Mangel', '2026.10.02']. Needs Drive access, so it only runs when
+// ['Mangel', '2026_10_02']. Needs Drive access, so it only runs when
 // uploading. Remembered per path, so parallel uploads share one folder.
 export function getEntryFolderId(path) {
   const key = path.join('/')

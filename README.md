@@ -31,7 +31,7 @@ there are four tabs:
   `supabase/migrations/`.
 - **Photos and files**: uploaded to a shared Google Drive folder (e.g.
   "Haus") with the signed-in person's own Google account, into a folder
-  per entry kind and creation date, e.g. `Haus/Mangel/2026.10.02`.
+  per entry kind and creation date, e.g. `Haus/Mangel/2026_10_02`.
   The database only keeps the Drive file IDs. The folders stay private;
   each photo is shared as "Anyone with the link" when it is uploaded, so
   photos load for every member without any Google Drive prompt, while
@@ -69,7 +69,7 @@ Create a folder, e.g. "Haus", and share it with every family member as
 **Editor**. Its ID is the last part of the folder URL:
 `https://drive.google.com/drive/folders/<folder ID>`. The app puts each
 diary entry's photos and files into `<entry kind>/<creation date>` inside
-it (e.g. `Status/2026.10.02`, `Mangel/2026.10.02`) and creates these
+it (e.g. `Status/2026_10_02`, `Mangel/2026_10_02`) and creates these
 folders on upload.
 
 Keep the folder itself restricted (not "Anyone with the link"). The app
