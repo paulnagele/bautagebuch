@@ -30,8 +30,8 @@ there are four tabs:
   this is enforced by the database (row level security), see
   `supabase/migrations/`.
 - **Photos and files**: uploaded to a shared Google Drive folder (e.g.
-  "Haus") with the signed-in person's own Google account, photos into its
-  subfolder `photos`, other files (PDFs, plans, offers) into `dateien`.
+  "Haus") with the signed-in person's own Google account, into a folder
+  per entry kind and creation date, e.g. `Haus/Mangel/2026.10.02`.
   The database only keeps the Drive file IDs. The folders stay private;
   each photo is shared as "Anyone with the link" when it is uploaded, so
   photos load for every member without any Google Drive prompt, while
@@ -67,9 +67,10 @@ folder ID is not one of them; it is stored in the database (see step 4).
 
 Create a folder, e.g. "Haus", and share it with every family member as
 **Editor**. Its ID is the last part of the folder URL:
-`https://drive.google.com/drive/folders/<folder ID>`. The app uses the
-subfolders `photos` and `dateien` inside it (also accepted: `Fotos`,
-`Files`, in any case) and creates them on the first upload if missing.
+`https://drive.google.com/drive/folders/<folder ID>`. The app puts each
+diary entry's photos and files into `<entry kind>/<creation date>` inside
+it (e.g. `Status/2026.10.02`, `Mangel/2026.10.02`) and creates these
+folders on upload.
 
 Keep the folder itself restricted (not "Anyone with the link"). The app
 shares each new photo by link on upload. Photos uploaded before that
