@@ -1,7 +1,7 @@
 # Bautagebuch
 
 A React app (Vite) for keeping a construction diary. After signing in
-there are three tabs:
+there are four tabs:
 
 - **Diary** – write and edit daily site entries (date, weather, workers
   on site, work carried out, notes) with photos. Photos are stored in a
@@ -15,12 +15,16 @@ there are three tabs:
 - **Timetable** – the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). The calendar must be public to be visible
   to everyone using the app.
+- **Contacts** – the people involved in the build (contractors, trades,
+  architect, authorities) with role, company, phone, email and notes.
+  Phone numbers and emails open the phone or mail app; the list can be
+  searched.
 
 ## How it fits together
 
 - **Sign-in**: "Sign in with Google". The Google ID token is exchanged for
   a [Supabase](https://supabase.com) session.
-- **Data**: diary entries and finances are stored in Supabase (Postgres).
+- **Data**: diary entries, finances and contacts are stored in Supabase (Postgres).
   Only email addresses in the `members` table can read or write anything;
   this is enforced by the database (row level security), see
   `supabase/migrations/`.
