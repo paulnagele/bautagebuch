@@ -14,6 +14,9 @@
   --series-3: #1baf7a;
   --series-4: #eda100;
   --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
   --track: #e5e7eb;
 
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -38,6 +41,9 @@
     --series-3: #199e70;
     --series-4: #c98500;
     --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
     --track: #262c36;
   }
 }
@@ -798,4 +804,85 @@ tr.editing td {
 .entry.editing {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Finances: category manager */
+.category-manager summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.category-manager[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+.category-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.category-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.category-list h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.category-list ul {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+}
+
+.category-list li {
+  border-bottom: 1px solid var(--border);
+}
+
+.category-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.4rem;
+}
+
+.category-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.category-count {
+  min-width: 1.5rem;
+  text-align: right;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.category-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.category-add {
+  gap: 0.5rem;
+}
+
+.category-list .error {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+}
+
+.category-manager > .error {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
 }
