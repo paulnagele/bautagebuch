@@ -10,6 +10,7 @@ import {
   typeKey,
 } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
+import { fromRow, toRow } from '../diaryEntries.js'
 import {
   connectDrive,
   driveFileUrl,
@@ -32,40 +33,6 @@ const WEATHER_LABELS = {
   Frost: 'Frost',
 }
 const WEATHER_OPTIONS = Object.keys(WEATHER_LABELS)
-
-function fromRow(row) {
-  return {
-    id: row.id,
-    type: row.entry_type ?? 'status',
-    date: row.entry_date,
-    weather: row.weather,
-    workers: row.workers ?? '',
-    // Entries have one text; notes from before (or from an older app
-    // version) are shown as part of it and merged into it when saved.
-    work: row.notes ? `${row.work}\n\n${row.notes}` : row.work,
-    details: row.details ?? {},
-    photoIds: row.photo_ids ?? [],
-    files: row.files ?? [],
-    author: row.author_name,
-    createdAt: row.created_at,
-  }
-}
-
-function toRow(entry) {
-  const siteInfo = entryType(entry.type).siteInfo
-  return {
-    entry_type: entry.type,
-    entry_date: entry.date,
-    weather: siteInfo ? entry.weather : '',
-    workers: !siteInfo || entry.workers === '' ? null : Number(entry.workers),
-    work: entry.work,
-    notes: '',
-    details: entry.details,
-    photo_ids: entry.photoIds,
-    files: entry.files,
-    updated_at: new Date().toISOString(),
-  }
-}
 
 // Keeps the original file type in the Drive file name (".jpg", ".heic", …).
 function extension(file) {
@@ -203,7 +170,7 @@ function detailSummaries(entry) {
     })
 }
 
-function Diary({ user }) {
+function Diary({ user, focusEntryId, onFocused }) {
   const { rows: entries, status, error: loadError, insert, update, remove } = useCollection(
     'diary_entries',
     { fromRow, toRow },
@@ -247,6 +214,21 @@ function Diary({ user }) {
   useEffect(() => {
     getDriveFolderId().then(setFolderId, () => {})
   }, [])
+
+  // Opened from the start page: scroll to that entry and flash it.
+  useEffect(() => {
+    if (!focusEntryId || status !== 'ready') return
+    const element = document.getElementById(`entry-${focusEntryId}`)
+    if (element) {
+      element.scrollIntoView({ block: 'center' })
+      const accent = getComputedStyle(element).getPropertyValue('--accent')
+      element.animate(
+        [{ boxShadow: `0 0 0 3px ${accent}` }, { boxShadow: '0 0 0 3px transparent' }],
+        { duration: 2500, easing: 'ease-in' },
+      )
+    }
+    onFocused()
+  }, [focusEntryId, status, onFocused])
 
   useEffect(() => {
     if (!lightbox) return
@@ -671,6 +653,7 @@ function Diary({ user }) {
             return (
             <li
               key={entry.id}
+              id={`entry-${entry.id}`}
               className={`card entry type-${key}${entry.id === editingId ? ' editing' : ''}`}
             >
               <div className="entry-head">
