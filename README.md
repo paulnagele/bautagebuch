@@ -9,7 +9,8 @@ there are three tabs:
 - **Finances** – record funding (own funds, bank loan, housing subsidy,
   …) and expenses by category; categories and funding sources can be
   added, renamed and deleted under "Manage categories". Shows funding secured, spent and
-  remaining, how the project is financed and where the money goes.
+  remaining, and a money-flow diagram from funding sources to expense
+  categories.
 - **Timetable** – the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). The calendar must be public to be visible
   to everyone using the app.
