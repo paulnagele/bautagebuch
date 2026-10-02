@@ -1,10 +1,12 @@
 // Diary photos are stored in a shared Google Drive folder. Each family
-// member uploads and views them with their own Google account, so the
-// folder must be shared with everyone (as Editor).
+// member uploads them with their own Google account, so the folder must be
+// shared with everyone (as Editor). The folder itself stays private; each
+// photo is shared as "Anyone with the link", so it loads without any
+// Google permission while the folder cannot be browsed.
 
-import { useSyncExternalStore } from 'react'
 import { config } from './config.js'
 import { googleReady } from './google.js'
+import { supabase } from './supabase.js'
 
 const SCOPE = 'https://www.googleapis.com/auth/drive'
 const TOKEN_KEY = 'bautagebuch.driveToken'
@@ -12,12 +14,36 @@ const PHOTO_CACHE = 'bautagebuch-photos-v1'
 const API = 'https://www.googleapis.com/drive/v3/files'
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files'
 
-export const driveFolderUrl = `https://drive.google.com/drive/folders/${config.driveFolderId}`
+// ---- photo folder -----------------------------------------------------------
+
+// The folder ID is stored in the database (app_settings), so only signed-in
+// members can see it; it is not in the repository or the public site.
+let folderIdRequest = null
+
+export function getDriveFolderId() {
+  if (!folderIdRequest) {
+    folderIdRequest = supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'drive_folder_id')
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) throw new Error(`Die Einstellung für den Fotoordner konnte nicht geladen werden: ${error.message}`)
+        if (!data) throw new Error('Der Fotoordner ist noch nicht eingerichtet (siehe README, app_settings).')
+        return data.value
+      })
+    folderIdRequest.catch(() => (folderIdRequest = null))
+  }
+  return folderIdRequest
+}
+
+export function driveFolderUrl(folderId) {
+  return `https://drive.google.com/drive/folders/${folderId}`
+}
 
 // ---- access token ---------------------------------------------------------
 
 let token = readStoredToken()
-const listeners = new Set()
 
 function readStoredToken() {
   try {
@@ -38,7 +64,6 @@ function setToken(next) {
   } catch {
     // Storage unavailable: keep the token in memory only.
   }
-  listeners.forEach((listener) => listener())
 }
 
 function validToken() {
@@ -49,6 +74,7 @@ function validToken() {
 // Called on sign-out: forgets the token and the photos kept on this device.
 export function disconnectDrive() {
   setToken(null)
+  folderIdRequest = null
   photoCache.clear()
   if (window.caches) caches.delete(PHOTO_CACHE).catch(() => {})
 }
@@ -96,43 +122,6 @@ export function connectDrive(email) {
   })
 }
 
-function subscribe(listener) {
-  listeners.add(listener)
-  // Re-render when the token runs out.
-  const timer = setInterval(listener, 30_000)
-  return () => {
-    listeners.delete(listener)
-    clearInterval(timer)
-  }
-}
-
-export function useDriveConnected() {
-  return useSyncExternalStore(subscribe, () => Boolean(validToken()))
-}
-
-// ---- photos waiting for Drive -------------------------------------------
-
-// Photos on screen that can only load once Google Drive is connected, so
-// the Diary shows "Show photos" only while something is actually missing.
-const waitingForDrive = new Set()
-const waitingListeners = new Set()
-
-export function setWaitingForDrive(fileId, isWaiting) {
-  if (isWaiting === waitingForDrive.has(fileId)) return
-  if (isWaiting) waitingForDrive.add(fileId)
-  else waitingForDrive.delete(fileId)
-  waitingListeners.forEach((listener) => listener())
-}
-
-function subscribeWaiting(listener) {
-  waitingListeners.add(listener)
-  return () => waitingListeners.delete(listener)
-}
-
-export function usePhotosNeedDrive() {
-  return useSyncExternalStore(subscribeWaiting, () => waitingForDrive.size > 0)
-}
-
 // ---- API calls ------------------------------------------------------------
 
 async function driveFetch(url, options = {}) {
@@ -160,12 +149,21 @@ async function driveFetch(url, options = {}) {
   return response
 }
 
+// Makes one photo viewable by anyone with its link (not the folder).
+function shareByLink(fileId) {
+  return driveFetch(`${API}/${encodeURIComponent(fileId)}/permissions?supportsAllDrives=true`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+  })
+}
+
 export async function uploadPhoto(blob, name) {
   const boundary = `bautagebuch-${Math.random().toString(36).slice(2)}`
   const metadata = {
     name,
     mimeType: blob.type || 'image/jpeg',
-    parents: [config.driveFolderId],
+    parents: [await getDriveFolderId()],
   }
   const body = new Blob([
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
@@ -183,6 +181,7 @@ export async function uploadPhoto(blob, name) {
     },
   )
   const { id } = await response.json()
+  await shareByLink(id).catch(() => {}) // still viewable via the fallback
   // The uploader already has the photo: keep it so it shows right away.
   photoCache.set(id, Promise.resolve(URL.createObjectURL(blob)))
   storeOnDevice(id, blob)
@@ -195,6 +194,7 @@ export async function uploadPhoto(blob, name) {
 // instantly, offline and without Drive access. Only photos not on the
 // device yet are downloaded from Drive, a few at a time, with retries.
 
+// Thrown when a photo can only be loaded with the person's own Drive access.
 export class NeedsDriveError extends Error {
   constructor() {
     super('Google Drive verbinden, um dieses Foto zu laden.')
@@ -252,6 +252,15 @@ async function limited(task) {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// Public link for a photo shared by link. Plain <img> loading,
+// no Google sign-in or permission needed.
+export function publicPhotoUrl(fileId) {
+  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w2000`
+}
+
+// Fallback when the public link fails (e.g. an older photo not shared by
+// link yet): download with the person's own Drive access, and share it by
+// link so it loads for everyone from then on.
 async function download(fileId) {
   for (let attempt = 0; ; attempt += 1) {
     if (!validToken()) throw new NeedsDriveError()
@@ -259,6 +268,7 @@ async function download(fileId) {
       const response = await driveFetch(
         `${API}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
       )
+      shareByLink(fileId).catch(() => {})
       return await response.blob()
     } catch (err) {
       if (!validToken()) throw new NeedsDriveError() // token expired meanwhile

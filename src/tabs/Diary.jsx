@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { formatDate, newId, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
 import { compressImage } from '../images.js'
-import { connectDrive, driveFolderUrl, uploadPhoto, usePhotosNeedDrive } from '../drive.js'
+import { connectDrive, driveFolderUrl, getDriveFolderId, uploadPhoto } from '../drive.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
 // Stored in English so existing entries keep working; shown in German.
@@ -52,15 +52,19 @@ function Diary({ user }) {
     'diary_entries',
     { fromRow, toRow },
   )
-  const photosNeedDrive = usePhotosNeedDrive()
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [lightbox, setLightbox] = useState(null)
+  const [folderId, setFolderId] = useState(null)
   const fileInput = useRef(null)
 
   const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date))
+
+  useEffect(() => {
+    getDriveFolderId().then(setFolderId, () => {})
+  }, [])
 
   useEffect(() => {
     if (!lightbox) return
@@ -71,15 +75,6 @@ function Diary({ user }) {
 
   function setField(field) {
     return (e) => setForm({ ...form, [field]: e.target.value })
-  }
-
-  async function showPhotos() {
-    setError('')
-    try {
-      await connectDrive(user.email)
-    } catch (err) {
-      setError(err.message)
-    }
   }
 
   async function addFiles(e) {
@@ -280,15 +275,6 @@ function Diary({ user }) {
         </div>
       </form>
 
-      {photosNeedDrive && (
-        <div className="card drive-bar">
-          <span>Einige Fotos sind noch nicht auf diesem Gerät. Sie werden aus Google Drive geladen.</span>
-          <button type="button" className="secondary" onClick={showPhotos}>
-            Fotos anzeigen
-          </button>
-        </div>
-      )}
-
       {status === 'loading' && <p className="empty">Tagebuch wird geladen…</p>}
       {status === 'error' && (
         <p className="error" role="alert">
@@ -344,11 +330,13 @@ function Diary({ user }) {
         </ul>
       )}
 
-      <p className="muted drive-link">
-        <a href={driveFolderUrl} target="_blank" rel="noreferrer">
-          Fotoordner in Google Drive öffnen ↗
-        </a>
-      </p>
+      {folderId && (
+        <p className="muted drive-link">
+          <a href={driveFolderUrl(folderId)} target="_blank" rel="noreferrer">
+            Fotoordner in Google Drive öffnen ↗
+          </a>
+        </p>
+      )}
 
       {lightbox && (
         <div

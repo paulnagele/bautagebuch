@@ -6,7 +6,6 @@ const REQUIRED = [
   'VITE_GOOGLE_CLIENT_ID',
   'VITE_SUPABASE_URL',
   'VITE_SUPABASE_ANON_KEY',
-  'VITE_DRIVE_FOLDER_ID',
 ]
 
 const env = loadEnv('production', process.cwd(), 'VITE_')

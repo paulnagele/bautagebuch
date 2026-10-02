@@ -30,16 +30,17 @@ there are four tabs:
   `supabase/migrations/`.
 - **Photos**: uploaded to a shared Google Drive folder with the signed-in
   person's own Google account. The database only keeps the Drive file IDs.
-  Photos are kept on each device once seen, so they show instantly and
-  offline; only photos new to a device need Google Drive access (asked
-  for at most once an hour).
+  The folder stays private; each photo is shared as "Anyone with the
+  link" when it is uploaded, so photos load for every member without any
+  Google Drive prompt, while nobody can browse the folder.
 - **Timetable**: the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`).
 
 ## Setup
 
-All four settings below are public (they end up in the browser anyway),
-so they are kept in `.env.production`, which is committed.
+The three settings below are public (they end up in the browser anyway),
+so they are kept in `.env.production`, which is committed. The photo
+folder ID is not one of them; it is stored in the database (see step 4).
 
 ### 1. Google Cloud (sign-in and Drive access)
 
@@ -63,6 +64,12 @@ so they are kept in `.env.production`, which is committed.
 Create a folder, e.g. "Bautagebuch Fotos", and share it with every family
 member as **Editor**. Its ID is the last part of the folder URL:
 `https://drive.google.com/drive/folders/<folder ID>`.
+
+Keep the folder itself restricted (not "Anyone with the link"). The app
+shares each new photo by link on upload. Photos uploaded before that
+change load once a member taps them (the app then shares them), or share
+them all at once: open the folder, select all files, **Share → General
+access → Anyone with the link (Viewer)**.
 
 ### 3. Supabase (database)
 
@@ -100,12 +107,21 @@ member as **Editor**. Its ID is the last part of the folder URL:
 VITE_GOOGLE_CLIENT_ID=<Client ID from step 1>
 VITE_SUPABASE_URL=<Project URL from step 3>
 VITE_SUPABASE_ANON_KEY=<anon / publishable key from step 3>
-VITE_DRIVE_FOLDER_ID=<folder ID from step 2>
+```
+
+The photo folder ID is kept out of the repository and the public site: it
+is stored in the database, where only signed-in members can read it. Once
+the migrations have run, add it in the Supabase **SQL Editor**:
+
+```sql
+insert into public.app_settings (key, value)
+values ('drive_folder_id', '<folder ID from step 2>')
+on conflict (key) do update set value = excluded.value;
 ```
 
 Commit to `main`; the GitHub Actions workflow deploys the site. (Repository
-variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
-`DRIVE_FOLDER_ID` override these values if set.) If anything is missing,
+variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`
+override these values if set.) If anything is missing,
 the deploy run shows a warning and the site shows "Setup not finished".
 
 ### Adding a family member later
