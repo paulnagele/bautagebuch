@@ -20,7 +20,7 @@ import {
   uploadFile,
   uploadPhoto,
 } from '../drive.js'
-import { connectCalendar, deleteEntryEvent, entryHasEvent, syncEntryEvent } from '../calendar.js'
+import { connectCalendar, deleteEvent, entryHasEvent, syncEntryEvent } from '../calendar.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
 // Stored in English so existing entries keep working; shown in German.
@@ -444,7 +444,7 @@ function Diary({ user, focusEntryId, onFocused }) {
     if (eventId) {
       try {
         await connectCalendar(user.email)
-        await deleteEntryEvent(eventId)
+        await deleteEvent(eventId)
       } catch (err) {
         const question =
           `Der Eintrag konnte nicht aus dem Google Kalender gelöscht werden (${err.message}). ` +

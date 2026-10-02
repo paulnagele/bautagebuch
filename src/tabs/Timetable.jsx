@@ -1,47 +1,273 @@
-import { useEffect, useState } from 'react'
-import { calendarEmbedUrl, getCalendarId } from '../calendar.js'
+import { useEffect, useRef, useState } from 'react'
+import {
+  calendarEmbedUrl,
+  connectCalendar,
+  deleteEvent,
+  getCalendarId,
+  syncMilestoneEvent,
+} from '../calendar.js'
+import { formatDate, today } from '../storage.js'
+import { useCollection } from '../useCollection.js'
 
-function Timetable() {
+function fromRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    date: row.due_date,
+    reached: row.reached,
+    eventId: row.calendar_event_id,
+  }
+}
+
+function toRow(milestone) {
+  return {
+    name: milestone.name,
+    due_date: milestone.date,
+    reached: milestone.reached,
+    calendar_event_id: milestone.eventId ?? null,
+  }
+}
+
+function emptyForm() {
+  return { name: '', date: today() }
+}
+
+// Each milestone is also an all-day event in the Google Calendar. Connect
+// first, while the click still counts as user action, otherwise the
+// browser blocks Google's popup. Returns the milestone with its event ID,
+// and a message if the calendar could not be updated (it is saved anyway).
+async function withCalendarEvent(milestone, email) {
+  try {
+    await connectCalendar(email)
+    const eventId = await syncMilestoneEvent(milestone, milestone.eventId)
+    return { milestone: { ...milestone, eventId }, problem: '' }
+  } catch (err) {
+    return { milestone, problem: err.message }
+  }
+}
+
+function calendarWarning(problem) {
+  return `Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${problem}`
+}
+
+function Milestones({ user, onCalendarChange }) {
+  const { rows, status, error: loadError, insert, update, remove } = useCollection('milestones', {
+    fromRow,
+    toRow,
+  })
+  const [form, setForm] = useState(emptyForm)
+  const [editingId, setEditingId] = useState(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const formRef = useRef(null)
+
+  const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name, 'de'))
+
+  function setField(field) {
+    return (e) => setForm({ ...form, [field]: e.target.value })
+  }
+
+  function resetForm() {
+    setForm(emptyForm())
+    setEditingId(null)
+    setError('')
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    const name = form.name.trim()
+    if (!name || !form.date) {
+      setError('Bitte Name und Datum angeben.')
+      return
+    }
+    setError('')
+    setBusy(true)
+    const original = rows.find((m) => m.id === editingId)
+    const { milestone, problem } = await withCalendarEvent(
+      { name, date: form.date, reached: original?.reached ?? false, eventId: original?.eventId ?? null },
+      user.email,
+    )
+    try {
+      if (editingId) await update(editingId, milestone)
+      else await insert(milestone)
+      resetForm()
+      if (problem) setError(calendarWarning(problem))
+      onCalendarChange()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function startEdit(milestone) {
+    setForm({ name: milestone.name, date: milestone.date })
+    setEditingId(milestone.id)
+    setError('')
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
+
+  async function toggleReached(original) {
+    const { milestone, problem } = await withCalendarEvent(
+      { ...original, reached: !original.reached },
+      user.email,
+    )
+    try {
+      await update(original.id, milestone)
+      if (problem) window.alert(calendarWarning(problem))
+      onCalendarChange()
+    } catch (err) {
+      window.alert(err.message)
+    }
+  }
+
+  async function handleDelete(milestone) {
+    const calendarNote = milestone.eventId ? ' Er wird auch aus dem Google Kalender gelöscht.' : ''
+    if (!window.confirm(`Den Meilenstein „${milestone.name}“ löschen?${calendarNote}`)) return
+    if (milestone.eventId) {
+      try {
+        await connectCalendar(user.email)
+        await deleteEvent(milestone.eventId)
+      } catch (err) {
+        const question =
+          `Der Meilenstein konnte nicht aus dem Google Kalender gelöscht werden (${err.message}). ` +
+          'Trotzdem löschen?'
+        if (!window.confirm(question)) return
+      }
+    }
+    try {
+      await remove(milestone.id)
+      if (editingId === milestone.id) resetForm()
+      onCalendarChange()
+    } catch (err) {
+      window.alert(err.message)
+    }
+  }
+
+  return (
+    <div className="card milestones">
+      <h2>Meilensteine</h2>
+      {status === 'loading' && <p className="muted">Meilensteine werden geladen…</p>}
+      {status === 'error' && (
+        <p className="error" role="alert">
+          {loadError}
+        </p>
+      )}
+      {status === 'ready' && rows.length === 0 && (
+        <p className="muted">Noch keine Meilensteine, z. B. „Rohbau fertig“ oder „Einzug“.</p>
+      )}
+      {sorted.length > 0 && (
+        <ul className="milestone-list">
+          {sorted.map((milestone) => (
+            <li
+              key={milestone.id}
+              className={[
+                'milestone',
+                milestone.reached && 'reached',
+                milestone.id === editingId && 'editing',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              <label className="milestone-check">
+                <input
+                  type="checkbox"
+                  checked={milestone.reached}
+                  onChange={() => toggleReached(milestone)}
+                  aria-label={`${milestone.name} erreicht`}
+                />
+                <span className="milestone-name">{milestone.name}</span>
+              </label>
+              <span className="milestone-date muted">{formatDate(milestone.date)}</span>
+              <div className="entry-actions">
+                <button type="button" className="link" onClick={() => startEdit(milestone)}>
+                  Bearbeiten
+                </button>
+                <button type="button" className="link danger" onClick={() => handleDelete(milestone)}>
+                  Löschen
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form ref={formRef} className="form-grid milestone-form" onSubmit={handleSubmit} noValidate>
+        <label>
+          {editingId ? 'Meilenstein bearbeiten' : 'Neuer Meilenstein'}
+          <input
+            type="text"
+            placeholder="z. B. Rohbau fertig"
+            value={form.name}
+            onChange={setField('name')}
+            autoComplete="off"
+          />
+        </label>
+        <label>
+          Datum
+          <input type="date" value={form.date} onChange={setField('date')} />
+        </label>
+        {error && (
+          <p className="error full" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="form-actions full">
+          <button type="submit" disabled={busy}>
+            {busy ? 'Wird gespeichert…' : editingId ? 'Änderungen speichern' : 'Meilenstein hinzufügen'}
+          </button>
+          {editingId && (
+            <button type="button" className="secondary" onClick={resetForm} disabled={busy}>
+              Abbrechen
+            </button>
+          )}
+        </div>
+      </form>
+      <p className="form-hint muted">Meilensteine stehen auch ganztägig im Google Kalender.</p>
+    </div>
+  )
+}
+
+function Timetable({ user }) {
   const [calendarId, setCalendarId] = useState(null)
   const [error, setError] = useState('')
+  // Changing the key reloads the embedded calendar after a change.
+  const [frameKey, setFrameKey] = useState(0)
 
   useEffect(() => {
     getCalendarId().then(setCalendarId, (err) => setError(err.message))
   }, [])
 
-  if (error) {
-    return (
-      <section className="tab-content">
-        <p className="card error">{error}</p>
-      </section>
-    )
-  }
-  if (!calendarId) return <section className="tab-content" />
-
-  const embedUrl = calendarEmbedUrl(calendarId)
+  const embedUrl = calendarId && calendarEmbedUrl(calendarId)
   return (
     <section className="tab-content">
-      <div className="card calendar-card">
-        <div className="calendar-head">
-          <h2>Bauzeitplan</h2>
-          <a href={embedUrl} target="_blank" rel="noreferrer">
-            In Google Kalender öffnen ↗
-          </a>
+      <Milestones user={user} onCalendarChange={() => setFrameKey((k) => k + 1)} />
+      {error && <p className="card error">{error}</p>}
+      {calendarId && (
+        <div className="card calendar-card">
+          <div className="calendar-head">
+            <h2>Bauzeitplan</h2>
+            <a href={embedUrl} target="_blank" rel="noreferrer">
+              In Google Kalender öffnen ↗
+            </a>
+          </div>
+          {/* Month view on wide screens, agenda list on phones. */}
+          <iframe
+            key={`month-${frameKey}`}
+            className="calendar-frame calendar-month"
+            title="Bauzeitplan (Monatsansicht)"
+            src={embedUrl}
+            loading="lazy"
+          />
+          <iframe
+            key={`agenda-${frameKey}`}
+            className="calendar-frame calendar-agenda"
+            title="Bauzeitplan (Terminübersicht)"
+            src={calendarEmbedUrl(calendarId, 'AGENDA')}
+            loading="lazy"
+          />
         </div>
-        {/* Month view on wide screens, agenda list on phones. */}
-        <iframe
-          className="calendar-frame calendar-month"
-          title="Bauzeitplan (Monatsansicht)"
-          src={embedUrl}
-          loading="lazy"
-        />
-        <iframe
-          className="calendar-frame calendar-agenda"
-          title="Bauzeitplan (Terminübersicht)"
-          src={calendarEmbedUrl(calendarId, 'AGENDA')}
-          loading="lazy"
-        />
-      </div>
+      )}
     </section>
   )
 }

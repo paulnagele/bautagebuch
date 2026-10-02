@@ -16,7 +16,9 @@ there are four tabs:
 - **Timetable** – the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). Diary entries of kind "Termin", and
   "Aufgabe" and "Mangel" entries with a due date, are added to it
-  automatically. The calendar must be public to be visible to
+  automatically. Above it, the build's milestones (name, date, reached)
+  can be kept; each is also an all-day event "Meilenstein: …" in the
+  calendar, with "✓" once reached. The calendar must be public to be visible to
   everyone using the app.
 - **Contacts** – the people involved in the build (contractors, trades,
   architect, authorities) with role, company, phone, email and notes.
