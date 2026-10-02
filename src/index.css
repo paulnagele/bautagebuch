@@ -785,3 +785,17 @@ td.date {
 p.error {
   color: var(--error);
 }
+
+/* Row currently loaded into the edit form */
+tr.editing td {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.form-grid {
+  scroll-margin-top: 1rem;
+}
+
+.entry.editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}

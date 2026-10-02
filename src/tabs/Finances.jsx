@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { formatDate, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
 
@@ -185,13 +185,15 @@ function SpendingChart({ totals, total }) {
 }
 
 function Finances() {
-  const { rows: items, status, error: loadError, insert, remove } = useCollection(
+  const { rows: items, status, error: loadError, insert, update, remove } = useCollection(
     'transactions',
     { fromRow, toRow },
   )
   const [form, setForm] = useState(() => emptyForm())
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const formRef = useRef(null)
 
   const funding = items.filter((i) => i.type === 'funding')
   const expenses = items.filter((i) => i.type === 'expense')
@@ -200,8 +202,12 @@ function Finances() {
   const remaining = totalFunding - totalSpent
   const usedShare = totalFunding > 0 ? totalSpent / totalFunding : 0
   const sorted = [...items].sort((a, b) => b.date.localeCompare(a.date))
-  const categories =
+  const baseCategories =
     form.type === 'funding' ? FUNDING_SOURCES.map((s) => s.name) : SPENDING_CATEGORIES
+  // Keep an entry's category selectable even if it is no longer in the list.
+  const categories = baseCategories.includes(form.category)
+    ? baseCategories
+    : [...baseCategories, form.category]
 
   function setField(field) {
     return (e) => setForm({ ...form, [field]: e.target.value })
@@ -220,9 +226,21 @@ function Finances() {
     }
     setSaving(true)
     setError('')
+    const item = {
+      date: form.date,
+      type: form.type,
+      category: form.category,
+      description: form.description.trim(),
+      amount,
+    }
     try {
-      await insert({ ...form, description: form.description.trim(), amount })
-      setForm({ ...emptyForm(form.type), category: form.category })
+      if (editingId) {
+        await update(editingId, item)
+        resetForm()
+      } else {
+        await insert(item)
+        setForm({ ...emptyForm(form.type), category: form.category })
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -230,10 +248,30 @@ function Finances() {
     }
   }
 
+  function resetForm() {
+    setForm(emptyForm())
+    setEditingId(null)
+    setError('')
+  }
+
+  function startEdit(item) {
+    setForm({
+      date: item.date,
+      type: item.type,
+      category: item.category,
+      description: item.description,
+      amount: String(item.amount),
+    })
+    setEditingId(item.id)
+    setError('')
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   async function handleDelete(id) {
     if (!window.confirm('Delete this transaction?')) return
     try {
       await remove(id)
+      if (editingId === id) resetForm()
     } catch (err) {
       window.alert(err.message)
     }
@@ -290,8 +328,8 @@ function Finances() {
         <SpendingChart totals={sumBy(expenses, 'category')} total={totalSpent} />
       </div>
 
-      <form className="card form-grid" onSubmit={handleSubmit} noValidate>
-        <h2>New transaction</h2>
+      <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
+        <h2>{editingId ? 'Edit transaction' : 'New transaction'}</h2>
         <div className="segmented full" role="group" aria-label="Transaction type">
           <button
             type="button"
@@ -350,8 +388,19 @@ function Finances() {
 
         <div className="form-actions full">
           <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : form.type === 'funding' ? 'Add funding' : 'Add expense'}
+            {saving
+              ? 'Saving…'
+              : editingId
+                ? 'Save changes'
+                : form.type === 'funding'
+                  ? 'Add funding'
+                  : 'Add expense'}
           </button>
+          {editingId && (
+            <button type="button" className="secondary" onClick={resetForm} disabled={saving}>
+              Cancel
+            </button>
+          )}
         </div>
       </form>
 
@@ -377,7 +426,7 @@ function Finances() {
             </thead>
             <tbody>
               {sorted.map((item) => (
-                <tr key={item.id}>
+                <tr key={item.id} className={item.id === editingId ? 'editing' : undefined}>
                   <td className="date">{formatDate(item.date)}</td>
                   <td>{item.description}</td>
                   <td>{item.category}</td>
@@ -385,7 +434,10 @@ function Finances() {
                     {item.type === 'funding' ? '+' : '−'}
                     {currency.format(item.amount)}
                   </td>
-                  <td className="num">
+                  <td className="num row-actions">
+                    <button type="button" className="link" onClick={() => startEdit(item)}>
+                      Edit
+                    </button>
                     <button type="button" className="link danger" onClick={() => handleDelete(item.id)}>
                       Delete
                     </button>
