@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { formatDate, newId, today, usePersistentState } from '../storage.js'
 import { ENTRY_TYPES, TYPE_KEYS, defaultDetails, entryType, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
-import { connectDrive, driveFolderUrl, getDriveFolderId, uploadPhoto } from '../drive.js'
+import {
+  connectDrive,
+  driveFileUrl,
+  driveFolderUrl,
+  getDriveFolderId,
+  uploadFile,
+  uploadPhoto,
+} from '../drive.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
 // Stored in English so existing entries keep working; shown in German.
@@ -27,6 +34,7 @@ function fromRow(row) {
     notes: row.notes,
     details: row.details ?? {},
     photoIds: row.photo_ids ?? [],
+    files: row.files ?? [],
     author: row.author_name,
   }
 }
@@ -42,6 +50,7 @@ function toRow(entry) {
     notes: entry.notes,
     details: entry.details,
     photo_ids: entry.photoIds,
+    files: entry.files,
     updated_at: new Date().toISOString(),
   }
 }
@@ -50,6 +59,28 @@ function toRow(entry) {
 function extension(file) {
   const match = /\.[a-z0-9]+$/i.exec(file.name ?? '')
   return match ? match[0].toLowerCase() : '.jpg'
+}
+
+// Uploads the photos and files not yet in Drive, one after another.
+// onProgress(n) runs before the n-th upload, onProgress(n, uploaded) after
+// it, with the form's photos and files as far as they are uploaded.
+async function uploadPending({ photos, files }, date, onProgress) {
+  const uploaded = { photos: [...photos], files: [...files] }
+  const jobs = [
+    ...photos.map((item, index) => ({ item, index, list: 'photos' })),
+    ...files.map((item, index) => ({ item, index, list: 'files' })),
+  ].filter((job) => job.item.blob)
+  for (const [n, { item, index, list }] of jobs.entries()) {
+    onProgress(n + 1)
+    const { blob, ...rest } = item
+    const fileId =
+      list === 'photos'
+        ? await uploadPhoto(blob, `${date} Bautagebuch ${newId()}${extension(blob)}`)
+        : await uploadFile(blob, `${date} ${blob.name}`)
+    uploaded[list] = uploaded[list].with(index, { ...rest, fileId })
+    onProgress(n + 1, { ...uploaded })
+  }
+  return uploaded
 }
 
 function emptyForm(type = 'status') {
@@ -64,6 +95,8 @@ function emptyForm(type = 'status') {
     notes: '',
     details: defaultDetails(type),
     photos: [],
+    // files: { key, fileId, name } in Drive, or { key, blob, name } new.
+    files: [],
   }
 }
 
@@ -76,11 +109,25 @@ function compareEntries(a, b) {
   )
 }
 
-function DetailField({ field, value, onChange }) {
+// Expense categories as kept on the Finanzen tab.
+function categoryFromRow(row) {
+  return { id: row.id, type: row.type, name: row.name, sortOrder: row.sort_order }
+}
+
+function categoryToRow(category) {
+  return { type: category.type, name: category.name, sort_order: category.sortOrder }
+}
+
+function DetailField({ field, value, options, onChange }) {
+  if (field.kind === 'amount') {
+    return (
+      <input type="number" min="0" step="0.01" inputMode="decimal" value={value} onChange={onChange} />
+    )
+  }
   if (field.kind === 'select') {
     return (
       <select value={value} onChange={onChange}>
-        {Object.entries(field.options).map(([key, label]) => (
+        {Object.entries(options).map(([key, label]) => (
           <option key={key} value={key}>
             {label}
           </option>
@@ -91,6 +138,38 @@ function DetailField({ field, value, onChange }) {
   return <input type={field.kind} value={value} onChange={onChange} />
 }
 
+// A select's choices; a value no longer in its list stays selectable.
+function fieldOptions(field, value, lists) {
+  if (field.options) return field.options
+  const names = lists[field.optionsFrom] ?? []
+  const all = !value || names.includes(value) ? names : [...names, value]
+  return Object.fromEntries(all.map((name) => [name, name]))
+}
+
+// The extra fields as they are saved, or why they cannot be.
+// An empty select means its first choice, as shown in the form.
+function checkDetails(type, formDetails, lists) {
+  const details = defaultDetails(type, formDetails)
+  for (const field of entryType(type).fields) {
+    if (field.kind === 'select' && !details[field.key]) {
+      details[field.key] = Object.keys(fieldOptions(field, '', lists))[0] ?? ''
+    }
+    if (field.kind === 'amount' && details[field.key] !== '') {
+      details[field.key] = Math.round(Number(details[field.key]) * 100) / 100
+      if (!(details[field.key] > 0)) return { error: 'Bitte einen Betrag größer als 0 eingeben.' }
+    }
+    if (field.required && !details[field.key]) {
+      return {
+        error:
+          field.optionsFrom === 'expenseCategories'
+            ? 'Bitte zuerst in den Finanzen eine Ausgabenkategorie anlegen.'
+            : `Bitte „${field.label}“ ausfüllen.`,
+      }
+    }
+  }
+  return { details }
+}
+
 // The extra fields of an entry as short texts for the list ("14:00 Uhr", …).
 function detailSummaries(entry) {
   return entryType(entry.type)
@@ -98,7 +177,7 @@ function detailSummaries(entry) {
     .map((field) => {
       const value = entry.details[field.key]
       if (field.summary) return field.summary(value)
-      return field.kind === 'select' ? (field.options[value] ?? value) : value
+      return field.kind === 'select' ? (field.options?.[value] ?? value) : value
     })
 }
 
@@ -112,10 +191,15 @@ function Diary({ user }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [lightbox, setLightbox] = useState(null)
+  const categoryStore = useCollection('finance_categories', {
+    fromRow: categoryFromRow,
+    toRow: categoryToRow,
+  })
   const [folderId, setFolderId] = useState(null)
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openDefectsOnly', false)
   const fileInput = useRef(null)
+  const attachInput = useRef(null)
 
   const counts = Object.fromEntries(
     TYPE_KEYS.map((key) => [key, entries.filter((e) => typeKey(e.type) === key).length]),
@@ -127,6 +211,13 @@ function Diary({ user }) {
     .filter((e) => !(activeFilter === 'defect' && openOnly && e.details.state === 'fixed'))
     .sort(compareEntries)
   const formType = entryType(form.type)
+  const lists = {
+    expenseCategories: categoryStore.rows
+      .filter((c) => c.type === 'expense')
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de'))
+      .map((c) => c.name),
+  }
+
 
   useEffect(() => {
     getDriveFolderId().then(setFolderId, () => {})
@@ -167,6 +258,20 @@ function Diary({ user }) {
     setForm((f) => ({ ...f, photos: [...f.photos, ...added] }))
   }
 
+  // Any kind of file (PDF, plan, offer, …), kept in Drive's file folder.
+  function addAttachments(e) {
+    const picked = [...e.target.files]
+    e.target.value = ''
+    if (picked.length === 0) return
+    setError('')
+    const added = picked.map((file) => ({ key: newId(), blob: file, name: file.name }))
+    setForm((f) => ({ ...f, files: [...f.files, ...added] }))
+  }
+
+  function removeFormFile(key) {
+    setForm({ ...form, files: form.files.filter((f) => f.key !== key) })
+  }
+
   function removeFormPhoto(key) {
     setForm({ ...form, photos: form.photos.filter((p) => p.key !== key) })
   }
@@ -178,29 +283,30 @@ function Diary({ user }) {
       setError(`Bitte ${dateLabel} und „${textLabel}“ ausfüllen.`)
       return
     }
+    const { details, error: detailsError } = checkDetails(form.type, form.details, lists)
+    if (detailsError) {
+      setError(detailsError)
+      return
+    }
     setError('')
 
-    const pending = form.photos.filter((p) => p.blob)
-    let photos = form.photos
-    if (pending.length > 0) {
+    const pending = [...form.photos, ...form.files].filter((p) => p.blob).length
+    let uploaded = { photos: form.photos, files: form.files }
+    if (pending > 0) {
       try {
         // Must run first, while the click still counts as user action,
         // otherwise the browser blocks Google's popup.
         await connectDrive(user.email)
-        photos = [...form.photos]
-        let done = 0
-        for (const [index, photo] of photos.entries()) {
-          if (!photo.blob) continue
-          done += 1
-          setBusy(`Foto ${done} von ${pending.length} wird hochgeladen…`)
-          const fileId = await uploadPhoto(photo.blob, `${form.date} Bautagebuch ${newId()}${extension(photo.blob)}`)
-          photos[index] = { key: photo.key, fileId }
+        uploaded = await uploadPending(form, form.date, (done, sofar) => {
+          setBusy(
+            pending === 1 ? 'Wird hochgeladen…' : `Upload ${done} von ${pending} läuft…`,
+          )
           // Remember finished uploads so a retry does not upload them twice.
-          setForm((f) => ({ ...f, photos: [...photos] }))
-        }
+          if (sofar) setForm((f) => ({ ...f, ...sofar }))
+        })
       } catch (err) {
         setBusy('')
-        setError(`Foto-Upload fehlgeschlagen: ${err.message}`)
+        setError(`Upload fehlgeschlagen: ${err.message}`)
         return
       }
     }
@@ -213,8 +319,9 @@ function Diary({ user }) {
       workers: form.workers,
       work: form.work.trim(),
       notes: form.notes.trim(),
-      details: defaultDetails(form.type, form.details),
-      photoIds: photos.map((p) => p.fileId),
+      details,
+      photoIds: uploaded.photos.map((p) => p.fileId),
+      files: uploaded.files.map((f) => ({ id: f.fileId, name: f.name })),
     }
     try {
       if (editingId) {
@@ -247,6 +354,7 @@ function Diary({ user }) {
       notes: entry.notes,
       details: defaultDetails(entry.type, entry.details),
       photos: entry.photoIds.map((fileId) => ({ key: fileId, fileId })),
+      files: entry.files.map((f) => ({ key: f.id, fileId: f.id, name: f.name })),
     })
     setEditingId(entry.id)
     setError('')
@@ -266,8 +374,13 @@ function Diary({ user }) {
   }
 
   async function handleDelete(entry) {
-    const photoNote = entry.photoIds.length > 0 ? ' Die Fotos bleiben im Google-Drive-Ordner.' : ''
-    if (!window.confirm(`Diesen Tagebucheintrag löschen?${photoNote}`)) return
+    const photoNote =
+      entry.photoIds.length > 0 || entry.files.length > 0
+        ? ' Fotos und Dateien bleiben in Google Drive.'
+        : ''
+    const expenseNote =
+      typeKey(entry.type) === 'expense' ? ' Die Ausgabe wird auch aus den Finanzen gelöscht.' : ''
+    if (!window.confirm(`Diesen Tagebucheintrag löschen?${expenseNote}${photoNote}`)) return
     try {
       await remove(entry.id)
       if (editingId === entry.id) resetForm()
@@ -325,6 +438,7 @@ function Diary({ user }) {
             <DetailField
               field={field}
               value={form.details[field.key] ?? ''}
+              options={field.kind === 'select' ? fieldOptions(field, form.details[field.key], lists) : null}
               onChange={setDetail(field.key)}
             />
           </label>
@@ -373,6 +487,37 @@ function Diary({ user }) {
             disabled={Boolean(busy)}
           >
             Fotos hinzufügen
+          </button>
+        </div>
+
+        <div className="full photo-field">
+          <span className="field-label">Dateien</span>
+          {form.files.length > 0 && (
+            <ul className="file-list">
+              {form.files.map((file) => (
+                <li key={file.key} className="file-chip">
+                  <span className="file-name">{file.name}</span>
+                  <button
+                    type="button"
+                    className="link danger"
+                    aria-label={`${file.name} entfernen`}
+                    onClick={() => removeFormFile(file.key)}
+                    disabled={Boolean(busy)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <input ref={attachInput} type="file" multiple hidden onChange={addAttachments} />
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => attachInput.current.click()}
+            disabled={Boolean(busy)}
+          >
+            Dateien hinzufügen
           </button>
         </div>
 
@@ -489,6 +634,23 @@ function Diary({ user }) {
                   })}
                 </ul>
               )}
+              {entry.files.length > 0 && (
+                <ul className="file-list entry-files">
+                  {entry.files.map((file) => (
+                    <li key={file.id}>
+                      <a
+                        className="file-chip"
+                        href={driveFileUrl(file.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <span aria-hidden="true">📄</span>
+                        <span className="file-name">{file.name}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <div className="entry-actions">
                 {key === 'defect' && (
                   <button type="button" className="link" onClick={() => toggleDefect(entry)}>
@@ -511,7 +673,7 @@ function Diary({ user }) {
       {folderId && (
         <p className="muted drive-link">
           <a href={driveFolderUrl(folderId)} target="_blank" rel="noreferrer">
-            Fotoordner in Google Drive öffnen ↗
+            Ordner in Google Drive öffnen ↗
           </a>
         </p>
       )}

@@ -14,11 +14,19 @@ const PHOTO_CACHE = 'bautagebuch-photos-v1'
 const API = 'https://www.googleapis.com/drive/v3/files'
 const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files'
 
-// ---- photo folder -----------------------------------------------------------
+// ---- folders ---------------------------------------------------------------
 
-// The folder ID is stored in the database (app_settings), so only signed-in
-// members can see it; it is not in the repository or the public site.
+// One Drive folder is configured (e.g. "Haus"); photos and files go into
+// subfolders of it, which the app finds or creates on first upload and
+// which inherit its sharing. The folder ID is stored in the database
+// (app_settings), so only signed-in members can see it; it is not in the
+// repository or the public site.
+// The first name is used when creating a subfolder; any of them (in any
+// case) is accepted when it already exists.
+const SUBFOLDERS = { photos: ['photos', 'fotos'], files: ['dateien', 'files'] }
+const FOLDER_TYPE = 'application/vnd.google-apps.folder'
 let folderIdRequest = null
+const subfolderRequests = new Map()
 
 export function getDriveFolderId() {
   if (!folderIdRequest) {
@@ -28,13 +36,43 @@ export function getDriveFolderId() {
       .eq('key', 'drive_folder_id')
       .maybeSingle()
       .then(({ data, error }) => {
-        if (error) throw new Error(`Die Einstellung für den Fotoordner konnte nicht geladen werden: ${error.message}`)
-        if (!data) throw new Error('Der Fotoordner ist noch nicht eingerichtet (siehe README, app_settings).')
+        if (error) throw new Error(`Die Einstellung für den Drive-Ordner konnte nicht geladen werden: ${error.message}`)
+        if (!data) throw new Error('Der Google-Drive-Ordner ist noch nicht eingerichtet (siehe README, app_settings).')
         return data.value
       })
     folderIdRequest.catch(() => (folderIdRequest = null))
   }
   return folderIdRequest
+}
+
+// Needs Drive access, so it only runs when uploading.
+function getSubfolderId(kind) {
+  if (!subfolderRequests.has(kind)) {
+    const request = (async () => {
+      const parent = await getDriveFolderId()
+      const names = SUBFOLDERS[kind]
+      const query = `'${parent}' in parents and mimeType = '${FOLDER_TYPE}' and trashed = false`
+      const found = await driveFetch(
+        `${API}?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+      ).then((r) => r.json())
+      const match = found.files?.find((f) => names.includes(f.name.trim().toLowerCase()))
+      if (match) return match.id
+      const name = names[0]
+      const created = await driveFetch(`${API}?fields=id&supportsAllDrives=true`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, mimeType: FOLDER_TYPE, parents: [parent] }),
+      }).then((r) => r.json())
+      return created.id
+    })()
+    request.catch(() => subfolderRequests.delete(kind))
+    subfolderRequests.set(kind, request)
+  }
+  return subfolderRequests.get(kind)
+}
+
+export function driveFileUrl(fileId) {
+  return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`
 }
 
 export function driveFolderUrl(folderId) {
@@ -75,6 +113,7 @@ function validToken() {
 export function disconnectDrive() {
   setToken(null)
   folderIdRequest = null
+  subfolderRequests.clear()
   photoCache.clear()
   if (window.caches) caches.delete(PHOTO_CACHE).catch(() => {})
 }
@@ -158,17 +197,16 @@ function shareByLink(fileId) {
   })
 }
 
-// Resumable upload, so full-size photos of any size go through (simple
-// multipart uploads are limited to 5 MB).
-export async function uploadPhoto(blob, name) {
-  const mimeType = blob.type || 'image/jpeg'
+// Resumable upload, so full-size photos and large files go through
+// (simple multipart uploads are limited to 5 MB).
+async function upload(blob, name, mimeType, folderId) {
   const session = await driveFetch(`${UPLOAD_API}?uploadType=resumable&supportsAllDrives=true`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json; charset=UTF-8',
       'X-Upload-Content-Type': mimeType,
     },
-    body: JSON.stringify({ name, mimeType, parents: [await getDriveFolderId()] }),
+    body: JSON.stringify({ name, mimeType, parents: [folderId] }),
   })
   const uploadUrl = session.headers.get('Location')
   if (!uploadUrl) throw new Error('Google Drive hat keine Upload-Adresse geliefert.')
@@ -178,6 +216,15 @@ export async function uploadPhoto(blob, name) {
     body: blob,
   })
   const { id } = await response.json()
+  return id
+}
+
+export async function uploadFile(file, name) {
+  return upload(file, name, file.type || 'application/octet-stream', await getSubfolderId('files'))
+}
+
+export async function uploadPhoto(blob, name) {
+  const id = await upload(blob, name, blob.type || 'image/jpeg', await getSubfolderId('photos'))
   await shareByLink(id).catch(() => {}) // still viewable via the fallback
   // The uploader already has the photo: keep it so it shows right away.
   photoCache.set(id, Promise.resolve(URL.createObjectURL(blob)))
