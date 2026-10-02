@@ -14,8 +14,9 @@ there are four tabs:
   been spent. The money-flow diagram also shows the planned but not yet
   spent part of each category, hatched.
 - **Timetable** – the project's Google Calendar, embedded
-  (`src/tabs/Timetable.jsx`). The calendar must be public to be visible
-  to everyone using the app.
+  (`src/tabs/Timetable.jsx`), with a form to add events and a list of
+  upcoming events to change or delete. The calendar must be public to be
+  visible to everyone using the app.
 - **Contacts** – the people involved in the build (contractors, trades,
   architect, authorities) with role, company, phone, email and notes.
   Phone numbers and emails open the phone or mail app; the list can be
@@ -38,26 +39,32 @@ there are four tabs:
   nobody can browse the folders. Files are not shared by link; members
   open them through the folder's sharing.
 - **Timetable**: the project's Google Calendar, embedded
-  (`src/tabs/Timetable.jsx`).
+  (`src/tabs/Timetable.jsx`). Events are added, changed and deleted with
+  the signed-in person's own Google account (Calendar API,
+  `src/calendar.js`); the app asks for calendar access the first time.
+  The calendar ID is stored in the database like the folder ID.
 
 ## Setup
 
 The three settings below are public (they end up in the browser anyway),
 so they are kept in `.env.production`, which is committed. The photo
-folder ID is not one of them; it is stored in the database (see step 4).
+folder ID and the calendar ID are not among them; they are stored in the
+database (see step 4).
 
-### 1. Google Cloud (sign-in and Drive access)
+### 1. Google Cloud (sign-in, Drive and Calendar access)
 
 1. Open the [Google Cloud Console](https://console.cloud.google.com/) and
    create a project, e.g. "Bautagebuch".
-2. **APIs & Services → Library**: enable the **Google Drive API**.
+2. **APIs & Services → Library**: enable the **Google Drive API** and the
+   **Google Calendar API**.
 3. **Google Auth Platform → Branding**: app name and support email.
 4. **Audience**: *External*, publishing status *Testing*, and add every
    family member's Google account under **Test users**. (Full Drive access
    is a restricted scope, so the app stays in testing mode; Google shows
    an "unverified app" notice the first time, choose *Continue*.)
 5. **Data Access → Add or remove scopes**: add
-   `https://www.googleapis.com/auth/drive`.
+   `https://www.googleapis.com/auth/drive` and
+   `https://www.googleapis.com/auth/calendar.events`.
 6. **Clients → Create client**, type *Web application*. Under
    **Authorized JavaScript origins** add `https://paulnagele.github.io`
    (and `http://localhost:5173` for local development). No redirect URIs
@@ -77,6 +84,16 @@ shares each new photo by link on upload. Photos uploaded before that
 change load once a member taps them (the app then shares them), or share
 them all at once: open the folder, select all files, **Share → General
 access → Anyone with the link (Viewer)**.
+
+### 2b. Google Calendar
+
+Create a calendar for the build (e.g. "Bauzeitplan"). In its settings:
+- **Access permissions for events**: *Make available to public*, so the
+  embedded calendar shows for everyone.
+- **Share with specific people**: add every family member with
+  *Make changes to events*, so they can add and change events in the app.
+- **Integrate calendar → Calendar ID** (e.g. `…@group.calendar.google.com`)
+  is needed in step 4.
 
 ### 3. Supabase (database)
 
@@ -116,13 +133,15 @@ VITE_SUPABASE_URL=<Project URL from step 3>
 VITE_SUPABASE_ANON_KEY=<anon / publishable key from step 3>
 ```
 
-The folder ID is kept out of the repository and the public site: it
-is stored in the database, where only signed-in members can read it. Once
-the migrations have run, add it in the Supabase **SQL Editor**:
+The folder ID and the calendar ID are kept out of the repository and the
+public site: they are stored in the database, where only signed-in members
+can read them. Once the migrations have run, add them in the Supabase
+**SQL Editor**:
 
 ```sql
 insert into public.app_settings (key, value)
-values ('drive_folder_id', '<folder ID from step 2>')
+values ('drive_folder_id', '<folder ID from step 2>'),
+       ('calendar_id', '<calendar ID from step 2b>')
 on conflict (key) do update set value = excluded.value;
 ```
 
@@ -136,7 +155,8 @@ the deploy run shows a warning and the site shows "Setup not finished".
 1. Supabase SQL Editor:
    `insert into public.members (email) values ('name@gmail.com');`
 2. Google Cloud → Audience → add them as a test user.
-3. Share the Drive folder with them as Editor.
+3. Share the Drive folder with them as Editor, and the calendar with
+   *Make changes to events*.
 
 ## Changing the database
 
