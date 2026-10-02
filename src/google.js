@@ -19,7 +19,7 @@ export function loadGoogleScript() {
       script.onerror = () => {
         scriptPromise = null
         script.remove()
-        reject(new Error('Could not load Google sign-in. Check your internet connection.'))
+        reject(new Error('Google-Anmeldung konnte nicht geladen werden. Bitte die Internetverbindung prüfen.'))
       }
       document.head.appendChild(script)
     })

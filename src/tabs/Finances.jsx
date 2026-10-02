@@ -7,41 +7,41 @@ import MoneyFlow from '../components/MoneyFlow.jsx'
 import BudgetPlan from '../components/BudgetPlan.jsx'
 
 // Used only until the finance_categories table exists (migrations not yet
-// applied); the categories migration starts the table with the same lists.
+// applied); the migrations start the table with the same lists.
 const DEFAULT_FUNDING_SOURCES = [
-  'Own funds',
-  'Bank loan',
-  'Housing subsidy',
-  'Family / private loan',
-  'Other funding',
+  'Eigenmittel',
+  'Bankkredit',
+  'Wohnbauförderung',
+  'Familien- / Privatdarlehen',
+  'Sonstige Finanzierung',
 ]
 
 const DEFAULT_EXPENSE_CATEGORIES = [
-  'Land & purchase costs',
-  'Planning & permits',
-  'Shell construction',
-  'Roof',
-  'Windows & doors',
-  'Building services',
-  'Interior finishing',
-  'Kitchen & furnishing',
-  'Outdoor & landscaping',
-  'Fees & insurance',
-  'Other',
+  'Grundstück & Kaufnebenkosten',
+  'Planung & Genehmigungen',
+  'Rohbau',
+  'Dach',
+  'Fenster & Türen',
+  'Haustechnik',
+  'Innenausbau',
+  'Küche & Einrichtung',
+  'Außenanlagen & Garten',
+  'Gebühren & Versicherungen',
+  'Sonstiges',
 ]
 
-const currency = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' })
+const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
 // Whole euros for the overview; the transaction table keeps cents.
-const euros = new Intl.NumberFormat(undefined, {
+const euros = new Intl.NumberFormat('de-DE', {
   style: 'currency',
   currency: 'EUR',
   maximumFractionDigits: 0,
 })
-const percent = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 1 })
+const percent = new Intl.NumberFormat('de-DE', { style: 'percent', maximumFractionDigits: 1 })
 
 // Validated categorical palette (see index.css), used for funding sources in
 // the money-flow diagram. A source keeps the colour of its position in the
-// category list; beyond eight sources the rest are grouped as "More sources"
+// category list; beyond eight sources the rest are grouped as "Weitere Quellen"
 // instead of inventing more colours.
 const SERIES_COLORS = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1})`)
 const OTHER_COLOR = 'var(--muted)'
@@ -65,7 +65,7 @@ function categoryToRow(category) {
 }
 
 function byOrder(a, b) {
-  return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)
+  return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de')
 }
 
 function defaultCategories(type, names) {
@@ -111,7 +111,7 @@ function emptyForm(type = 'expense') {
 const DETAILS_PER_NODE = 3
 
 // The entries behind one source or category, grouped by description: the
-// largest few, the rest combined as "+ n more".
+// largest few, the rest combined as "+ n weitere".
 function entryDetails(items) {
   const totals = sumBy(items, 'description')
   const sorted = [...totals.entries()]
@@ -123,7 +123,7 @@ function entryDetails(items) {
   const rest = sorted.slice(DETAILS_PER_NODE)
   return [
     ...shown,
-    { name: `+ ${rest.length} more`, value: rest.reduce((sum, d) => sum + d.value, 0) },
+    { name: `+ ${rest.length} weitere`, value: rest.reduce((sum, d) => sum + d.value, 0) },
   ]
 }
 
@@ -155,13 +155,13 @@ function flowSources(sourceNames, funding, unfunded) {
   })
   if (folded.length > 0) {
     nodes.push({
-      name: 'More sources',
+      name: 'Weitere Quellen',
       value: folded.reduce((sum, item) => sum + item.amount, 0),
       color: OTHER_COLOR,
       details: entryDetails(folded),
     })
   }
-  if (unfunded > 0) nodes.push({ name: 'Not yet funded', value: unfunded, kind: 'unfunded' })
+  if (unfunded > 0) nodes.push({ name: 'Noch nicht finanziert', value: unfunded, kind: 'unfunded' })
   return nodes
 }
 
@@ -175,7 +175,7 @@ function flowTargets(expenses, unspent) {
     }))
     .filter((node) => node.value > 0)
     .sort((a, b) => b.value - a.value)
-  if (unspent > 0) nodes.push({ name: 'Not yet spent', value: unspent, kind: 'unspent' })
+  if (unspent > 0) nodes.push({ name: 'Noch nicht ausgegeben', value: unspent, kind: 'unspent' })
   return nodes
 }
 
@@ -268,11 +268,11 @@ function Finances() {
     e.preventDefault()
     const amount = Math.round(Number(form.amount) * 100) / 100
     if (!form.date || !form.description.trim() || !(amount > 0)) {
-      setError('Please enter a date, a description and an amount greater than 0.')
+      setError('Bitte Datum, Beschreibung und einen Betrag größer als 0 eingeben.')
       return
     }
     if (!formCategory) {
-      setError('Please add a category first (Manage categories).')
+      setError('Bitte zuerst eine Kategorie anlegen (Kategorien verwalten).')
       return
     }
     setSaving(true)
@@ -319,7 +319,7 @@ function Finances() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this transaction?')) return
+    if (!window.confirm('Diese Buchung löschen?')) return
     try {
       await remove(id)
       if (editingId === id) resetForm()
@@ -332,15 +332,15 @@ function Finances() {
     <section className="tab-content">
       <div className="stats">
         <div className="card stat">
-          <span className="muted">Funding secured</span>
+          <span className="muted">Gesicherte Finanzierung</span>
           <strong>{euros.format(totalFunding)}</strong>
         </div>
         <div className="card stat">
-          <span className="muted">Spent so far</span>
+          <span className="muted">Bisher ausgegeben</span>
           <strong>{euros.format(totalSpent)}</strong>
         </div>
         <div className="card stat">
-          <span className="muted">Remaining</span>
+          <span className="muted">Verbleibend</span>
           <strong className={remaining < 0 ? 'negative' : undefined}>
             {euros.format(remaining)}
           </strong>
@@ -350,13 +350,13 @@ function Finances() {
       {totalFunding > 0 && (
         <div className="card meter-card">
           <div className="meter-head">
-            <span>Budget used</span>
+            <span>Budget verbraucht</span>
             <strong>{percent.format(usedShare)}</strong>
           </div>
           <div
             className="meter"
             role="meter"
-            aria-label="Share of funding spent"
+            aria-label="Anteil der ausgegebenen Finanzierung"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.round(usedShare * 100)}
@@ -368,7 +368,7 @@ function Finances() {
           </div>
           {usedShare > 1 && (
             <p className="negative meter-note">
-              ⚠ Spending exceeds secured funding by {euros.format(-remaining)}.
+              ⚠ Die Ausgaben übersteigen die gesicherte Finanzierung um {euros.format(-remaining)}.
             </p>
           )}
         </div>
@@ -396,15 +396,15 @@ function Finances() {
       />
 
       <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
-        <h2>{editingId ? 'Edit transaction' : 'New transaction'}</h2>
-        <div className="segmented full" role="group" aria-label="Transaction type">
+        <h2>{editingId ? 'Buchung bearbeiten' : 'Neue Buchung'}</h2>
+        <div className="segmented full" role="group" aria-label="Buchungsart">
           <button
             type="button"
             className={form.type === 'expense' ? 'active' : undefined}
             aria-pressed={form.type === 'expense'}
             onClick={() => setType('expense')}
           >
-            Expense
+            Ausgabe
           </button>
           <button
             type="button"
@@ -412,15 +412,15 @@ function Finances() {
             aria-pressed={form.type === 'funding'}
             onClick={() => setType('funding')}
           >
-            Funding
+            Finanzierung
           </button>
         </div>
         <label>
-          Date
+          Datum
           <input type="date" value={form.date} onChange={setField('date')} />
         </label>
         <label>
-          {form.type === 'funding' ? 'Source' : 'Category'}
+          {form.type === 'funding' ? 'Quelle' : 'Kategorie'}
           <select value={formCategory} onChange={setField('category')}>
             {categories.map((c) => (
               <option key={c}>{c}</option>
@@ -428,7 +428,7 @@ function Finances() {
           </select>
         </label>
         <label>
-          Amount (€)
+          Betrag (€)
           <input
             type="number"
             min="0"
@@ -438,10 +438,10 @@ function Finances() {
           />
         </label>
         <label className="full">
-          Description
+          Beschreibung
           <input
             type="text"
-            placeholder={form.type === 'funding' ? 'e.g. Loan tranche 1' : 'e.g. Concrete for foundation'}
+            placeholder={form.type === 'funding' ? 'z. B. Kredit, 1. Tranche' : 'z. B. Beton für Fundament'}
             value={form.description}
             onChange={setField('description')}
           />
@@ -456,16 +456,16 @@ function Finances() {
         <div className="form-actions full">
           <button type="submit" disabled={saving}>
             {saving
-              ? 'Saving…'
+              ? 'Wird gespeichert…'
               : editingId
-                ? 'Save changes'
+                ? 'Änderungen speichern'
                 : form.type === 'funding'
-                  ? 'Add funding'
-                  : 'Add expense'}
+                  ? 'Finanzierung hinzufügen'
+                  : 'Ausgabe hinzufügen'}
           </button>
           {editingId && (
             <button type="button" className="secondary" onClick={resetForm} disabled={saving}>
-              Cancel
+              Abbrechen
             </button>
           )}
         </div>
@@ -482,24 +482,24 @@ function Finances() {
         onDelete={deleteCategory}
       />
 
-      {status === 'loading' && <p className="empty">Loading finances…</p>}
+      {status === 'loading' && <p className="empty">Finanzen werden geladen…</p>}
       {status === 'error' && (
         <p className="error" role="alert">
           {loadError}
         </p>
       )}
       {status === 'ready' && sorted.length === 0 ? (
-        <p className="empty">No transactions yet.</p>
+        <p className="empty">Noch keine Buchungen.</p>
       ) : sorted.length === 0 ? null : (
         <div className="card table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Description</th>
-                <th>Source / category</th>
-                <th className="num">Amount</th>
-                <th aria-label="Actions"></th>
+                <th>Datum</th>
+                <th>Beschreibung</th>
+                <th>Quelle / Kategorie</th>
+                <th className="num">Betrag</th>
+                <th aria-label="Aktionen"></th>
               </tr>
             </thead>
             <tbody>
@@ -514,10 +514,10 @@ function Finances() {
                   </td>
                   <td className="num row-actions">
                     <button type="button" className="link" onClick={() => startEdit(item)}>
-                      Edit
+                      Bearbeiten
                     </button>
                     <button type="button" className="link danger" onClick={() => handleDelete(item.id)}>
-                      Delete
+                      Löschen
                     </button>
                   </td>
                 </tr>
