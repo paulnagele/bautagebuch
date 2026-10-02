@@ -4,11 +4,13 @@ import { loadGoogleScript } from '../google.js'
 import Diary from '../tabs/Diary.jsx'
 import Finances from '../tabs/Finances.jsx'
 import Timetable from '../tabs/Timetable.jsx'
+import Contacts from '../tabs/Contacts.jsx'
 
 const TABS = [
   { id: 'diary', label: 'Diary', component: Diary },
   { id: 'finances', label: 'Finances', component: Finances },
   { id: 'timetable', label: 'Timetable', component: Timetable },
+  { id: 'contacts', label: 'Contacts', component: Contacts },
 ]
 
 function Home({ user, onLogout }) {
