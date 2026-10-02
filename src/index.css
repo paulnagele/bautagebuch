@@ -423,6 +423,10 @@ a.file-chip:hover {
   --type: var(--series-1);
 }
 
+.type-todo {
+  --type: var(--series-5);
+}
+
 .type-defect {
   --type: var(--series-8);
 }
@@ -498,9 +502,16 @@ a.file-chip:hover {
   border-color: currentColor;
 }
 
-.state-fixed {
+.state-fixed,
+.state-done {
   color: var(--success);
   border-color: currentColor;
+}
+
+.state-overdue {
+  color: #fff;
+  background: var(--error);
+  border-color: var(--error);
 }
 
 .state-upcoming {
