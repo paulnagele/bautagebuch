@@ -49,7 +49,7 @@ export function today() {
 export function formatDate(isoDate) {
   if (!isoDate) return ''
   const [y, m, d] = isoDate.split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+  return new Date(y, m - 1, d).toLocaleDateString('de-DE', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

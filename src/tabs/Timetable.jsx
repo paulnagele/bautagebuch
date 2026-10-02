@@ -4,7 +4,7 @@ const TIME_ZONE = 'Europe/Vienna'
 
 const embedUrl =
   'https://calendar.google.com/calendar/embed?' +
-  new URLSearchParams({ src: CALENDAR_ID, ctz: TIME_ZONE }).toString()
+  new URLSearchParams({ src: CALENDAR_ID, ctz: TIME_ZONE, hl: 'de' }).toString()
 
 const agendaUrl = `${embedUrl}&mode=AGENDA`
 
@@ -13,21 +13,21 @@ function Timetable() {
     <section className="tab-content">
       <div className="card calendar-card">
         <div className="calendar-head">
-          <h2>Construction timetable</h2>
+          <h2>Bauzeitplan</h2>
           <a href={embedUrl} target="_blank" rel="noreferrer">
-            Open in Google Calendar ↗
+            In Google Kalender öffnen ↗
           </a>
         </div>
         {/* Month view on wide screens, agenda list on phones. */}
         <iframe
           className="calendar-frame calendar-month"
-          title="Construction timetable (month view)"
+          title="Bauzeitplan (Monatsansicht)"
           src={embedUrl}
           loading="lazy"
         />
         <iframe
           className="calendar-frame calendar-agenda"
-          title="Construction timetable (agenda)"
+          title="Bauzeitplan (Terminübersicht)"
           src={agendaUrl}
           loading="lazy"
         />

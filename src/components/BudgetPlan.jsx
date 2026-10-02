@@ -38,7 +38,7 @@ function BudgetPlan({ categories, spent, funding, readOnly, format, onSetPlan })
     const text = editing.value.trim()
     const amount = text === '' ? null : Math.round(Number(text) * 100) / 100
     if (amount !== null && !(amount >= 0)) {
-      setMessage('Please enter an amount of 0 or more, or leave it empty to remove the plan.')
+      setMessage('Bitte einen Betrag ab 0 eingeben oder das Feld leeren, um den Plan zu entfernen.')
       return
     }
     setBusy(true)
@@ -56,23 +56,23 @@ function BudgetPlan({ categories, spent, funding, readOnly, format, onSetPlan })
   return (
     <div className="card budget-plan">
       <div className="budget-head">
-        <h2>Budget by category</h2>
+        <h2>Budget nach Kategorie</h2>
         {anyPlan && (
           <span className="muted budget-total">
-            {format(totalSpent)} of {format(totalPlanned)} planned
+            {format(totalSpent)} von {format(totalPlanned)} geplant
           </span>
         )}
       </div>
       {anyPlan && totalPlanned > funding && (
         <p className="negative budget-hint">
-          ⚠ The plan needs {format(totalPlanned - funding)} more than the secured funding.
+          ⚠ Der Plan braucht {format(totalPlanned - funding)} mehr als die gesicherte Finanzierung.
         </p>
       )}
       {!anyPlan && (
         <p className="muted budget-hint">
           {readOnly
-            ? 'Planned amounts can be set once the database is up to date.'
-            : 'Set a planned amount per category to compare it with what has been spent.'}
+            ? 'Geplante Beträge können festgelegt werden, sobald die Datenbank aktuell ist.'
+            : 'Lege pro Kategorie einen geplanten Betrag fest, um ihn mit den Ausgaben zu vergleichen.'}
         </p>
       )}
       <ul className="budget-list">
@@ -91,15 +91,15 @@ function BudgetPlan({ categories, spent, funding, readOnly, format, onSetPlan })
                       min="0"
                       step="100"
                       inputMode="decimal"
-                      placeholder="No plan"
-                      aria-label={`Planned amount for ${row.name} (€)`}
+                      placeholder="Kein Plan"
+                      aria-label={`Geplanter Betrag für ${row.name} (€)`}
                       value={editing.value}
                       onChange={(e) => setEditing({ ...editing, value: e.target.value })}
                       disabled={busy}
                       autoFocus
                     />
                     <button type="submit" className="link" disabled={busy}>
-                      Save
+                      Speichern
                     </button>
                     <button
                       type="button"
@@ -107,13 +107,13 @@ function BudgetPlan({ categories, spent, funding, readOnly, format, onSetPlan })
                       onClick={() => setEditing(null)}
                       disabled={busy}
                     >
-                      Cancel
+                      Abbrechen
                     </button>
                   </form>
                 ) : (
                   row.editable && (
                     <button type="button" className="link" onClick={() => startEdit(row)}>
-                      {row.planned === null ? 'Set plan' : 'Edit plan'}
+                      {row.planned === null ? 'Plan festlegen' : 'Plan bearbeiten'}
                     </button>
                   )
                 )}
@@ -122,7 +122,7 @@ function BudgetPlan({ categories, spent, funding, readOnly, format, onSetPlan })
                 <div
                   className="meter budget-meter"
                   role="meter"
-                  aria-label={`Share of the ${row.name} budget spent`}
+                  aria-label={`Ausgegebener Anteil des Budgets für ${row.name}`}
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={Math.round(Math.min(share, 9.99) * 100)}
@@ -135,15 +135,15 @@ function BudgetPlan({ categories, spent, funding, readOnly, format, onSetPlan })
               )}
               <div className="budget-line budget-detail">
                 {row.planned === null ? (
-                  <span className="muted">No plan</span>
+                  <span className="muted">Kein Plan</span>
                 ) : (
                   <span className={over ? 'negative' : 'muted'}>
-                    {over ? `${format(-left)} over plan` : `${format(left)} left`}
+                    {over ? `${format(-left)} über Plan` : `${format(left)} übrig`}
                   </span>
                 )}
                 <span className="budget-amounts">
                   {format(row.spent)}
-                  {row.planned !== null && <span className="muted"> of {format(row.planned)}</span>}
+                  {row.planned !== null && <span className="muted"> von {format(row.planned)}</span>}
                 </span>
               </div>
             </li>

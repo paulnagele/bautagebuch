@@ -5,7 +5,16 @@ import { compressImage } from '../images.js'
 import { connectDrive, driveFolderUrl, uploadPhoto, usePhotosNeedDrive } from '../drive.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
-const WEATHER_OPTIONS = ['Sunny', 'Cloudy', 'Rain', 'Snow', 'Wind', 'Frost']
+// Stored in English so existing entries keep working; shown in German.
+const WEATHER_LABELS = {
+  Sunny: 'Sonnig',
+  Cloudy: 'Bewölkt',
+  Rain: 'Regen',
+  Snow: 'Schnee',
+  Wind: 'Wind',
+  Frost: 'Frost',
+}
+const WEATHER_OPTIONS = Object.keys(WEATHER_LABELS)
 
 function fromRow(row) {
   return {
@@ -77,7 +86,7 @@ function Diary({ user }) {
     const files = [...e.target.files].filter((f) => f.type.startsWith('image/'))
     e.target.value = ''
     if (files.length === 0) return
-    setBusy('Preparing photos…')
+    setBusy('Fotos werden vorbereitet…')
     setError('')
     try {
       const added = []
@@ -86,7 +95,7 @@ function Diary({ user }) {
       }
       setForm((f) => ({ ...f, photos: [...f.photos, ...added] }))
     } catch {
-      setError('One of the images could not be read. Please try a JPEG or PNG file.')
+      setError('Eines der Bilder konnte nicht gelesen werden. Bitte eine JPEG- oder PNG-Datei versuchen.')
     } finally {
       setBusy('')
     }
@@ -99,7 +108,7 @@ function Diary({ user }) {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.date || !form.work.trim()) {
-      setError('Please enter a date and the work carried out.')
+      setError('Bitte Datum und ausgeführte Arbeiten eingeben.')
       return
     }
     setError('')
@@ -116,7 +125,7 @@ function Diary({ user }) {
         for (const [index, photo] of photos.entries()) {
           if (!photo.blob) continue
           done += 1
-          setBusy(`Uploading photo ${done} of ${pending.length}…`)
+          setBusy(`Foto ${done} von ${pending.length} wird hochgeladen…`)
           const fileId = await uploadPhoto(photo.blob, `${form.date} Bautagebuch ${newId()}.jpg`)
           photos[index] = { key: photo.key, fileId }
           // Remember finished uploads so a retry does not upload them twice.
@@ -124,12 +133,12 @@ function Diary({ user }) {
         }
       } catch (err) {
         setBusy('')
-        setError(`Photo upload failed: ${err.message}`)
+        setError(`Foto-Upload fehlgeschlagen: ${err.message}`)
         return
       }
     }
 
-    setBusy('Saving…')
+    setBusy('Wird gespeichert…')
     const entry = {
       date: form.date,
       weather: form.weather,
@@ -173,8 +182,8 @@ function Diary({ user }) {
   }
 
   async function handleDelete(entry) {
-    const photoNote = entry.photoIds.length > 0 ? ' Its photos stay in the Google Drive folder.' : ''
-    if (!window.confirm(`Delete this diary entry?${photoNote}`)) return
+    const photoNote = entry.photoIds.length > 0 ? ' Die Fotos bleiben im Google-Drive-Ordner.' : ''
+    if (!window.confirm(`Diesen Tagebucheintrag löschen?${photoNote}`)) return
     try {
       await remove(entry.id)
       if (editingId === entry.id) resetForm()
@@ -186,35 +195,37 @@ function Diary({ user }) {
   return (
     <section className="tab-content">
       <form className="card form-grid" onSubmit={handleSubmit} noValidate>
-        <h2>{editingId ? 'Edit entry' : 'New diary entry'}</h2>
+        <h2>{editingId ? 'Eintrag bearbeiten' : 'Neuer Tagebucheintrag'}</h2>
 
         <label>
-          Date
+          Datum
           <input type="date" value={form.date} onChange={setField('date')} />
         </label>
         <label>
-          Weather
+          Wetter
           <select value={form.weather} onChange={setField('weather')}>
             {WEATHER_OPTIONS.map((w) => (
-              <option key={w}>{w}</option>
+              <option key={w} value={w}>
+                {WEATHER_LABELS[w]}
+              </option>
             ))}
           </select>
         </label>
         <label>
-          Workers on site
+          Arbeiter vor Ort
           <input type="number" min="0" value={form.workers} onChange={setField('workers')} />
         </label>
         <label className="full">
-          Work carried out
+          Ausgeführte Arbeiten
           <textarea rows="3" value={form.work} onChange={setField('work')} />
         </label>
         <label className="full">
-          Notes / incidents
+          Notizen / Vorkommnisse
           <textarea rows="2" value={form.notes} onChange={setField('notes')} />
         </label>
 
         <div className="full photo-field">
-          <span className="field-label">Photos</span>
+          <span className="field-label">Fotos</span>
           {form.photos.length > 0 && (
             <ul className="thumb-grid">
               {form.photos.map((photo) => (
@@ -223,7 +234,7 @@ function Diary({ user }) {
                   <button
                     type="button"
                     className="thumb-remove"
-                    aria-label="Remove photo"
+                    aria-label="Foto entfernen"
                     onClick={() => removeFormPhoto(photo.key)}
                     disabled={Boolean(busy)}
                   >
@@ -247,7 +258,7 @@ function Diary({ user }) {
             onClick={() => fileInput.current.click()}
             disabled={Boolean(busy)}
           >
-            Add photos
+            Fotos hinzufügen
           </button>
         </div>
 
@@ -259,11 +270,11 @@ function Diary({ user }) {
 
         <div className="form-actions full">
           <button type="submit" disabled={Boolean(busy)}>
-            {busy || (editingId ? 'Save changes' : 'Add entry')}
+            {busy || (editingId ? 'Änderungen speichern' : 'Eintrag hinzufügen')}
           </button>
           {editingId && (
             <button type="button" className="secondary" onClick={resetForm} disabled={Boolean(busy)}>
-              Cancel
+              Abbrechen
             </button>
           )}
         </div>
@@ -271,20 +282,20 @@ function Diary({ user }) {
 
       {photosNeedDrive && (
         <div className="card drive-bar">
-          <span>Some photos are not on this device yet. They load from Google Drive.</span>
+          <span>Einige Fotos sind noch nicht auf diesem Gerät. Sie werden aus Google Drive geladen.</span>
           <button type="button" className="secondary" onClick={showPhotos}>
-            Show photos
+            Fotos anzeigen
           </button>
         </div>
       )}
 
-      {status === 'loading' && <p className="empty">Loading diary…</p>}
+      {status === 'loading' && <p className="empty">Tagebuch wird geladen…</p>}
       {status === 'error' && (
         <p className="error" role="alert">
           {loadError}
         </p>
       )}
-      {status === 'ready' && sorted.length === 0 && <p className="empty">No diary entries yet.</p>}
+      {status === 'ready' && sorted.length === 0 && <p className="empty">Noch keine Tagebucheinträge.</p>}
 
       {sorted.length > 0 && (
         <ul className="entry-list">
@@ -296,8 +307,8 @@ function Diary({ user }) {
               <div className="entry-head">
                 <strong>{formatDate(entry.date)}</strong>
                 <span className="muted">
-                  {entry.weather}
-                  {entry.workers !== '' && ` · ${entry.workers} workers`}
+                  {WEATHER_LABELS[entry.weather] ?? entry.weather}
+                  {entry.workers !== '' && ` · ${entry.workers} Arbeiter`}
                   {entry.author && ` · ${entry.author}`}
                 </span>
               </div>
@@ -306,7 +317,7 @@ function Diary({ user }) {
               {entry.photoIds.length > 0 && (
                 <ul className="thumb-grid entry-photos">
                   {entry.photoIds.map((fileId, i) => {
-                    const alt = `Photo ${i + 1} from ${formatDate(entry.date)}`
+                    const alt = `Foto ${i + 1} vom ${formatDate(entry.date)}`
                     return (
                       <li key={fileId} className="thumb">
                         <DrivePhoto
@@ -322,10 +333,10 @@ function Diary({ user }) {
               )}
               <div className="entry-actions">
                 <button type="button" className="link" onClick={() => startEdit(entry)}>
-                  Edit
+                  Bearbeiten
                 </button>
                 <button type="button" className="link danger" onClick={() => handleDelete(entry)}>
-                  Delete
+                  Löschen
                 </button>
               </div>
             </li>
@@ -335,7 +346,7 @@ function Diary({ user }) {
 
       <p className="muted drive-link">
         <a href={driveFolderUrl} target="_blank" rel="noreferrer">
-          Open the photo folder in Google Drive ↗
+          Fotoordner in Google Drive öffnen ↗
         </a>
       </p>
 
@@ -348,7 +359,7 @@ function Diary({ user }) {
           onClick={() => setLightbox(null)}
         >
           <img src={lightbox.src} alt={lightbox.alt} />
-          <button type="button" className="lightbox-close" aria-label="Close">
+          <button type="button" className="lightbox-close" aria-label="Schließen">
             ×
           </button>
         </div>

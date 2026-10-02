@@ -85,14 +85,14 @@ function DrivePhoto({ fileId, blob, alt, className, onOpen }) {
         className={`${className} image-missing`}
         onClick={retry}
       >
-        Photo not loaded. Tap to retry
+        Foto nicht geladen. Zum Wiederholen tippen
       </button>
     )
   }
   if (current.status !== 'ready') {
     return (
       <span ref={placeholder} className={`${className} image-loading`}>
-        {current.status === 'needs-drive' && !connected ? 'Photo' : <span className="spinner" aria-label="Loading photo" />}
+        {current.status === 'needs-drive' && !connected ? 'Foto' : <span className="spinner" aria-label="Foto wird geladen" />}
       </span>
     )
   }

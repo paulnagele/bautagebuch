@@ -163,16 +163,16 @@ function MoneyFlow({ sources, targets, total, format, formatShare }) {
 
   const header = (
     <div className="flow-head">
-      <h2>Money flow</h2>
+      <h2>Geldfluss</h2>
       {hasDetails && total > 0 && (
-        <label className="flow-toggle" title={detailsFit ? undefined : 'Shown on wider screens'}>
+        <label className="flow-toggle" title={detailsFit ? undefined : 'Auf breiteren Bildschirmen verfügbar'}>
           <input
             type="checkbox"
             checked={showDetails}
             onChange={(e) => setShowDetails(e.target.checked)}
             disabled={!detailsFit}
           />
-          Show entries
+          Einträge anzeigen
         </label>
       )}
     </div>
@@ -183,7 +183,7 @@ function MoneyFlow({ sources, targets, total, format, formatShare }) {
       <div className="card chart money-flow">
         {header}
         <p className="muted chart-empty">
-          Add funding and expenses to see where the money comes from and where it goes.
+          Erfasse Finanzierung und Ausgaben, um zu sehen, woher das Geld kommt und wohin es fließt.
         </p>
       </div>
     )
@@ -291,8 +291,8 @@ function MoneyFlow({ sources, targets, total, format, formatShare }) {
             height={height}
             role="img"
             aria-label={
-              `Money flow. Sources: ${sources.map(describe).join('; ')}. ` +
-              `Uses: ${targets.map(describe).join('; ')}.`
+              `Geldfluss. Quellen: ${sources.map(describe).join('; ')}. ` +
+              `Verwendung: ${targets.map(describe).join('; ')}.`
             }
           >
             {outerLeftLinks.map(({ node, y0, y1, offset }, i) => (

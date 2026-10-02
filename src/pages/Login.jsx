@@ -20,7 +20,7 @@ function Login({ notice, onSignIn }) {
         token: response.credential,
       })
       if (signInError) {
-        setError(`Sign-in failed: ${signInError.message}`)
+        setError(`Anmeldung fehlgeschlagen: ${signInError.message}`)
         setStatus('ready')
       }
       // On success the session listener in App takes over.
@@ -40,6 +40,7 @@ function Login({ notice, onSignIn }) {
           size: 'large',
           text: 'signin_with',
           shape: 'rectangular',
+          locale: 'de',
           width: 280,
         })
         setStatus('ready')
@@ -59,11 +60,11 @@ function Login({ notice, onSignIn }) {
     <main className="login-page">
       <div className="login-card">
         <h1>Bautagebuch</h1>
-        <p className="subtitle">Sign in with your Google account</p>
+        <p className="subtitle">Mit deinem Google-Konto anmelden</p>
 
         <div className="google-button" ref={buttonRef} hidden={status === 'signing-in'} />
-        {status === 'loading' && <p className="muted">Loading Google sign-in…</p>}
-        {status === 'signing-in' && <p className="muted">Signing in…</p>}
+        {status === 'loading' && <p className="muted">Google-Anmeldung wird geladen…</p>}
+        {status === 'signing-in' && <p className="muted">Anmeldung läuft…</p>}
 
         {(error || notice) && (
           <p className="error" role="alert">

@@ -48,8 +48,8 @@ function AuthGate() {
       if (cancelled) return
       if (!error && data === false) {
         setNotice(
-          `${session.user.email} is not a member of this Bautagebuch yet. ` +
-            'Ask the project owner to add your email address.',
+          `${session.user.email} ist noch kein Mitglied dieses Bautagebuchs. ` +
+            'Bitte den Projektinhaber, deine E-Mail-Adresse hinzuzufügen.',
         )
         supabase.auth.signOut()
         return
@@ -68,7 +68,7 @@ function AuthGate() {
   }
 
   if (session === undefined || (session && checkedUserId !== userId)) {
-    return <p className="loading-screen">Loading…</p>
+    return <p className="loading-screen">Wird geladen…</p>
   }
   if (!session) {
     return <Login notice={notice} onSignIn={clearNotice} />
