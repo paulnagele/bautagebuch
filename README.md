@@ -7,8 +7,10 @@ there are three tabs:
   on site, work carried out, notes) with photos. Photos are stored in a
   shared Google Drive folder.
 - **Finances** – record funding (own funds, bank loan, housing subsidy,
-  …) and expenses by category. Shows funding secured, spent and
-  remaining, how the project is financed and where the money goes.
+  …) and expenses by category; categories and funding sources can be
+  added, renamed and deleted under "Manage categories". Shows funding secured, spent and
+  remaining, and a money-flow diagram from funding sources to expense
+  categories.
 - **Timetable** – the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). The calendar must be public to be visible
   to everyone using the app.
@@ -82,6 +84,12 @@ Commit to `main`; the GitHub Actions workflow deploys the site. (Repository
 variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
 `DRIVE_FOLDER_ID` override these values if set.) If anything is missing,
 the deploy run shows a warning and the site shows "Setup not finished".
+
+### Updating the database
+
+When a new version adds tables or functions (for example the finance
+categories), run `supabase/schema.sql` again in the SQL Editor. It is safe
+to run repeatedly: existing data, members and categories are kept.
 
 ### Adding a family member later
 

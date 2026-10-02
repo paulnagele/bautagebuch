@@ -290,7 +290,10 @@ function Diary({ user }) {
       {sorted.length > 0 && (
         <ul className="entry-list">
           {sorted.map((entry) => (
-            <li key={entry.id} className="card entry">
+            <li
+              key={entry.id}
+              className={entry.id === editingId ? 'card entry editing' : 'card entry'}
+            >
               <div className="entry-head">
                 <strong>{formatDate(entry.date)}</strong>
                 <span className="muted">

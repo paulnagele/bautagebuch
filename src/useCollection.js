@@ -64,9 +64,15 @@ export function useCollection(table, { fromRow, toRow }) {
   return { rows, status, error, insert, update, remove, reload }
 }
 
-function friendlyError(error) {
+export function friendlyError(error) {
   if (error.code === '42501' || /row-level security/i.test(error.message)) {
     return 'You do not have access to this data. Ask the project owner to add your email address as a member.'
+  }
+  if (error.code === '23505') {
+    return 'An entry with this name already exists.'
+  }
+  if (error.code === 'PGRST205' || error.code === '42P01' || error.code === 'PGRST202') {
+    return 'The database is missing a newer table or function. Run supabase/schema.sql again in the Supabase SQL Editor.'
   }
   if (error.code === 'PGRST116') {
     return 'The entry no longer exists or you do not have access to it.'
