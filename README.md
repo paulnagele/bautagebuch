@@ -8,9 +8,10 @@ there are three tabs:
   shared Google Drive folder.
 - **Finances** – record funding (own funds, bank loan, housing subsidy,
   …) and expenses by category; categories and funding sources can be
-  added, renamed and deleted under "Manage categories". Shows funding secured, spent and
-  remaining, and a money-flow diagram from funding sources to expense
-  categories; on wide screens it also shows the individual entries.
+  added, renamed and deleted under "Manage categories". Shows funding secured, spent annd
+  remaining, a money-flow diagram from funding sources to expense
+  categories, and a planned budget per expense category next to what has
+  been spent.
 - **Timetable** – the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). The calendar must be public to be visible
   to everyone using the app.

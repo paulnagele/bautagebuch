@@ -4,6 +4,7 @@ import { friendlyError, useCollection } from '../useCollection.js'
 import { supabase } from '../supabase.js'
 import CategoryManager from '../components/CategoryManager.jsx'
 import MoneyFlow from '../components/MoneyFlow.jsx'
+import BudgetPlan from '../components/BudgetPlan.jsx'
 
 // Used only until the finance_categories table exists (migrations not yet
 // applied); the categories migration starts the table with the same lists.
@@ -46,11 +47,21 @@ const SERIES_COLORS = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1}
 const OTHER_COLOR = 'var(--muted)'
 
 function categoryFromRow(row) {
-  return { id: row.id, type: row.type, name: row.name, sortOrder: row.sort_order }
+  return {
+    id: row.id,
+    type: row.type,
+    name: row.name,
+    sortOrder: row.sort_order,
+    plannedAmount: row.planned_amount == null ? null : Number(row.planned_amount),
+  }
 }
 
 function categoryToRow(category) {
-  return { type: category.type, name: category.name, sort_order: category.sortOrder }
+  const row = { type: category.type, name: category.name, sort_order: category.sortOrder }
+  // Only sent when set, so adding categories keeps working before the
+  // planned-budget migration has been applied.
+  if (category.plannedAmount !== undefined) row.planned_amount = category.plannedAmount
+  return row
 }
 
 function byOrder(a, b) {
@@ -236,6 +247,11 @@ function Finances() {
     await Promise.all([categoryStore.reload(), reloadItems()])
   }
 
+  async function setPlannedAmount(id, plannedAmount) {
+    const category = expenseCategories.find((c) => c.id === id)
+    await categoryStore.update(id, { ...category, plannedAmount })
+  }
+
   async function deleteCategory(id) {
     await categoryStore.remove(id)
   }
@@ -368,6 +384,15 @@ function Finances() {
         total={Math.max(totalFunding, totalSpent)}
         format={(value) => euros.format(value)}
         formatShare={(share) => percent.format(share)}
+      />
+
+      <BudgetPlan
+        categories={expenseCategories}
+        spent={sumBy(expenses, 'category')}
+        funding={totalFunding}
+        readOnly={categoriesMissing}
+        format={(value) => euros.format(value)}
+        onSetPlan={setPlannedAmount}
       />
 
       <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
