@@ -4,8 +4,13 @@ import { supabase } from './supabase.js'
 // Loads all rows of a Supabase table and offers insert/update/remove.
 // `fromRow` / `toRow` translate between database columns and the shape
 // the UI works with; pass module-level functions so they stay stable.
-// Data is reloaded whenever the window regains focus, so changes made
-// by other family members show up without a manual refresh.
+// Changes made by other family members show up live: the hook listens
+// to the table through Supabase Realtime and reloads when a row changes.
+// It also reloads when the app comes back to the foreground, which
+// catches anything missed while the phone was asleep or offline.
+// Each hook instance gets its own channel, even for the same table.
+let channelCount = 0
+
 export function useCollection(table, { fromRow, toRow }) {
   const [rows, setRows] = useState([])
   const [status, setStatus] = useState('loading')
@@ -30,9 +35,39 @@ export function useCollection(table, { fromRow, toRow }) {
     // reload() only sets state after the request finishes, not synchronously.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     reload()
+
+    // Several changes often arrive together (e.g. a category rename that
+    // touches many transactions), so reload once after they settle.
+    let timer
+    const scheduleReload = () => {
+      clearTimeout(timer)
+      timer = setTimeout(reload, 300)
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') reload()
+    }
+
+    let subscribedBefore = false
+    const channel = supabase
+      .channel(`live:${table}:${++channelCount}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table }, scheduleReload)
+      .subscribe((state) => {
+        // After a dropped connection is restored, fetch what was missed.
+        if (state === 'SUBSCRIBED') {
+          if (subscribedBefore) scheduleReload()
+          subscribedBefore = true
+        }
+      })
+
     window.addEventListener('focus', reload)
-    return () => window.removeEventListener('focus', reload)
-  }, [reload])
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearTimeout(timer)
+      supabase.removeChannel(channel)
+      window.removeEventListener('focus', reload)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [table, reload])
 
   async function insert(item) {
     const { data, error: insertError } = await supabase
