@@ -18,6 +18,15 @@ There is no backend yet. `src/pages/Login.jsx` uses a placeholder
 password of at least 6 characters. Replace it with a real API call once
 authentication is available.
 
+## Deployment
+
+Pushes to `main` are built and deployed to GitHub Pages by
+`.github/workflows/deploy-pages.yml`. The site is served at
+https://paulnagele.github.io/bautagebuch/.
+
+One-time setup: in the repository go to **Settings → Pages** and set
+**Source** to **GitHub Actions**.
+
 ## Scripts
 
 - `npm run dev` – start the dev server
