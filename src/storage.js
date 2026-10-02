@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 
-// Data is kept in the browser's localStorage until a backend exists.
-// Storage can be unavailable (private mode, blocked site data), so every
-// access is guarded and the app keeps working in memory.
+// Small per-browser preferences (e.g. the last open tab) are kept in
+// localStorage; project data lives in Supabase. Storage can be
+// unavailable (private mode, blocked site data), so every access is
+// guarded and the app keeps working in memory.
 
 export function loadJSON(key, fallback) {
   try {

@@ -1,27 +1,37 @@
 import { useEffect, useRef, useState } from 'react'
-import { GOOGLE_CLIENT_ID, loadGoogleScript, userFromCredential } from '../googleAuth.js'
+import { config } from '../config.js'
+import { loadGoogleScript } from '../google.js'
+import { supabase } from '../supabase.js'
 
-function Login({ onLogin }) {
+function Login({ notice, onSignIn }) {
   const buttonRef = useRef(null)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(Boolean(GOOGLE_CLIENT_ID))
+  const [status, setStatus] = useState('loading') // loading | ready | signing-in
 
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return
     let cancelled = false
+
+    async function handleCredential(response) {
+      setError('')
+      setStatus('signing-in')
+      onSignIn()
+      const { error: signInError } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: response.credential,
+      })
+      if (signInError) {
+        setError(`Sign-in failed: ${signInError.message}`)
+        setStatus('ready')
+      }
+      // On success the session listener in App takes over.
+    }
 
     loadGoogleScript()
       .then((google) => {
         if (cancelled || !buttonRef.current) return
         google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: (response) => {
-            try {
-              onLogin(userFromCredential(response.credential))
-            } catch (err) {
-              setError(err.message)
-            }
-          },
+          client_id: config.googleClientId,
+          callback: handleCredential,
           ux_mode: 'popup',
         })
         google.accounts.id.renderButton(buttonRef.current, {
@@ -32,51 +42,32 @@ function Login({ onLogin }) {
           shape: 'rectangular',
           width: 280,
         })
-        setLoading(false)
+        setStatus('ready')
       })
       .catch((err) => {
         if (cancelled) return
         setError(err.message)
-        setLoading(false)
+        setStatus('ready')
       })
 
     return () => {
       cancelled = true
     }
-  }, [onLogin])
+  }, [onSignIn])
 
   return (
     <main className="login-page">
       <div className="login-card">
         <h1>Bautagebuch</h1>
-        <p className="subtitle">Sign in to your account</p>
+        <p className="subtitle">Sign in with your Google account</p>
 
-        {GOOGLE_CLIENT_ID ? (
-          <>
-            <div className="google-button" ref={buttonRef} />
-            {loading && <p className="muted">Loading Google sign-in…</p>}
-          </>
-        ) : (
-          <div className="notice">
-            <p>
-              Google sign-in is not configured yet. Set <code>VITE_GOOGLE_CLIENT_ID</code> (see
-              the README).
-            </p>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() =>
-                onLogin({ email: 'demo@example.com', name: 'Demo user', provider: 'demo' })
-              }
-            >
-              Continue in demo mode
-            </button>
-          </div>
-        )}
+        <div className="google-button" ref={buttonRef} hidden={status === 'signing-in'} />
+        {status === 'loading' && <p className="muted">Loading Google sign-in…</p>}
+        {status === 'signing-in' && <p className="muted">Signing in…</p>}
 
-        {error && (
+        {(error || notice) && (
           <p className="error" role="alert">
-            {error}
+            {error || notice}
           </p>
         )}
       </div>
