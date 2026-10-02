@@ -10,7 +10,7 @@ there are three tabs:
   …) and expenses by category; categories and funding sources can be
   added, renamed and deleted under "Manage categories". Shows funding secured, spent and
   remaining, and a money-flow diagram from funding sources to expense
-  categories.
+  categories; on wide screens it also shows the individual entries.
 - **Timetable** – the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). The calendar must be public to be visible
   to everyone using the app.
