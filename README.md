@@ -30,9 +30,9 @@ there are four tabs:
   `supabase/migrations/`.
 - **Photos**: uploaded to a shared Google Drive folder with the signed-in
   person's own Google account. The database only keeps the Drive file IDs.
-  Photos are kept on each device once seen, so they show instantly and
-  offline; only photos new to a device need Google Drive access (asked
-  for at most once an hour).
+  The folder stays private; each photo is shared as "Anyone with the
+  link" when it is uploaded, so photos load for every member without any
+  Google Drive prompt, while nobody can browse the folder.
 - **Timetable**: the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`).
 
@@ -63,6 +63,12 @@ so they are kept in `.env.production`, which is committed.
 Create a folder, e.g. "Bautagebuch Fotos", and share it with every family
 member as **Editor**. Its ID is the last part of the folder URL:
 `https://drive.google.com/drive/folders/<folder ID>`.
+
+Keep the folder itself restricted (not "Anyone with the link"). The app
+shares each new photo by link on upload. Photos uploaded before that
+change load once a member taps them (the app then shares them), or share
+them all at once: open the folder, select all files, **Share → General
+access → Anyone with the link (Viewer)**.
 
 ### 3. Supabase (database)
 

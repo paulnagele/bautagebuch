@@ -689,14 +689,6 @@ td.date {
   color: var(--muted);
 }
 
-.drive-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .drive-link {
   margin: 0;
   font-size: 0.9rem;

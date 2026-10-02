@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { formatDate, newId, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
 import { compressImage } from '../images.js'
-import { connectDrive, driveFolderUrl, uploadPhoto, usePhotosNeedDrive } from '../drive.js'
+import { connectDrive, driveFolderUrl, uploadPhoto } from '../drive.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 
 const WEATHER_OPTIONS = ['Sunny', 'Cloudy', 'Rain', 'Snow', 'Wind', 'Frost']
@@ -43,7 +43,6 @@ function Diary({ user }) {
     'diary_entries',
     { fromRow, toRow },
   )
-  const photosNeedDrive = usePhotosNeedDrive()
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
   const [error, setError] = useState('')
@@ -62,15 +61,6 @@ function Diary({ user }) {
 
   function setField(field) {
     return (e) => setForm({ ...form, [field]: e.target.value })
-  }
-
-  async function showPhotos() {
-    setError('')
-    try {
-      await connectDrive(user.email)
-    } catch (err) {
-      setError(err.message)
-    }
   }
 
   async function addFiles(e) {
@@ -268,15 +258,6 @@ function Diary({ user }) {
           )}
         </div>
       </form>
-
-      {photosNeedDrive && (
-        <div className="card drive-bar">
-          <span>Some photos are not on this device yet. They load from Google Drive.</span>
-          <button type="button" className="secondary" onClick={showPhotos}>
-            Show photos
-          </button>
-        </div>
-      )}
 
       {status === 'loading' && <p className="empty">Loading diary…</p>}
       {status === 'error' && (
