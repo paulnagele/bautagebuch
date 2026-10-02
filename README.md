@@ -22,7 +22,7 @@ there are three tabs:
 - **Data**: diary entries and finances are stored in Supabase (Postgres).
   Only email addresses in the `members` table can read or write anything;
   this is enforced by the database (row level security), see
-  `supabase/schema.sql`.
+  `supabase/migrations/`.
 - **Photos**: uploaded to a shared Google Drive folder with the signed-in
   person's own Google account. The database only keeps the Drive file IDs.
   Viewing photos asks once per browser session for Google Drive access.
@@ -61,9 +61,25 @@ member as **Editor**. Its ID is the last part of the folder URL:
 
 1. Create a free project at [supabase.com](https://supabase.com); region
    *Central EU (Frankfurt)* keeps the data in the EU.
-2. **SQL Editor → New query**: paste `supabase/schema.sql`, put your
-   family's email addresses into the `insert into public.members …`
-   statement at the bottom (remove the `--`), and **Run**.
+2. Add three **repository secrets** in GitHub (*Settings → Secrets and
+   variables → Actions*):
+   - `SUPABASE_PROJECT_REF`: the project ID, the part before
+     `.supabase.co` in the Project URL.
+   - `SUPABASE_DB_PASSWORD`: the database password chosen when creating
+     the project.
+   - `SUPABASE_ACCESS_TOKEN`: a personal access token from
+     *Account → Access Tokens*.
+
+   Then run **Actions → Apply Supabase migrations → Run workflow** once.
+   It creates the tables (see [Changing the database](#changing-the-database)).
+   Then, in the Supabase **SQL Editor**, add your family's Google accounts
+   (lower case) and **Run**:
+   ```sql
+   insert into public.members (email) values
+     ('you@gmail.com'),
+     ('partner@gmail.com')
+   on conflict do nothing;
+   ```
 3. **Authentication → Sign In / Providers → Google**: enable it, enter the
    **Client ID** (under *Client IDs*) and **Client secret** from step 1,
    and save.
@@ -85,18 +101,32 @@ variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
 `DRIVE_FOLDER_ID` override these values if set.) If anything is missing,
 the deploy run shows a warning and the site shows "Setup not finished".
 
-### Updating the database
-
-When a new version adds tables or functions (for example the finance
-categories), run `supabase/schema.sql` again in the SQL Editor. It is safe
-to run repeatedly: existing data, members and categories are kept.
-
 ### Adding a family member later
 
 1. Supabase SQL Editor:
    `insert into public.members (email) values ('name@gmail.com');`
 2. Google Cloud → Audience → add them as a test user.
 3. Share the Drive photo folder with them as Editor.
+
+## Changing the database
+
+Schema changes live in `supabase/migrations/` as SQL files that each run
+exactly once, in file-name order. To change the schema, add a new file
+instead of editing an old one, e.g.
+`supabase/migrations/20261015120000_add_diary_location.sql`:
+
+```sql
+alter table public.diary_entries
+  add column if not exists location text not null default '';
+```
+
+Pushing it to `main` runs the **Apply Supabase migrations** workflow, which
+applies every migration the database has not seen yet (`supabase db push`).
+Supabase records which ones ran in `supabase_migrations.schema_migrations`.
+
+The existing migrations only create what is missing, so they are also safe
+on a database that was set up by hand with the old `supabase/schema.sql`:
+existing data, members and categories are kept.
 
 ## Local development
 

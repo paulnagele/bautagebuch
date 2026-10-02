@@ -65,6 +65,11 @@ export function useCollection(table, { fromRow, toRow }) {
 }
 
 export function friendlyError(error) {
+  // "permission denied for table …": the table lacks grants for signed-in
+  // users, i.e. the database migrations have not all been applied.
+  if (/permission denied for (table|function|schema)/i.test(error.message)) {
+    return 'The database is not fully set up: signed-in users have no access to its tables. Apply the database migrations (GitHub → Actions → Apply Supabase migrations).'
+  }
   if (error.code === '42501' || /row-level security/i.test(error.message)) {
     return 'You do not have access to this data. Ask the project owner to add your email address as a member.'
   }
@@ -72,7 +77,7 @@ export function friendlyError(error) {
     return 'An entry with this name already exists.'
   }
   if (error.code === 'PGRST205' || error.code === '42P01' || error.code === 'PGRST202') {
-    return 'The database is missing a newer table or function. Run supabase/schema.sql again in the Supabase SQL Editor.'
+    return 'The database is missing a newer table or function. Apply the database migrations (GitHub → Actions → Apply Supabase migrations).'
   }
   if (error.code === 'PGRST116') {
     return 'The entry no longer exists or you do not have access to it.'

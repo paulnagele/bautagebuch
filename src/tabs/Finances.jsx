@@ -5,8 +5,8 @@ import { supabase } from '../supabase.js'
 import CategoryManager from '../components/CategoryManager.jsx'
 import MoneyFlow from '../components/MoneyFlow.jsx'
 
-// Used only until the finance_categories table exists (schema.sql not yet
-// re-run); the same lists are what schema.sql starts the table with.
+// Used only until the finance_categories table exists (migrations not yet
+// applied); the categories migration starts the table with the same lists.
 const DEFAULT_FUNDING_SOURCES = [
   'Own funds',
   'Bank loan',
