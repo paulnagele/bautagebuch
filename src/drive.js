@@ -16,14 +16,12 @@ const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files'
 
 // ---- folders ---------------------------------------------------------------
 
-// One Drive folder is configured (e.g. "Haus"); photos and files go into
-// subfolders of it, which the app finds or creates on first upload and
-// which inherit its sharing. The folder ID is stored in the database
-// (app_settings), so only signed-in members can see it; it is not in the
-// repository or the public site.
-// The first name is used when creating a subfolder; any of them (in any
-// case) is accepted when it already exists.
-const SUBFOLDERS = { photos: ['photos', 'fotos'], files: ['dateien', 'files'] }
+// One Drive folder is configured (e.g. "Haus"). A diary entry's photos
+// and files go into <kind>/<creation date> below it, e.g.
+// Haus/Mangel/2026_10_02. The app finds or creates these folders on
+// upload; they inherit the configured folder's sharing. The folder ID is
+// stored in the database (app_settings), so only signed-in members can
+// see it; it is not in the repository or the public site.
 const FOLDER_TYPE = 'application/vnd.google-apps.folder'
 let folderIdRequest = null
 const subfolderRequests = new Map()
@@ -45,30 +43,36 @@ export function getDriveFolderId() {
   return folderIdRequest
 }
 
-// Needs Drive access, so it only runs when uploading.
-function getSubfolderId(kind) {
-  if (!subfolderRequests.has(kind)) {
+async function findOrCreateFolder(parent, name) {
+  const quoted = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const query = `name = '${quoted}' and '${parent}' in parents and mimeType = '${FOLDER_TYPE}' and trashed = false`
+  const found = await driveFetch(
+    `${API}?q=${encodeURIComponent(query)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+  ).then((r) => r.json())
+  if (found.files?.length) return found.files[0].id
+  const created = await driveFetch(`${API}?fields=id&supportsAllDrives=true`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: FOLDER_TYPE, parents: [parent] }),
+  }).then((r) => r.json())
+  return created.id
+}
+
+// The folder for one path below the configured folder, e.g.
+// ['Mangel', '2026_10_02']. Needs Drive access, so it only runs when
+// uploading. Remembered per path, so parallel uploads share one folder.
+export function getEntryFolderId(path) {
+  const key = path.join('/')
+  if (!subfolderRequests.has(key)) {
     const request = (async () => {
-      const parent = await getDriveFolderId()
-      const names = SUBFOLDERS[kind]
-      const query = `'${parent}' in parents and mimeType = '${FOLDER_TYPE}' and trashed = false`
-      const found = await driveFetch(
-        `${API}?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`,
-      ).then((r) => r.json())
-      const match = found.files?.find((f) => names.includes(f.name.trim().toLowerCase()))
-      if (match) return match.id
-      const name = names[0]
-      const created = await driveFetch(`${API}?fields=id&supportsAllDrives=true`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, mimeType: FOLDER_TYPE, parents: [parent] }),
-      }).then((r) => r.json())
-      return created.id
+      let folder = await getDriveFolderId()
+      for (const name of path) folder = await findOrCreateFolder(folder, name)
+      return folder
     })()
-    request.catch(() => subfolderRequests.delete(kind))
-    subfolderRequests.set(kind, request)
+    request.catch(() => subfolderRequests.delete(key))
+    subfolderRequests.set(key, request)
   }
-  return subfolderRequests.get(kind)
+  return subfolderRequests.get(key)
 }
 
 export function driveFileUrl(fileId) {
@@ -219,12 +223,12 @@ async function upload(blob, name, mimeType, folderId) {
   return id
 }
 
-export async function uploadFile(file, name) {
-  return upload(file, name, file.type || 'application/octet-stream', await getSubfolderId('files'))
+export function uploadFile(file, name, folderId) {
+  return upload(file, name, file.type || 'application/octet-stream', folderId)
 }
 
-export async function uploadPhoto(blob, name) {
-  const id = await upload(blob, name, blob.type || 'image/jpeg', await getSubfolderId('photos'))
+export async function uploadPhoto(blob, name, folderId) {
+  const id = await upload(blob, name, blob.type || 'image/jpeg', folderId)
   await shareByLink(id).catch(() => {}) // still viewable via the fallback
   // The uploader already has the photo: keep it so it shows right away.
   photoCache.set(id, Promise.resolve(URL.createObjectURL(blob)))

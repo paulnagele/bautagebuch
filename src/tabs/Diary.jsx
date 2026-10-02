@@ -7,6 +7,7 @@ import {
   driveFileUrl,
   driveFolderUrl,
   getDriveFolderId,
+  getEntryFolderId,
   uploadFile,
   uploadPhoto,
 } from '../drive.js'
@@ -36,6 +37,7 @@ function fromRow(row) {
     photoIds: row.photo_ids ?? [],
     files: row.files ?? [],
     author: row.author_name,
+    createdAt: row.created_at,
   }
 }
 
@@ -61,10 +63,20 @@ function extension(file) {
   return match ? match[0].toLowerCase() : '.jpg'
 }
 
-// Uploads the photos and files not yet in Drive, one after another.
-// onProgress(n) runs before the n-th upload, onProgress(n, uploaded) after
-// it, with the form's photos and files as far as they are uploaded.
-async function uploadPending({ photos, files }, date, onProgress) {
+// Drive folder of an entry's photos and files: <kind>/<creation date>,
+// e.g. ['Mangel', '2026_10_02'] (created now for a new entry).
+function entryFolderPath(type, createdAt) {
+  const created = createdAt ? new Date(createdAt) : new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const day = `${created.getFullYear()}_${pad(created.getMonth() + 1)}_${pad(created.getDate())}`
+  return [entryType(type).label, day]
+}
+
+// Uploads the photos and files not yet in Drive, one after another, into
+// the folder at folderPath. onProgress(n) runs before the n-th upload,
+// onProgress(n, uploaded) after it, with the form's photos and files as
+// far as they are uploaded.
+async function uploadPending({ photos, files, date }, folderPath, onProgress) {
   const uploaded = { photos: [...photos], files: [...files] }
   const jobs = [
     ...photos.map((item, index) => ({ item, index, list: 'photos' })),
@@ -72,11 +84,12 @@ async function uploadPending({ photos, files }, date, onProgress) {
   ].filter((job) => job.item.blob)
   for (const [n, { item, index, list }] of jobs.entries()) {
     onProgress(n + 1)
+    const folderId = await getEntryFolderId(folderPath)
     const { blob, ...rest } = item
     const fileId =
       list === 'photos'
-        ? await uploadPhoto(blob, `${date} Bautagebuch ${newId()}${extension(blob)}`)
-        : await uploadFile(blob, `${date} ${blob.name}`)
+        ? await uploadPhoto(blob, `${date} Bautagebuch ${newId()}${extension(blob)}`, folderId)
+        : await uploadFile(blob, `${date} ${blob.name}`, folderId)
     uploaded[list] = uploaded[list].with(index, { ...rest, fileId })
     onProgress(n + 1, { ...uploaded })
   }
@@ -297,7 +310,9 @@ function Diary({ user }) {
         // Must run first, while the click still counts as user action,
         // otherwise the browser blocks Google's popup.
         await connectDrive(user.email)
-        uploaded = await uploadPending(form, form.date, (done, sofar) => {
+        const createdAt = entries.find((e) => e.id === editingId)?.createdAt
+        const folderPath = entryFolderPath(form.type, editingId ? createdAt : null)
+        uploaded = await uploadPending(form, folderPath, (done, sofar) => {
           setBusy(
             pending === 1 ? 'Wird hochgeladen…' : `Upload ${done} von ${pending} läuft…`,
           )
