@@ -1,18 +1,21 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { formatDate, today } from '../storage.js'
-import { useCollection } from '../useCollection.js'
+import { friendlyError, useCollection } from '../useCollection.js'
+import { supabase } from '../supabase.js'
+import CategoryManager from '../components/CategoryManager.jsx'
+import MoneyFlow from '../components/MoneyFlow.jsx'
 
-// Funding sources keep a fixed colour slot each, so a source never changes
-// colour when others are added or removed.
-const FUNDING_SOURCES = [
-  { name: 'Own funds', color: 'var(--series-1)' },
-  { name: 'Bank loan', color: 'var(--series-2)' },
-  { name: 'Housing subsidy', color: 'var(--series-3)' },
-  { name: 'Family / private loan', color: 'var(--series-4)' },
-  { name: 'Other funding', color: 'var(--series-5)' },
+// Used only until the finance_categories table exists (migrations not yet
+// applied); the categories migration starts the table with the same lists.
+const DEFAULT_FUNDING_SOURCES = [
+  'Own funds',
+  'Bank loan',
+  'Housing subsidy',
+  'Family / private loan',
+  'Other funding',
 ]
 
-const SPENDING_CATEGORIES = [
+const DEFAULT_EXPENSE_CATEGORIES = [
   'Land & purchase costs',
   'Planning & permits',
   'Shell construction',
@@ -35,9 +38,27 @@ const euros = new Intl.NumberFormat(undefined, {
 })
 const percent = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 1 })
 
-const KIND_DEFAULT_CATEGORY = {
-  funding: FUNDING_SOURCES[0].name,
-  expense: SPENDING_CATEGORIES[0],
+// Validated categorical palette (see index.css), used for funding sources in
+// the money-flow diagram. A source keeps the colour of its position in the
+// category list; beyond eight sources the rest are grouped as "More sources"
+// instead of inventing more colours.
+const SERIES_COLORS = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1})`)
+const OTHER_COLOR = 'var(--muted)'
+
+function categoryFromRow(row) {
+  return { id: row.id, type: row.type, name: row.name, sortOrder: row.sort_order }
+}
+
+function categoryToRow(category) {
+  return { type: category.type, name: category.name, sort_order: category.sortOrder }
+}
+
+function byOrder(a, b) {
+  return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)
+}
+
+function defaultCategories(type, names) {
+  return names.map((name, i) => ({ id: `default-${type}-${i}`, type, name, sortOrder: i }))
 }
 
 function fromRow(row) {
@@ -70,128 +91,56 @@ function sumBy(items, key) {
 }
 
 function emptyForm(type = 'expense') {
-  return {
-    date: today(),
-    type,
-    category: KIND_DEFAULT_CATEGORY[type],
-    description: '',
-    amount: '',
-  }
+  // An empty category means "the first category of this type".
+  return { date: today(), type, category: '', description: '', amount: '' }
 }
 
-function useTooltip() {
-  const [tip, setTip] = useState(null)
-  function bind(text) {
-    return {
-      tabIndex: 0,
-      'aria-label': text,
-      onMouseMove: (e) => {
-        const box = e.currentTarget.closest('.chart').getBoundingClientRect()
-        setTip({ text, x: e.clientX - box.left, y: e.clientY - box.top })
-      },
-      onFocus: (e) => {
-        const box = e.currentTarget.closest('.chart').getBoundingClientRect()
-        const mark = e.currentTarget.getBoundingClientRect()
-        setTip({ text, x: mark.left - box.left + mark.width / 2, y: mark.top - box.top })
-      },
-      onMouseLeave: () => setTip(null),
-      onBlur: () => setTip(null),
-    }
-  }
-  const element = tip && (
-    <div className="chart-tooltip" style={{ left: tip.x, top: tip.y }} role="status">
-      {tip.text}
-    </div>
-  )
-  return [bind, element]
+// Funding sources in list order (plus any no longer in the list), coloured
+// by position so colours stay put when amounts change.
+function flowSources(sourceNames, totals, unfunded) {
+  const ordered = [...sourceNames, ...[...totals.keys()].filter((n) => !sourceNames.includes(n))]
+  const nodes = []
+  let other = 0
+  ordered.forEach((name, i) => {
+    const value = totals.get(name) ?? 0
+    if (value <= 0) return
+    if (i < SERIES_COLORS.length) nodes.push({ name, value, color: SERIES_COLORS[i] })
+    else other += value
+  })
+  if (other > 0) nodes.push({ name: 'More sources', value: other, color: OTHER_COLOR })
+  if (unfunded > 0) nodes.push({ name: 'Not yet funded', value: unfunded, kind: 'unfunded' })
+  return nodes
 }
 
-function FundingChart({ totals, total }) {
-  const [bind, tooltip] = useTooltip()
-  const sources = FUNDING_SOURCES.filter((s) => totals.get(s.name) > 0)
-
-  return (
-    <div className="card chart">
-      <h2>How the project is financed</h2>
-      {total === 0 ? (
-        <p className="muted chart-empty">Add funding (own funds, loans, subsidies) to see the mix.</p>
-      ) : (
-        <>
-          <div className="stack-bar">
-            {sources.map((s) => {
-              const value = totals.get(s.name)
-              return (
-                <div
-                  key={s.name}
-                  className="stack-segment"
-                  style={{ flexGrow: value, background: s.color }}
-                  {...bind(`${s.name}: ${euros.format(value)} (${percent.format(value / total)})`)}
-                />
-              )
-            })}
-          </div>
-          <ul className="legend">
-            {sources.map((s) => {
-              const value = totals.get(s.name)
-              return (
-                <li key={s.name}>
-                  <span className="swatch" style={{ background: s.color }} />
-                  <span className="legend-name">{s.name}</span>
-                  <span className="legend-value">{euros.format(value)}</span>
-                  <span className="legend-share muted">{percent.format(value / total)}</span>
-                </li>
-              )
-            })}
-          </ul>
-        </>
-      )}
-      {tooltip}
-    </div>
-  )
-}
-
-function SpendingChart({ totals, total }) {
-  const [bind, tooltip] = useTooltip()
-  const rows = [...totals.entries()].sort((a, b) => b[1] - a[1])
-  const max = rows[0]?.[1] ?? 0
-
-  return (
-    <div className="card chart">
-      <h2>Where the money is spent</h2>
-      {total === 0 ? (
-        <p className="muted chart-empty">Add expenses to see spending by category.</p>
-      ) : (
-        <ul className="bar-list">
-          {rows.map(([category, value]) => (
-            <li key={category}>
-              <span className="bar-label" title={category}>
-                {category}
-              </span>
-              <span className="bar-track">
-                <span
-                  className="bar-fill"
-                  style={{ width: `${(value / max) * 100}%` }}
-                  {...bind(`${category}: ${euros.format(value)} (${percent.format(value / total)} of spending)`)}
-                />
-              </span>
-              <span className="bar-value">{euros.format(value)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {tooltip}
-    </div>
-  )
+// Expense categories, largest first, then what is left over.
+function flowTargets(totals, unspent) {
+  const nodes = [...totals.entries()]
+    .filter(([, value]) => value > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, value]) => ({ name, value }))
+  if (unspent > 0) nodes.push({ name: 'Not yet spent', value: unspent, kind: 'unspent' })
+  return nodes
 }
 
 function Finances() {
-  const { rows: items, status, error: loadError, insert, remove } = useCollection(
-    'transactions',
-    { fromRow, toRow },
-  )
+  const {
+    rows: items,
+    status,
+    error: loadError,
+    insert,
+    update,
+    remove,
+    reload: reloadItems,
+  } = useCollection('transactions', { fromRow, toRow })
+  const categoryStore = useCollection('finance_categories', {
+    fromRow: categoryFromRow,
+    toRow: categoryToRow,
+  })
   const [form, setForm] = useState(() => emptyForm())
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const formRef = useRef(null)
 
   const funding = items.filter((i) => i.type === 'funding')
   const expenses = items.filter((i) => i.type === 'expense')
@@ -200,15 +149,57 @@ function Finances() {
   const remaining = totalFunding - totalSpent
   const usedShare = totalFunding > 0 ? totalSpent / totalFunding : 0
   const sorted = [...items].sort((a, b) => b.date.localeCompare(a.date))
+  // Until the categories table exists, fall back to the built-in lists.
+  const categoriesMissing = categoryStore.status === 'error'
+  const categoryRows = categoriesMissing
+    ? [
+        ...defaultCategories('expense', DEFAULT_EXPENSE_CATEGORIES),
+        ...defaultCategories('funding', DEFAULT_FUNDING_SOURCES),
+      ]
+    : categoryStore.rows
+  const expenseCategories = categoryRows.filter((c) => c.type === 'expense').sort(byOrder)
+  const fundingCategories = categoryRows.filter((c) => c.type === 'funding').sort(byOrder)
+  const baseCategories = (form.type === 'funding' ? fundingCategories : expenseCategories).map(
+    (c) => c.name,
+  )
+  const formCategory = form.category || baseCategories[0] || ''
+  // Keep an entry's category selectable even if it is no longer in the list.
   const categories =
-    form.type === 'funding' ? FUNDING_SOURCES.map((s) => s.name) : SPENDING_CATEGORIES
+    !formCategory || baseCategories.includes(formCategory)
+      ? baseCategories
+      : [...baseCategories, formCategory]
+
+  const usage = { expense: new Map(), funding: new Map() }
+  for (const item of items) {
+    const counts = usage[item.type]
+    counts?.set(item.category, (counts.get(item.category) ?? 0) + 1)
+  }
+
+  async function addCategory(type, name) {
+    const siblings = type === 'funding' ? fundingCategories : expenseCategories
+    const sortOrder = Math.max(0, ...siblings.map((c) => c.sortOrder)) + 1
+    await categoryStore.insert({ type, name, sortOrder })
+  }
+
+  async function renameCategory(id, name) {
+    const { error: renameError } = await supabase.rpc('rename_finance_category', {
+      category_id: id,
+      new_name: name,
+    })
+    if (renameError) throw new Error(friendlyError(renameError))
+    await Promise.all([categoryStore.reload(), reloadItems()])
+  }
+
+  async function deleteCategory(id) {
+    await categoryStore.remove(id)
+  }
 
   function setField(field) {
     return (e) => setForm({ ...form, [field]: e.target.value })
   }
 
   function setType(type) {
-    setForm({ ...form, type, category: KIND_DEFAULT_CATEGORY[type] })
+    setForm({ ...form, type, category: '' })
   }
 
   async function handleSubmit(e) {
@@ -218,11 +209,27 @@ function Finances() {
       setError('Please enter a date, a description and an amount greater than 0.')
       return
     }
+    if (!formCategory) {
+      setError('Please add a category first (Manage categories).')
+      return
+    }
     setSaving(true)
     setError('')
+    const item = {
+      date: form.date,
+      type: form.type,
+      category: formCategory,
+      description: form.description.trim(),
+      amount,
+    }
     try {
-      await insert({ ...form, description: form.description.trim(), amount })
-      setForm({ ...emptyForm(form.type), category: form.category })
+      if (editingId) {
+        await update(editingId, item)
+        resetForm()
+      } else {
+        await insert(item)
+        setForm({ ...emptyForm(form.type), category: formCategory })
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -230,10 +237,30 @@ function Finances() {
     }
   }
 
+  function resetForm() {
+    setForm(emptyForm())
+    setEditingId(null)
+    setError('')
+  }
+
+  function startEdit(item) {
+    setForm({
+      date: item.date,
+      type: item.type,
+      category: item.category,
+      description: item.description,
+      amount: String(item.amount),
+    })
+    setEditingId(item.id)
+    setError('')
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   async function handleDelete(id) {
     if (!window.confirm('Delete this transaction?')) return
     try {
       await remove(id)
+      if (editingId === id) resetForm()
     } catch (err) {
       window.alert(err.message)
     }
@@ -285,13 +312,20 @@ function Finances() {
         </div>
       )}
 
-      <div className="chart-grid">
-        <FundingChart totals={sumBy(funding, 'category')} total={totalFunding} />
-        <SpendingChart totals={sumBy(expenses, 'category')} total={totalSpent} />
-      </div>
+      <MoneyFlow
+        sources={flowSources(
+          fundingCategories.map((c) => c.name),
+          sumBy(funding, 'category'),
+          Math.max(0, totalSpent - totalFunding),
+        )}
+        targets={flowTargets(sumBy(expenses, 'category'), Math.max(0, totalFunding - totalSpent))}
+        total={Math.max(totalFunding, totalSpent)}
+        format={(value) => euros.format(value)}
+        formatShare={(share) => percent.format(share)}
+      />
 
-      <form className="card form-grid" onSubmit={handleSubmit} noValidate>
-        <h2>New transaction</h2>
+      <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
+        <h2>{editingId ? 'Edit transaction' : 'New transaction'}</h2>
         <div className="segmented full" role="group" aria-label="Transaction type">
           <button
             type="button"
@@ -316,7 +350,7 @@ function Finances() {
         </label>
         <label>
           {form.type === 'funding' ? 'Source' : 'Category'}
-          <select value={form.category} onChange={setField('category')}>
+          <select value={formCategory} onChange={setField('category')}>
             {categories.map((c) => (
               <option key={c}>{c}</option>
             ))}
@@ -350,10 +384,32 @@ function Finances() {
 
         <div className="form-actions full">
           <button type="submit" disabled={saving}>
-            {saving ? 'Saving…' : form.type === 'funding' ? 'Add funding' : 'Add expense'}
+            {saving
+              ? 'Saving…'
+              : editingId
+                ? 'Save changes'
+                : form.type === 'funding'
+                  ? 'Add funding'
+                  : 'Add expense'}
           </button>
+          {editingId && (
+            <button type="button" className="secondary" onClick={resetForm} disabled={saving}>
+              Cancel
+            </button>
+          )}
         </div>
       </form>
+
+      <CategoryManager
+        expense={expenseCategories}
+        funding={fundingCategories}
+        usage={usage}
+        readOnly={categoriesMissing}
+        notice={categoriesMissing ? categoryStore.error : ''}
+        onAdd={addCategory}
+        onRename={renameCategory}
+        onDelete={deleteCategory}
+      />
 
       {status === 'loading' && <p className="empty">Loading finances…</p>}
       {status === 'error' && (
@@ -377,7 +433,7 @@ function Finances() {
             </thead>
             <tbody>
               {sorted.map((item) => (
-                <tr key={item.id}>
+                <tr key={item.id} className={item.id === editingId ? 'editing' : undefined}>
                   <td className="date">{formatDate(item.date)}</td>
                   <td>{item.description}</td>
                   <td>{item.category}</td>
@@ -385,7 +441,10 @@ function Finances() {
                     {item.type === 'funding' ? '+' : '−'}
                     {currency.format(item.amount)}
                   </td>
-                  <td className="num">
+                  <td className="num row-actions">
+                    <button type="button" className="link" onClick={() => startEdit(item)}>
+                      Edit
+                    </button>
                     <button type="button" className="link danger" onClick={() => handleDelete(item.id)}>
                       Delete
                     </button>

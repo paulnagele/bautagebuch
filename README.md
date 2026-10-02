@@ -7,8 +7,10 @@ there are three tabs:
   on site, work carried out, notes) with photos. Photos are stored in a
   shared Google Drive folder.
 - **Finances** – record funding (own funds, bank loan, housing subsidy,
-  …) and expenses by category. Shows funding secured, spent and
-  remaining, how the project is financed and where the money goes.
+  …) and expenses by category; categories and funding sources can be
+  added, renamed and deleted under "Manage categories". Shows funding secured, spent and
+  remaining, and a money-flow diagram from funding sources to expense
+  categories.
 - **Timetable** – the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). The calendar must be public to be visible
   to everyone using the app.
@@ -121,6 +123,10 @@ alter table public.diary_entries
 Pushing it to `main` runs the **Apply Supabase migrations** workflow, which
 applies every migration the database has not seen yet (`supabase db push`).
 Supabase records which ones ran in `supabase_migrations.schema_migrations`.
+
+The existing migrations only create what is missing, so they are also safe
+on a database that was set up by hand with the old `supabase/schema.sql`:
+existing data, members and categories are kept.
 
 ## Local development
 
