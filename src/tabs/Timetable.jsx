@@ -1,14 +1,24 @@
-const CALENDAR_ID =
-  '68f105d43c95198db43b96965ea96496bbb0883f0c1e94fc7434d3c4ed0bf8bb@group.calendar.google.com'
-const TIME_ZONE = 'Europe/Vienna'
-
-const embedUrl =
-  'https://calendar.google.com/calendar/embed?' +
-  new URLSearchParams({ src: CALENDAR_ID, ctz: TIME_ZONE, hl: 'de' }).toString()
-
-const agendaUrl = `${embedUrl}&mode=AGENDA`
+import { useEffect, useState } from 'react'
+import { calendarEmbedUrl, getCalendarId } from '../calendar.js'
 
 function Timetable() {
+  const [calendarId, setCalendarId] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    getCalendarId().then(setCalendarId, (err) => setError(err.message))
+  }, [])
+
+  if (error) {
+    return (
+      <section className="tab-content">
+        <p className="card error">{error}</p>
+      </section>
+    )
+  }
+  if (!calendarId) return <section className="tab-content" />
+
+  const embedUrl = calendarEmbedUrl(calendarId)
   return (
     <section className="tab-content">
       <div className="card calendar-card">
@@ -28,7 +38,7 @@ function Timetable() {
         <iframe
           className="calendar-frame calendar-agenda"
           title="Bauzeitplan (Terminübersicht)"
-          src={agendaUrl}
+          src={calendarEmbedUrl(calendarId, 'AGENDA')}
           loading="lazy"
         />
       </div>
