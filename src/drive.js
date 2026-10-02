@@ -37,37 +37,24 @@ export function getDriveFolderId() {
   return folderIdRequest
 }
 
-// Other files (PDFs, plans, offers, …) go to their own folder: the one set
-// as 'drive_files_folder_id' in app_settings, otherwise a "Dateien" folder
-// inside the photo folder, created on first use. It inherits the photo
-// folder's sharing, so every member can open the files. Unlike photos,
-// files are not shared by link.
-const FILES_FOLDER_NAME = 'Dateien'
-const FOLDER_TYPE = 'application/vnd.google-apps.folder'
+// Other files (PDFs, plans, offers, …) go to their own folder, set like
+// the photo folder in app_settings ('drive_files_folder_id'). Unlike
+// photos, files are not shared by link: members open them through the
+// folder's sharing.
 let filesFolderRequest = null
 
 export function getFilesFolderId() {
   if (!filesFolderRequest) {
-    filesFolderRequest = (async () => {
-      const { data } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'drive_files_folder_id')
-        .maybeSingle()
-      if (data?.value) return data.value
-      const parent = await getDriveFolderId()
-      const query = `name = '${FILES_FOLDER_NAME}' and '${parent}' in parents and mimeType = '${FOLDER_TYPE}' and trashed = false`
-      const found = await driveFetch(
-        `${API}?q=${encodeURIComponent(query)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
-      ).then((r) => r.json())
-      if (found.files?.length) return found.files[0].id
-      const created = await driveFetch(`${API}?fields=id&supportsAllDrives=true`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: FILES_FOLDER_NAME, mimeType: FOLDER_TYPE, parents: [parent] }),
-      }).then((r) => r.json())
-      return created.id
-    })()
+    filesFolderRequest = supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'drive_files_folder_id')
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) throw new Error(`Die Einstellung für den Dateiordner konnte nicht geladen werden: ${error.message}`)
+        if (!data) throw new Error('Der Dateiordner ist noch nicht eingerichtet (siehe README, app_settings).')
+        return data.value
+      })
     filesFolderRequest.catch(() => (filesFolderRequest = null))
   }
   return filesFolderRequest
