@@ -12,9 +12,21 @@ const REQUIRED = [
 const env = loadEnv('production', process.cwd(), 'VITE_')
 const missing = REQUIRED.filter((name) => !env[name])
 
+// Kept out of the repository on purpose, so it must come from a secret.
+const SECRET_ONLY = ['VITE_DRIVE_FOLDER_ID']
+
 for (const name of missing) {
-  console.log(
-    `::warning title=Missing setting ${name}::Set it in .env.production or as repository variable ${name.replace(/^VITE_/, '')}.`,
-  )
+  const repoName = name.replace(/^VITE_/, '')
+  if (SECRET_ONLY.includes(name)) {
+    console.log(
+      `::error title=Missing secret ${repoName}::Add it under Settings → Secrets and variables → Actions → Secrets.`,
+    )
+  } else {
+    console.log(
+      `::warning title=Missing setting ${name}::Set it in .env.production or as repository variable ${repoName}.`,
+    )
+  }
 }
 if (missing.length === 0) console.log('All settings present.')
+// Fail the deploy rather than replace the live site with one without photos.
+if (missing.some((name) => SECRET_ONLY.includes(name))) process.exit(1)

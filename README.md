@@ -38,8 +38,9 @@ there are four tabs:
 
 ## Setup
 
-All four settings below are public (they end up in the browser anyway),
-so they are kept in `.env.production`, which is committed.
+Three of the settings below are public, so they are kept in
+`.env.production`, which is committed. The photo folder ID is a
+repository secret instead (see step 4).
 
 ### 1. Google Cloud (sign-in and Drive access)
 
@@ -106,12 +107,18 @@ access → Anyone with the link (Viewer)**.
 VITE_GOOGLE_CLIENT_ID=<Client ID from step 1>
 VITE_SUPABASE_URL=<Project URL from step 3>
 VITE_SUPABASE_ANON_KEY=<anon / publishable key from step 3>
-VITE_DRIVE_FOLDER_ID=<folder ID from step 2>
 ```
 
+The photo folder ID is kept out of the repository so nobody can find the
+folder from GitHub: add it as a **repository secret** named
+`DRIVE_FOLDER_ID` (*Settings → Secrets and variables → Actions →
+Secrets*). The deploy fails with a clear error if it is missing. For local
+development, put `VITE_DRIVE_FOLDER_ID=<folder ID>` in `.env.local`
+(ignored by git).
+
 Commit to `main`; the GitHub Actions workflow deploys the site. (Repository
-variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
-`DRIVE_FOLDER_ID` override these values if set.) If anything is missing,
+variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`
+override these values if set.) If anything is missing,
 the deploy run shows a warning and the site shows "Setup not finished".
 
 ### Adding a family member later
