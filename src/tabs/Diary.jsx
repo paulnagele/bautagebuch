@@ -673,7 +673,7 @@ function Diary({ user }) {
       {folderId && (
         <p className="muted drive-link">
           <a href={driveFolderUrl(folderId)} target="_blank" rel="noreferrer">
-            Fotoordner in Google Drive öffnen ↗
+            Ordner in Google Drive öffnen ↗
           </a>
         </p>
       )}

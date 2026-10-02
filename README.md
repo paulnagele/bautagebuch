@@ -28,11 +28,14 @@ there are four tabs:
   Only email addresses in the `members` table can read or write anything;
   this is enforced by the database (row level security), see
   `supabase/migrations/`.
-- **Photos**: uploaded to a shared Google Drive folder with the signed-in
-  person's own Google account. The database only keeps the Drive file IDs.
-  The folder stays private; each photo is shared as "Anyone with the
-  link" when it is uploaded, so photos load for every member without any
-  Google Drive prompt, while nobody can browse the folder.
+- **Photos and files**: uploaded to a shared Google Drive folder (e.g.
+  "Haus") with the signed-in person's own Google account, photos into its
+  subfolder `photos`, other files (PDFs, plans, offers) into `dateien`.
+  The database only keeps the Drive file IDs. The folders stay private;
+  each photo is shared as "Anyone with the link" when it is uploaded, so
+  photos load for every member without any Google Drive prompt, while
+  nobody can browse the folders. Files are not shared by link; members
+  open them through the folder's sharing.
 - **Timetable**: the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`).
 
@@ -59,11 +62,13 @@ folder ID is not one of them; it is stored in the database (see step 4).
    (and `http://localhost:5173` for local development). No redirect URIs
    are needed. Note the **Client ID** and **Client secret**.
 
-### 2. Google Drive (photo folder)
+### 2. Google Drive (folder)
 
-Create a folder, e.g. "Bautagebuch Fotos", and share it with every family
-member as **Editor**. Its ID is the last part of the folder URL:
-`https://drive.google.com/drive/folders/<folder ID>`.
+Create a folder, e.g. "Haus", and share it with every family member as
+**Editor**. Its ID is the last part of the folder URL:
+`https://drive.google.com/drive/folders/<folder ID>`. The app uses the
+subfolders `photos` and `dateien` inside it (also accepted: `Fotos`,
+`Files`, in any case) and creates them on the first upload if missing.
 
 Keep the folder itself restricted (not "Anyone with the link"). The app
 shares each new photo by link on upload. Photos uploaded before that
@@ -109,24 +114,13 @@ VITE_SUPABASE_URL=<Project URL from step 3>
 VITE_SUPABASE_ANON_KEY=<anon / publishable key from step 3>
 ```
 
-The photo folder ID is kept out of the repository and the public site: it
+The folder ID is kept out of the repository and the public site: it
 is stored in the database, where only signed-in members can read it. Once
 the migrations have run, add it in the Supabase **SQL Editor**:
 
 ```sql
 insert into public.app_settings (key, value)
 values ('drive_folder_id', '<folder ID from step 2>')
-on conflict (key) do update set value = excluded.value;
-```
-
-Files attached to diary entries (PDFs, plans, offers) go to their own
-folder. Create it in Google Drive, share it with every member as
-**Editor** (keep "General access" on *Restricted*; files are not shared
-by link), and add its ID the same way:
-
-```sql
-insert into public.app_settings (key, value)
-values ('drive_files_folder_id', '<folder ID of the files folder>')
 on conflict (key) do update set value = excluded.value;
 ```
 
@@ -140,7 +134,7 @@ the deploy run shows a warning and the site shows "Setup not finished".
 1. Supabase SQL Editor:
    `insert into public.members (email) values ('name@gmail.com');`
 2. Google Cloud → Audience → add them as a test user.
-3. Share the Drive photo folder with them as Editor.
+3. Share the Drive folder with them as Editor.
 
 ## Changing the database
 
