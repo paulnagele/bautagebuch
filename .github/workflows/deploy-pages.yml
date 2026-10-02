@@ -25,17 +25,18 @@ jobs:
       - run: npm install
       - name: Build
         run: |
-          if [ -z "$VITE_GOOGLE_CLIENT_ID" ]; then
-            echo "::warning title=Google sign-in not configured::No GOOGLE_CLIENT_ID repository variable or secret found. The site is built in demo mode. Add it under Settings → Secrets and variables → Actions (repository level, not an environment)."
-          else
-            echo "Google sign-in configured (client ID ending in …${VITE_GOOGLE_CLIENT_ID: -30})."
-          fi
+          # Repository variables/secrets override .env.production when set.
+          for name in GOOGLE_CLIENT_ID SUPABASE_URL SUPABASE_ANON_KEY DRIVE_FOLDER_ID; do
+            value="$(printenv "CFG_$name" || true)"
+            if [ -n "$value" ]; then export "VITE_$name=$value"; fi
+          done
+          node scripts/check-config.mjs
           npm run build
         env:
-          # Repository-level Actions variable (preferred) or secret named
-          # GOOGLE_CLIENT_ID; optional ALLOWED_EMAILS likewise.
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
-          VITE_ALLOWED_EMAILS: ${{ vars.ALLOWED_EMAILS || secrets.ALLOWED_EMAILS }}
+          CFG_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
+          CFG_SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+          CFG_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+          CFG_DRIVE_FOLDER_ID: ${{ vars.DRIVE_FOLDER_ID || secrets.DRIVE_FOLDER_ID }}
       - uses: actions/configure-pages@v5
         with:
           enablement: true

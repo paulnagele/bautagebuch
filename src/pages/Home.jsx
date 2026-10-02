@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { usePersistentState } from '../storage.js'
+import { loadGoogleScript } from '../google.js'
 import Diary from '../tabs/Diary.jsx'
 import Finances from '../tabs/Finances.jsx'
 import Timetable from '../tabs/Timetable.jsx'
@@ -16,8 +18,12 @@ function Home({ user, onLogout }) {
   )
   const current = TABS.find((tab) => tab.id === activeTab) ?? TABS[0]
   const ActiveComponent = current.component
-  // Keep each user's data separate.
-  const storagePrefix = `bautagebuch.${user.email}`
+
+  // Google's script is needed to connect Google Drive for photos. Load it
+  // early so the "connect" click can open the popup right away.
+  useEffect(() => {
+    loadGoogleScript().catch(() => {})
+  }, [])
 
   return (
     <div className="app-shell">
@@ -59,7 +65,7 @@ function Home({ user, onLogout }) {
         id={`panel-${current.id}`}
         aria-labelledby={`tab-${current.id}`}
       >
-        <ActiveComponent storageKey={`${storagePrefix}.${current.id}`} />
+        <ActiveComponent user={user} />
       </main>
     </div>
   )

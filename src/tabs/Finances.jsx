@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { formatDate, newId, today, usePersistentState } from '../storage.js'
+import { formatDate, today } from '../storage.js'
+import { useCollection } from '../useCollection.js'
 
 // Funding sources keep a fixed colour slot each, so a source never changes
 // colour when others are added or removed.
@@ -39,13 +40,25 @@ const KIND_DEFAULT_CATEGORY = {
   expense: SPENDING_CATEGORIES[0],
 }
 
-// Older entries used type "income"; treat them as funding.
-function normalize(item) {
-  if (item.type === 'income') {
-    const known = FUNDING_SOURCES.some((s) => s.name === item.category)
-    return { ...item, type: 'funding', category: known ? item.category : 'Other funding' }
+function fromRow(row) {
+  return {
+    id: row.id,
+    date: row.tx_date,
+    type: row.type,
+    category: row.category,
+    description: row.description,
+    amount: Number(row.amount),
   }
-  return item
+}
+
+function toRow(item) {
+  return {
+    tx_date: item.date,
+    type: item.type,
+    category: item.category,
+    description: item.description,
+    amount: item.amount,
+  }
 }
 
 function sumBy(items, key) {
@@ -171,11 +184,14 @@ function SpendingChart({ totals, total }) {
   )
 }
 
-function Finances({ storageKey }) {
-  const [rawItems, setItems] = usePersistentState(storageKey, [])
-  const items = rawItems.map(normalize)
+function Finances() {
+  const { rows: items, status, error: loadError, insert, remove } = useCollection(
+    'transactions',
+    { fromRow, toRow },
+  )
   const [form, setForm] = useState(() => emptyForm())
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const funding = items.filter((i) => i.type === 'funding')
   const expenses = items.filter((i) => i.type === 'expense')
@@ -187,7 +203,7 @@ function Finances({ storageKey }) {
   const categories =
     form.type === 'funding' ? FUNDING_SOURCES.map((s) => s.name) : SPENDING_CATEGORIES
 
-  function update(field) {
+  function setField(field) {
     return (e) => setForm({ ...form, [field]: e.target.value })
   }
 
@@ -195,24 +211,32 @@ function Finances({ storageKey }) {
     setForm({ ...form, type, category: KIND_DEFAULT_CATEGORY[type] })
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    const amount = Number(form.amount)
+    const amount = Math.round(Number(form.amount) * 100) / 100
     if (!form.date || !form.description.trim() || !(amount > 0)) {
       setError('Please enter a date, a description and an amount greater than 0.')
       return
     }
-    setItems([
-      ...items,
-      { ...form, description: form.description.trim(), amount, id: newId() },
-    ])
-    setForm({ ...emptyForm(form.type), category: form.category })
+    setSaving(true)
     setError('')
+    try {
+      await insert({ ...form, description: form.description.trim(), amount })
+      setForm({ ...emptyForm(form.type), category: form.category })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
-  function remove(id) {
+  async function handleDelete(id) {
     if (!window.confirm('Delete this transaction?')) return
-    setItems(items.filter((i) => i.id !== id))
+    try {
+      await remove(id)
+    } catch (err) {
+      window.alert(err.message)
+    }
   }
 
   return (
@@ -288,11 +312,11 @@ function Finances({ storageKey }) {
         </div>
         <label>
           Date
-          <input type="date" value={form.date} onChange={update('date')} />
+          <input type="date" value={form.date} onChange={setField('date')} />
         </label>
         <label>
           {form.type === 'funding' ? 'Source' : 'Category'}
-          <select value={form.category} onChange={update('category')}>
+          <select value={form.category} onChange={setField('category')}>
             {categories.map((c) => (
               <option key={c}>{c}</option>
             ))}
@@ -305,7 +329,7 @@ function Finances({ storageKey }) {
             min="0"
             step="0.01"
             value={form.amount}
-            onChange={update('amount')}
+            onChange={setField('amount')}
           />
         </label>
         <label className="full">
@@ -314,7 +338,7 @@ function Finances({ storageKey }) {
             type="text"
             placeholder={form.type === 'funding' ? 'e.g. Loan tranche 1' : 'e.g. Concrete for foundation'}
             value={form.description}
-            onChange={update('description')}
+            onChange={setField('description')}
           />
         </label>
 
@@ -325,15 +349,21 @@ function Finances({ storageKey }) {
         )}
 
         <div className="form-actions full">
-          <button type="submit">
-            {form.type === 'funding' ? 'Add funding' : 'Add expense'}
+          <button type="submit" disabled={saving}>
+            {saving ? 'Saving…' : form.type === 'funding' ? 'Add funding' : 'Add expense'}
           </button>
         </div>
       </form>
 
-      {sorted.length === 0 ? (
+      {status === 'loading' && <p className="empty">Loading finances…</p>}
+      {status === 'error' && (
+        <p className="error" role="alert">
+          {loadError}
+        </p>
+      )}
+      {status === 'ready' && sorted.length === 0 ? (
         <p className="empty">No transactions yet.</p>
-      ) : (
+      ) : sorted.length === 0 ? null : (
         <div className="card table-wrap">
           <table>
             <thead>
@@ -356,7 +386,7 @@ function Finances({ storageKey }) {
                     {currency.format(item.amount)}
                   </td>
                   <td className="num">
-                    <button type="button" className="link danger" onClick={() => remove(item.id)}>
+                    <button type="button" className="link danger" onClick={() => handleDelete(item.id)}>
                       Delete
                     </button>
                   </td>
