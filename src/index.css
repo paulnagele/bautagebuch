@@ -1348,14 +1348,142 @@ tr.editing td {
   overflow-wrap: anywhere;
 }
 
-/* Keep all four tabs visible on phones. */
+/* Start page */
+.overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  align-items: start;
+}
+
+.overview-photos {
+  grid-column: 1 / -1;
+}
+
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.overview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.5rem;
+}
+
+.overview-head h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.overview-links {
+  display: flex;
+}
+
+.overview-empty,
+.overview-more {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.overview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.overview-item {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--type, var(--border));
+  border-radius: 6px;
+}
+
+.overview-item:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--type) 8%, var(--bg));
+}
+
+.overview-item.overdue {
+  border-color: var(--error);
+  border-left-color: var(--error);
+}
+
+.overview-when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  flex: 0 0 5.75rem;
+  font-size: 0.85rem;
+}
+
+.overdue-date {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.overview-what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.overview-title {
+  font-weight: 600;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.overview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.6rem;
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+}
+
+.overview-what .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-photos .thumb-grid {
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+}
+
+.overview-photos .image-button {
+  cursor: pointer;
+}
+
+/* Keep all five tabs visible on phones. */
 @media (max-width: 480px) {
-  /* Tight enough that the four German tab names fit on a phone. */
+  /* Tight enough that the five German tab names fit on a phone. */
   .tabs {
     gap: 0;
   }
 
   .tabs .tab {
-    padding: 0.6rem 0.4rem;
+    flex: 1 1 auto;
+    padding: 0.6rem 0.2rem;
+    font-size: 0.875rem;
   }
 }

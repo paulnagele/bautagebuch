@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
-import { usePersistentState } from '../storage.js'
+import { useEffect, useState } from 'react'
+import { saveJSON } from '../storage.js'
 import { loadGoogleScript } from '../google.js'
+import Overview from '../tabs/Overview.jsx'
 import Diary from '../tabs/Diary.jsx'
 import Finances from '../tabs/Finances.jsx'
 import Timetable from '../tabs/Timetable.jsx'
@@ -8,6 +9,7 @@ import Contacts from '../tabs/Contacts.jsx'
 import InstallHint from '../components/InstallHint.jsx'
 
 const TABS = [
+  { id: 'overview', label: 'Start', component: Overview },
   { id: 'diary', label: 'Tagebuch', component: Diary },
   { id: 'finances', label: 'Finanzen', component: Finances },
   { id: 'timetable', label: 'Zeitplan', component: Timetable },
@@ -15,12 +17,27 @@ const TABS = [
 ]
 
 function Home({ user, onLogout }) {
-  const [activeTab, setActiveTab] = usePersistentState(
-    'bautagebuch.activeTab',
-    TABS[0].id,
-  )
+  // The app always opens on the start page.
+  const [activeTab, setActiveTab] = useState(TABS[0].id)
+  const [focusEntryId, setFocusEntryId] = useState(null)
   const current = TABS.find((tab) => tab.id === activeTab) ?? TABS[0]
   const ActiveComponent = current.component
+
+  // Opens the diary with a filter, or scrolled to one entry (shown among
+  // the entries of its kind). The diary reads its filter from storage
+  // when it opens.
+  function openDiary({ filter, openOnly = false, entry }) {
+    saveJSON('diary.filter', entry ? entry.type : filter)
+    saveJSON('diary.openOnly', entry ? false : openOnly)
+    setFocusEntryId(entry?.id ?? null)
+    setActiveTab('diary')
+    window.scrollTo({ top: 0 })
+  }
+
+  function chooseTab(id) {
+    setFocusEntryId(null)
+    setActiveTab(id)
+  }
 
   // Google's script is needed to connect Google Drive for photos. Load it
   // early so the "connect" click can open the popup right away.
@@ -57,7 +74,7 @@ function Home({ user, onLogout }) {
             aria-selected={tab.id === current.id}
             aria-controls={`panel-${tab.id}`}
             className={tab.id === current.id ? 'tab active' : 'tab'}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => chooseTab(tab.id)}
           >
             {tab.label}
           </button>
@@ -70,7 +87,12 @@ function Home({ user, onLogout }) {
         id={`panel-${current.id}`}
         aria-labelledby={`tab-${current.id}`}
       >
-        <ActiveComponent user={user} />
+        <ActiveComponent
+          user={user}
+          onOpenDiary={openDiary}
+          focusEntryId={focusEntryId}
+          onFocused={() => setFocusEntryId(null)}
+        />
       </main>
     </div>
   )
