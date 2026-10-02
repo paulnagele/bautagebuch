@@ -18,7 +18,6 @@ export const ENTRY_TYPES = {
     plural: 'Status',
     dateLabel: 'Datum',
     textLabel: 'Ausgeführte Arbeiten',
-    notesLabel: 'Notizen / Vorkommnisse',
     // Weather and workers on site (own database columns, older than types).
     siteInfo: true,
     fields: [],
@@ -28,7 +27,6 @@ export const ENTRY_TYPES = {
     plural: 'Mängel',
     dateLabel: 'Festgestellt am',
     textLabel: 'Beschreibung des Mangels',
-    notesLabel: 'Notizen',
     fields: [
       {
         key: 'state',
@@ -57,7 +55,6 @@ export const ENTRY_TYPES = {
     plural: 'Termine',
     dateLabel: 'Termin am',
     textLabel: 'Worum geht es?',
-    notesLabel: 'Notizen / Ergebnis',
     fields: [
       { key: 'time', label: 'Uhrzeit', kind: 'time', summary: (v) => `${v} Uhr` },
       { key: 'location', label: 'Ort', kind: 'text' },
@@ -69,7 +66,6 @@ export const ENTRY_TYPES = {
     plural: 'Ausgaben',
     dateLabel: 'Datum',
     textLabel: 'Wofür?',
-    notesLabel: 'Notizen',
     // Each expense entry is also booked in Finanzen, kept in sync by the
     // database (migration 20261002233000_diary_expenses.sql).
     fields: [
