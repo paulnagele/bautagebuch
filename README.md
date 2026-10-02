@@ -14,9 +14,9 @@ there are four tabs:
   been spent. The money-flow diagram also shows the planned but not yet
   spent part of each category, hatched.
 - **Timetable** – the project's Google Calendar, embedded
-  (`src/tabs/Timetable.jsx`), with a form to add events and a list of
-  upcoming events to change or delete. The calendar must be public to be
-  visible to everyone using the app.
+  (`src/tabs/Timetable.jsx`). Diary entries of kind "Termin" are added
+  to it automatically. The calendar must be public to be visible to
+  everyone using the app.
 - **Contacts** – the people involved in the build (contractors, trades,
   architect, authorities) with role, company, phone, email and notes.
   Phone numbers and emails open the phone or mail app; the list can be
@@ -39,9 +39,12 @@ there are four tabs:
   nobody can browse the folders. Files are not shared by link; members
   open them through the folder's sharing.
 - **Timetable**: the project's Google Calendar, embedded
-  (`src/tabs/Timetable.jsx`). Events are added, changed and deleted with
-  the signed-in person's own Google account (Calendar API,
+  (`src/tabs/Timetable.jsx`). Saving a diary "Termin" adds or updates
+  its event in the calendar, and deleting the entry deletes the event,
+  with the signed-in person's own Google account (Calendar API,
   `src/calendar.js`); the app asks for calendar access the first time.
+  Changes made directly in Google Calendar are not copied back to the
+  diary.
   The calendar ID is stored in the database like the folder ID.
 
 ## Setup
@@ -91,7 +94,7 @@ Create a calendar for the build (e.g. "Bauzeitplan"). In its settings:
 - **Access permissions for events**: *Make available to public*, so the
   embedded calendar shows for everyone.
 - **Share with specific people**: add every family member with
-  *Make changes to events*, so they can add and change events in the app.
+  *Make changes to events*, so their diary appointments can be added.
 - **Integrate calendar → Calendar ID** (e.g. `…@group.calendar.google.com`)
   is needed in step 4.
 

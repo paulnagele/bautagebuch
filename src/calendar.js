@@ -1,8 +1,9 @@
 // The project's Google Calendar ("Bauzeitplan"). Everyone sees it as an
-// embedded calendar; events are added, changed and deleted with the
-// person's own Google account, so the calendar must be shared with each
-// member with "Make changes to events". The calendar ID is stored in the
-// database (app_settings, key calendar_id), not in the repository.
+// embedded calendar on the Zeitplan tab. Diary appointments are added,
+// changed and deleted there with the person's own Google account, so the
+// calendar must be shared with each member with "Make changes to events".
+// The calendar ID is stored in the database (app_settings, key
+// calendar_id), not in the repository.
 // https://developers.google.com/workspace/calendar/api/v3/reference/events
 
 import { config } from './config.js'
@@ -35,8 +36,6 @@ export function connectCalendar(email) {
   return calendar.connect(email)
 }
 
-export const calendarConnected = calendar.connected
-
 // Called on sign-out.
 export function disconnectCalendar() {
   calendar.disconnect()
@@ -46,10 +45,11 @@ async function eventsUrl(path = '') {
   return `${API}/${encodeURIComponent(await getCalendarId())}/events${path}`
 }
 
-// ---- dates ------------------------------------------------------------------
+// ---- diary appointments -------------------------------------------------------
 //
-// The form works with plain local values ("2026-10-15", "08:00") in the
-// project's time zone, whatever time zone the device is set to.
+// Each diary entry of kind "Termin" has an event in the calendar; its ID
+// is kept in the entry's details (calendarEventId). Date and time are in
+// the project's time zone, whatever time zone the device is set to.
 
 function addDays(date, days) {
   const d = new Date(`${date}T12:00:00Z`)
@@ -57,109 +57,71 @@ function addDays(date, days) {
   return d.toISOString().slice(0, 10)
 }
 
-// "2026-10-15T08:00:00+02:00" → { date: '2026-10-15', time: '08:00' } in Vienna.
-function localParts(dateTime) {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: TIME_ZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    })
-      .formatToParts(new Date(dateTime))
-      .map((p) => [p.type, p.value]),
-  )
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` }
-}
+const pad = (n) => String(n).padStart(2, '0')
 
-// Today's date in the project's time zone, e.g. "2026-10-15".
-export function todayDate() {
-  return localParts(new Date()).date
-}
-
-// Google event → form values. All-day events end the day after their
-// last day (exclusive), the form shows the last day itself.
-function fromEvent(event) {
-  const allDay = Boolean(event.start?.date)
-  const start = allDay ? { date: event.start.date, time: '' } : localParts(event.start.dateTime)
-  const end = allDay ? { date: addDays(event.end.date, -1), time: '' } : localParts(event.end.dateTime)
+// With a time: one hour from then. Without: all day.
+function eventTimes(date, time) {
+  if (!time) {
+    return { start: { date, dateTime: null }, end: { date: addDays(date, 1), dateTime: null } }
+  }
+  const [h, m] = time.split(':').map(Number)
+  const endHour = h + 1
+  const endDate = endHour >= 24 ? addDays(date, 1) : date
   return {
-    id: event.id,
-    title: event.summary ?? '',
-    location: event.location ?? '',
-    description: event.description ?? '',
-    allDay,
-    startDate: start.date,
-    startTime: start.time,
-    endDate: end.date,
-    endTime: end.time,
-    recurring: Boolean(event.recurringEventId),
+    start: { dateTime: `${date}T${pad(h)}:${pad(m)}:00`, timeZone: TIME_ZONE, date: null },
+    end: { dateTime: `${endDate}T${pad(endHour % 24)}:${pad(m)}:00`, timeZone: TIME_ZONE, date: null },
   }
 }
 
-function toEvent(form) {
-  const when = form.allDay
-    ? {
-        start: { date: form.startDate, dateTime: null },
-        end: { date: addDays(form.endDate, 1), dateTime: null },
-      }
-    : {
-        start: { dateTime: `${form.startDate}T${form.startTime}:00`, timeZone: TIME_ZONE, date: null },
-        end: { dateTime: `${form.endDate}T${form.endTime}:00`, timeZone: TIME_ZONE, date: null },
-      }
+// The event for an appointment entry: its first line as the title, the
+// whole text and who takes part as the description.
+function appointmentEvent({ date, work, details }) {
+  const [firstLine] = work.split('\n')
+  const title = firstLine.length > 100 ? `${firstLine.slice(0, 99)}…` : firstLine
+  const description = [work, details.participants && `Mit: ${details.participants}`, 'Aus dem Bautagebuch']
+    .filter(Boolean)
+    .join('\n\n')
   return {
-    summary: form.title,
-    location: form.location,
-    description: form.description,
-    ...when,
+    summary: title,
+    location: details.location ?? '',
+    description,
+    ...eventTimes(date, details.time),
   }
 }
 
-// ---- API calls ----------------------------------------------------------------
+// The nulls only matter when changing an event (they clear the other kind
+// of time); a new event does not need them.
+const withoutNulls = (key, value) => (value === null ? undefined : value)
 
-// Events from the start of today on, earliest first. Recurring events
-// come as their single occurrences.
-export async function listUpcomingEvents() {
-  const today = todayDate()
-  const params = new URLSearchParams({
-    singleEvents: 'true',
-    orderBy: 'startTime',
-    maxResults: '100',
-    // A day early, so nothing of today is missed whatever the offset;
-    // yesterday's events are dropped below.
-    timeMin: new Date(`${addDays(today, -1)}T00:00:00Z`).toISOString(),
-  })
-  const response = await calendar.fetch(`${await eventsUrl()}?${params}`)
-  const { items = [] } = await response.json()
-  return items
-    .filter((e) => e.status !== 'cancelled')
-    .map(fromEvent)
-    .filter((e) => e.endDate >= today)
-}
-
-export async function createEvent(form) {
+// Creates or updates the appointment's event and returns its ID. An event
+// deleted in Google Calendar meanwhile is created again.
+export async function saveAppointmentEvent(entry, eventId) {
+  const body = appointmentEvent(entry)
+  if (eventId) {
+    try {
+      await calendar.fetch(await eventsUrl(`/${encodeURIComponent(eventId)}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      return eventId
+    } catch (err) {
+      if (err.status !== 404 && err.status !== 410) throw err
+    }
+  }
   const response = await calendar.fetch(await eventsUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    // The nulls only matter when changing an event (they clear the other
-    // kind of time); a new event does not need them.
-    body: JSON.stringify(toEvent(form), (key, value) => (value === null ? undefined : value)),
+    body: JSON.stringify(body, withoutNulls),
   })
-  return fromEvent(await response.json())
+  return (await response.json()).id
 }
 
-export async function updateEvent(id, form) {
-  const response = await calendar.fetch(await eventsUrl(`/${encodeURIComponent(id)}`), {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(toEvent(form)),
-  })
-  return fromEvent(await response.json())
-}
-
-export async function deleteEvent(id) {
-  await calendar.fetch(await eventsUrl(`/${encodeURIComponent(id)}`), { method: 'DELETE' })
+export async function deleteAppointmentEvent(eventId) {
+  try {
+    await calendar.fetch(await eventsUrl(`/${encodeURIComponent(eventId)}`), { method: 'DELETE' })
+  } catch (err) {
+    // Already deleted in Google Calendar.
+    if (err.status !== 404 && err.status !== 410) throw err
+  }
 }
