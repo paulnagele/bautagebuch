@@ -274,6 +274,11 @@ td select {
   font-size: 0.9rem;
 }
 
+.form-grid .form-hint {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 .form-actions {
   display: flex;
   gap: 0.5rem;
@@ -353,6 +358,10 @@ button.link.danger {
 
 .type-appointment {
   --type: var(--series-7);
+}
+
+.type-expense {
+  --type: var(--series-4);
 }
 
 .type-picker {

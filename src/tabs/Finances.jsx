@@ -80,6 +80,8 @@ function fromRow(row) {
     category: row.category,
     description: row.description,
     amount: Number(row.amount),
+    // Set for expenses entered in the diary; those are changed there.
+    diaryEntryId: row.diary_entry_id ?? null,
   }
 }
 
@@ -101,7 +103,9 @@ function sumBy(items, key) {
   return totals
 }
 
-function emptyForm(type = 'expense') {
+// New expenses are entered in the diary (entry kind "Ausgabe"), so the
+// form here adds funding; older expenses can still be edited with it.
+function emptyForm(type = 'funding') {
   // An empty category means "the first category of this type".
   return { date: today(), type, category: '', description: '', amount: '' }
 }
@@ -260,10 +264,6 @@ function Finances() {
     return (e) => setForm({ ...form, [field]: e.target.value })
   }
 
-  function setType(type) {
-    setForm({ ...form, type, category: '' })
-  }
-
   async function handleSubmit(e) {
     e.preventDefault()
     const amount = Math.round(Number(form.amount) * 100) / 100
@@ -396,25 +396,18 @@ function Finances() {
       />
 
       <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
-        <h2>{editingId ? 'Buchung bearbeiten' : 'Neue Buchung'}</h2>
-        <div className="segmented full" role="group" aria-label="Buchungsart">
-          <button
-            type="button"
-            className={form.type === 'expense' ? 'active' : undefined}
-            aria-pressed={form.type === 'expense'}
-            onClick={() => setType('expense')}
-          >
-            Ausgabe
-          </button>
-          <button
-            type="button"
-            className={form.type === 'funding' ? 'active' : undefined}
-            aria-pressed={form.type === 'funding'}
-            onClick={() => setType('funding')}
-          >
-            Finanzierung
-          </button>
-        </div>
+        <h2>
+          {!editingId
+            ? 'Neue Finanzierung'
+            : form.type === 'funding'
+              ? 'Finanzierung bearbeiten'
+              : 'Ausgabe bearbeiten'}
+        </h2>
+        {!editingId && (
+          <p className="muted full form-hint">
+            Ausgaben trägst du im Tagebuch ein (Eintragsart „Ausgabe“).
+          </p>
+        )}
         <label>
           Datum
           <input type="date" value={form.date} onChange={setField('date')} />
@@ -513,12 +506,24 @@ function Finances() {
                     {currency.format(item.amount)}
                   </td>
                   <td className="num row-actions">
-                    <button type="button" className="link" onClick={() => startEdit(item)}>
-                      Bearbeiten
-                    </button>
-                    <button type="button" className="link danger" onClick={() => handleDelete(item.id)}>
-                      Löschen
-                    </button>
+                    {item.diaryEntryId ? (
+                      <span className="muted" title="Im Tagebuch bearbeiten oder löschen">
+                        aus dem Tagebuch
+                      </span>
+                    ) : (
+                      <>
+                        <button type="button" className="link" onClick={() => startEdit(item)}>
+                          Bearbeiten
+                        </button>
+                        <button
+                          type="button"
+                          className="link danger"
+                          onClick={() => handleDelete(item.id)}
+                        >
+                          Löschen
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
