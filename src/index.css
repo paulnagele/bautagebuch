@@ -358,8 +358,141 @@ button.link.danger {
 .entry-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.25rem;
   margin-top: 0.5rem;
+}
+
+/* Diary entry kinds. Each kind sets --type; add a line for a new kind. */
+.type-status {
+  --type: var(--series-1);
+}
+
+.type-defect {
+  --type: var(--series-8);
+}
+
+.type-appointment {
+  --type: var(--series-7);
+}
+
+.type-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.type-option {
+  flex: 1 1 0;
+  min-width: 90px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.type-option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--type) 10%, var(--bg));
+}
+
+.type-option.selected,
+.type-option.selected:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--type) 16%, var(--surface));
+  border-color: var(--type);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.entry-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.type-badge,
+.state-pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.type-badge {
+  background: color-mix(in srgb, var(--type) 16%, var(--surface));
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--type) 45%, transparent);
+}
+
+.entry.card {
+  border-left: 4px solid var(--type, var(--border));
+}
+
+.state-pill {
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.state-open {
+  color: var(--error);
+  border-color: currentColor;
+}
+
+.state-fixed {
+  color: var(--success);
+  border-color: currentColor;
+}
+
+.state-upcoming {
+  color: var(--accent);
+  border-color: currentColor;
+}
+
+.diary-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+button.chip {
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+button.chip:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+button.chip.active,
+button.chip.active:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.chip-count {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.open-only {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
 }
 
 /* Finances */
