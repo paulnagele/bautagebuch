@@ -1,5 +1,5 @@
--- Bautagebuch database schema.
--- Run once in the Supabase dashboard: SQL Editor → New query → paste → Run.
+-- Bautagebuch database schema, first migration.
+-- Applied automatically by .github/workflows/supabase-migrations.yml.
 -- Safe to run again: it only creates what is missing.
 
 -- ---------------------------------------------------------------------------
@@ -89,12 +89,3 @@ create policy "members have full access"
   on public.transactions for all to authenticated
   using (public.is_member())
   with check (public.is_member());
-
--- ---------------------------------------------------------------------------
--- Add your family's Google accounts here (lower case), then run.
--- To add someone later, run just this statement with their address.
--- ---------------------------------------------------------------------------
--- insert into public.members (email) values
---   ('you@gmail.com'),
---   ('partner@gmail.com')
--- on conflict do nothing;
