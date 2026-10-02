@@ -158,33 +158,29 @@ function shareByLink(fileId) {
   })
 }
 
+// Resumable upload, so full-size photos of any size go through (simple
+// multipart uploads are limited to 5 MB).
 export async function uploadPhoto(blob, name) {
-  const boundary = `bautagebuch-${Math.random().toString(36).slice(2)}`
-  const metadata = {
-    name,
-    mimeType: blob.type || 'image/jpeg',
-    parents: [await getDriveFolderId()],
-  }
-  const body = new Blob([
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`,
-    JSON.stringify(metadata),
-    `\r\n--${boundary}\r\nContent-Type: ${metadata.mimeType}\r\n\r\n`,
-    blob,
-    `\r\n--${boundary}--`,
-  ])
-  const response = await driveFetch(
-    `${UPLOAD_API}?uploadType=multipart&supportsAllDrives=true&fields=id`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
-      body,
+  const mimeType = blob.type || 'image/jpeg'
+  const session = await driveFetch(`${UPLOAD_API}?uploadType=resumable&supportsAllDrives=true`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': mimeType,
     },
-  )
+    body: JSON.stringify({ name, mimeType, parents: [await getDriveFolderId()] }),
+  })
+  const uploadUrl = session.headers.get('Location')
+  if (!uploadUrl) throw new Error('Google Drive hat keine Upload-Adresse geliefert.')
+  const response = await driveFetch(`${uploadUrl}&fields=id`, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: blob,
+  })
   const { id } = await response.json()
   await shareByLink(id).catch(() => {}) // still viewable via the fallback
   // The uploader already has the photo: keep it so it shows right away.
   photoCache.set(id, Promise.resolve(URL.createObjectURL(blob)))
-  storeOnDevice(id, blob)
   return id
 }
 
