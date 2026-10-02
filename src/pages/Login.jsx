@@ -1,87 +1,85 @@
-import { useState } from 'react'
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-// Placeholder until a real backend exists: accepts any valid email
-// with a password of at least 6 characters.
-function fakeAuthenticate(email, password) {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      if (password.length >= 6) {
-        resolve({ email })
-      } else {
-        reject(new Error('Invalid email or password.'))
-      }
-    }, 500)
-  })
-}
+import { useEffect, useRef, useState } from 'react'
+import { GOOGLE_CLIENT_ID, loadGoogleScript, userFromCredential } from '../googleAuth.js'
 
 function Login({ onLogin }) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const buttonRef = useRef(null)
   const [error, setError] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [loading, setLoading] = useState(Boolean(GOOGLE_CLIENT_ID))
 
-  async function handleSubmit(event) {
-    event.preventDefault()
-    setError('')
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return
+    let cancelled = false
 
-    if (!EMAIL_PATTERN.test(email)) {
-      setError('Please enter a valid email address.')
-      return
-    }
-    if (!password) {
-      setError('Please enter your password.')
-      return
-    }
+    loadGoogleScript()
+      .then((google) => {
+        if (cancelled || !buttonRef.current) return
+        google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: (response) => {
+            try {
+              onLogin(userFromCredential(response.credential))
+            } catch (err) {
+              setError(err.message)
+            }
+          },
+          ux_mode: 'popup',
+        })
+        google.accounts.id.renderButton(buttonRef.current, {
+          type: 'standard',
+          theme: 'outline',
+          size: 'large',
+          text: 'signin_with',
+          shape: 'rectangular',
+          width: 280,
+        })
+        setLoading(false)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setError(err.message)
+        setLoading(false)
+      })
 
-    setSubmitting(true)
-    try {
-      const user = await fakeAuthenticate(email, password)
-      onLogin(user)
-    } catch (err) {
-      setError(err.message)
-      setSubmitting(false)
+    return () => {
+      cancelled = true
     }
-  }
+  }, [onLogin])
 
   return (
     <main className="login-page">
-      <form className="login-card" onSubmit={handleSubmit} noValidate>
+      <div className="login-card">
         <h1>Bautagebuch</h1>
         <p className="subtitle">Sign in to your account</p>
 
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={submitting}
-          autoFocus
-        />
-
-        <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={submitting}
-        />
+        {GOOGLE_CLIENT_ID ? (
+          <>
+            <div className="google-button" ref={buttonRef} />
+            {loading && <p className="muted">Loading Google sign-in…</p>}
+          </>
+        ) : (
+          <div className="notice">
+            <p>
+              Google sign-in is not configured yet. Set <code>VITE_GOOGLE_CLIENT_ID</code> (see
+              the README).
+            </p>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() =>
+                onLogin({ email: 'demo@example.com', name: 'Demo user', provider: 'demo' })
+              }
+            >
+              Continue in demo mode
+            </button>
+          </div>
+        )}
 
         {error && (
           <p className="error" role="alert">
             {error}
           </p>
         )}
-
-        <button type="submit" disabled={submitting}>
-          {submitting ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+      </div>
     </main>
   )
 }
