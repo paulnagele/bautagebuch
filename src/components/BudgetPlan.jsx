@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePersistentState } from '../storage.js'
 
 // Planned budget per expense category next to what was actually spent.
 // `categories` are the expense categories (with `plannedAmount`, null when
@@ -77,6 +78,14 @@ function BudgetPlan({
   const [editing, setEditing] = useState(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  // Remembered on this device: whether the card is open, and which
+  // categories show their items (all collapsed at first).
+  const [open, setOpen] = usePersistentState('budget.open', true)
+  const [openCategories, setOpenCategories] = usePersistentState('budget.openCategories', [])
+
+  function toggleCategory(id) {
+    setOpenCategories((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]))
+  }
 
   const itemsOf = (categoryId) => items.filter((item) => item.categoryId === categoryId)
   const names = new Set(categories.map((c) => c.name))
@@ -187,7 +196,19 @@ function BudgetPlan({
   return (
     <div className="card budget-plan">
       <div className="budget-head">
-        <h2>Budget nach Kategorie</h2>
+        <h2>
+          <button
+            type="button"
+            className="budget-toggle"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            <span className="budget-chevron" aria-hidden="true">
+              {open ? '▾' : '▸'}
+            </span>
+            Budget nach Kategorie
+          </button>
+        </h2>
         {anyPlan && (
           <span className="muted budget-total">
             {format(totalSpent)} von {format(totalPlanned)} geplant
@@ -199,148 +220,163 @@ function BudgetPlan({
           ⚠ Der Plan braucht {format(totalPlanned - funding)} mehr als die gesicherte Finanzierung.
         </p>
       )}
-      {!anyPlan && (
+      {open && !anyPlan && (
         <p className="muted budget-hint">
           {readOnly
             ? 'Geplante Beträge können festgelegt werden, sobald die Datenbank aktuell ist.'
             : 'Lege pro Kategorie einen geplanten Betrag fest oder teile sie in Posten auf (z. B. Dachdecker, Spengler), um den Plan mit den Ausgaben zu vergleichen.'}
         </p>
       )}
-      <ul className="budget-list">
-        {rows.map((row) => {
-          const hasItems = row.items.length > 0
-          const unassigned =
-            row.spent - row.items.reduce((s, item) => s + (itemSpent.get(item.id) ?? 0), 0)
-          const editingPlan = editing?.kind === 'plan' && editing.id === row.id
-          return (
-            <li key={row.id} className="budget-row">
-              <div className="budget-line">
-                <span className="budget-name">{row.name}</span>
-                {editingPlan ? (
-                  <form className="budget-edit" onSubmit={handleSave}>
-                    <input
-                      type="number"
-                      min="0"
-                      step="100"
-                      inputMode="decimal"
-                      placeholder="Kein Plan"
-                      aria-label={`Geplanter Betrag für ${row.name} (€)`}
-                      value={editing.value}
-                      onChange={(e) => setEditing({ ...editing, value: e.target.value })}
-                      disabled={busy}
-                      autoFocus
-                    />
-                    <button type="submit" className="link" disabled={busy}>
-                      Speichern
-                    </button>
-                    {cancelButton}
-                  </form>
-                ) : (
-                  row.editable && (
-                    <span className="budget-actions">
-                      {!hasItems && (
-                        <button
-                          type="button"
-                          className="link"
-                          onClick={() =>
-                            start({
-                              kind: 'plan',
-                              id: row.id,
-                              value: row.planned === null ? '' : String(row.planned),
-                            })
-                          }
-                        >
-                          {row.planned === null ? 'Plan festlegen' : 'Plan bearbeiten'}
-                        </button>
-                      )}
-                      {canEditItems && (
-                        <button
-                          type="button"
-                          className="link"
-                          onClick={() =>
-                            start({ kind: 'new-item', categoryId: row.id, name: '', value: '' })
-                          }
-                        >
-                          + Posten
-                        </button>
-                      )}
-                    </span>
-                  )
+      {open && (
+        <ul className="budget-list">
+          {rows.map((row) => {
+            const hasItems = row.items.length > 0
+            const unassigned =
+              row.spent - row.items.reduce((s, item) => s + (itemSpent.get(item.id) ?? 0), 0)
+            const editingPlan = editing?.kind === 'plan' && editing.id === row.id
+            const addingItem = editing?.kind === 'new-item' && editing.categoryId === row.id
+            const itemsOpen = hasItems && openCategories.includes(row.id)
+            return (
+              <li key={row.id} className="budget-row">
+                <div className="budget-line">
+                  <span className="budget-name">{row.name}</span>
+                  {editingPlan ? (
+                    <form className="budget-edit" onSubmit={handleSave}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        inputMode="decimal"
+                        placeholder="Kein Plan"
+                        aria-label={`Geplanter Betrag für ${row.name} (€)`}
+                        value={editing.value}
+                        onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                        disabled={busy}
+                        autoFocus
+                      />
+                      <button type="submit" className="link" disabled={busy}>
+                        Speichern
+                      </button>
+                      {cancelButton}
+                    </form>
+                  ) : (
+                    row.editable && (
+                      <span className="budget-actions">
+                        {!hasItems && (
+                          <button
+                            type="button"
+                            className="link"
+                            onClick={() =>
+                              start({
+                                kind: 'plan',
+                                id: row.id,
+                                value: row.planned === null ? '' : String(row.planned),
+                              })
+                            }
+                          >
+                            {row.planned === null ? 'Plan festlegen' : 'Plan bearbeiten'}
+                          </button>
+                        )}
+                        {canEditItems && (
+                          <button
+                            type="button"
+                            className="link"
+                            onClick={() =>
+                              start({ kind: 'new-item', categoryId: row.id, name: '', value: '' })
+                            }
+                          >
+                            + Posten
+                          </button>
+                        )}
+                      </span>
+                    )
+                  )}
+                </div>
+                <Progress label={row.name} spent={row.spent} planned={row.planned} format={format} />
+                {hasItems && (
+                  <button
+                    type="button"
+                    className="link budget-items-toggle"
+                    aria-expanded={itemsOpen}
+                    onClick={() => toggleCategory(row.id)}
+                  >
+                    <span aria-hidden="true">{itemsOpen ? '▾' : '▸'}</span> {row.items.length}{' '}
+                    Posten{itemsOpen ? ' ausblenden' : ' anzeigen'}
+                  </button>
                 )}
-              </div>
-              <Progress label={row.name} spent={row.spent} planned={row.planned} format={format} />
-              {(hasItems || editing?.categoryId === row.id) && (
-                <ul className="budget-items">
-                  {row.items.map((item) => (
-                    <li key={item.id} className="budget-item">
-                      {editing?.kind === 'item' && editing.id === item.id ? (
-                        itemForm(row.name)
-                      ) : (
-                        <>
-                          <div className="budget-line">
-                            <span className="budget-name">{item.name}</span>
-                            {canEditItems && (
-                              <span className="budget-actions">
-                                <button
-                                  type="button"
-                                  className="link"
-                                  onClick={() =>
-                                    start({
-                                      kind: 'item',
-                                      id: item.id,
-                                      name: item.name,
-                                      value: String(item.plannedAmount),
-                                    })
-                                  }
-                                >
-                                  Bearbeiten
-                                </button>
-                                <button
-                                  type="button"
-                                  className="link danger"
-                                  onClick={() => handleDeleteItem(item)}
-                                  disabled={busy}
-                                >
-                                  Löschen
-                                </button>
-                              </span>
-                            )}
-                          </div>
-                          <Progress
-                            label={item.name}
-                            spent={itemSpent.get(item.id) ?? 0}
-                            planned={item.plannedAmount}
-                            format={format}
-                            small
-                          />
-                        </>
-                      )}
-                    </li>
-                  ))}
-                  {hasItems && unassigned > 0.005 && (
-                    <li className="budget-item">
-                      <div className="budget-line budget-detail">
-                        <span className="muted">Ohne Posten</span>
-                        <span className="budget-amounts">{format(unassigned)}</span>
-                      </div>
-                    </li>
-                  )}
-                  {editing?.kind === 'new-item' && editing.categoryId === row.id && (
-                    <li className="budget-item">
-                      {itemForm(row.name)}
-                      {!hasItems && row.planned !== null && (
-                        <p className="muted budget-hint">
-                          Mit Posten ergibt sich der Plan der Kategorie aus deren Summe.
-                        </p>
-                      )}
-                    </li>
-                  )}
-                </ul>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+                {(itemsOpen || addingItem) && (
+                  <ul className="budget-items">
+                    {(itemsOpen ? row.items : []).map((item) => (
+                      <li key={item.id} className="budget-item">
+                        {editing?.kind === 'item' && editing.id === item.id ? (
+                          itemForm(row.name)
+                        ) : (
+                          <>
+                            <div className="budget-line">
+                              <span className="budget-name">{item.name}</span>
+                              {canEditItems && (
+                                <span className="budget-actions">
+                                  <button
+                                    type="button"
+                                    className="link"
+                                    onClick={() =>
+                                      start({
+                                        kind: 'item',
+                                        id: item.id,
+                                        name: item.name,
+                                        value: String(item.plannedAmount),
+                                      })
+                                    }
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="link danger"
+                                    onClick={() => handleDeleteItem(item)}
+                                    disabled={busy}
+                                  >
+                                    Löschen
+                                  </button>
+                                </span>
+                              )}
+                            </div>
+                            <Progress
+                              label={item.name}
+                              spent={itemSpent.get(item.id) ?? 0}
+                              planned={item.plannedAmount}
+                              format={format}
+                              small
+                            />
+                          </>
+                        )}
+                      </li>
+                    ))}
+                    {itemsOpen && unassigned > 0.005 && (
+                      <li className="budget-item">
+                        <div className="budget-line budget-detail">
+                          <span className="muted">Ohne Posten</span>
+                          <span className="budget-amounts">{format(unassigned)}</span>
+                        </div>
+                      </li>
+                    )}
+                    {addingItem && (
+                      <li className="budget-item">
+                        {itemForm(row.name)}
+                        {!hasItems && row.planned !== null && (
+                          <p className="muted budget-hint">
+                            Mit Posten ergibt sich der Plan der Kategorie aus deren Summe.
+                          </p>
+                        )}
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
       {message && (
         <p className="error" role="alert">
           {message}
