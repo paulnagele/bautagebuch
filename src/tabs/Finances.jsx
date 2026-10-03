@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { formatDate, today } from '../storage.js'
 import { friendlyError, useCollection } from '../useCollection.js'
+import { useDialogs } from '../dialogs.js'
 import { supabase } from '../supabase.js'
 import CategoryManager from '../components/CategoryManager.jsx'
 import MoneyFlow from '../components/MoneyFlow.jsx'
@@ -222,6 +223,7 @@ function Finances() {
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const formRef = useRef(null)
+  const dialogs = useDialogs()
 
   const funding = items.filter((i) => i.type === 'funding')
   const expenses = items.filter((i) => i.type === 'expense')
@@ -375,12 +377,12 @@ function Finances() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Diese Buchung löschen?')) return
+    if (!(await dialogs.confirm('Diese Buchung löschen?', { confirmLabel: 'Löschen', danger: true }))) return
     try {
       await remove(id)
       if (editingId === id) resetForm()
     } catch (err) {
-      window.alert(err.message)
+      await dialogs.alert(err.message)
     }
   }
 

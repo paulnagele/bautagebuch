@@ -8,6 +8,7 @@ import {
 } from '../calendar.js'
 import { formatDate, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
+import { useDialogs } from '../dialogs.js'
 
 function fromRow(row) {
   return {
@@ -60,6 +61,7 @@ function Milestones({ user, onCalendarChange }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const formRef = useRef(null)
+  const dialogs = useDialogs()
 
   const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name, 'de'))
 
@@ -114,16 +116,17 @@ function Milestones({ user, onCalendarChange }) {
     )
     try {
       await update(original.id, milestone)
-      if (problem) window.alert(calendarWarning(problem))
+      if (problem) await dialogs.alert(calendarWarning(problem))
       onCalendarChange()
     } catch (err) {
-      window.alert(err.message)
+      await dialogs.alert(err.message)
     }
   }
 
   async function handleDelete(milestone) {
     const calendarNote = milestone.eventId ? ' Er wird auch aus dem Google Kalender gelöscht.' : ''
-    if (!window.confirm(`Den Meilenstein „${milestone.name}“ löschen?${calendarNote}`)) return
+    const question = `Den Meilenstein „${milestone.name}“ löschen?${calendarNote}`
+    if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     if (milestone.eventId) {
       try {
         await connectCalendar(user.email)
@@ -132,7 +135,7 @@ function Milestones({ user, onCalendarChange }) {
         const question =
           `Der Meilenstein konnte nicht aus dem Google Kalender gelöscht werden (${err.message}). ` +
           'Trotzdem löschen?'
-        if (!window.confirm(question)) return
+        if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
       }
     }
     try {
@@ -140,7 +143,7 @@ function Milestones({ user, onCalendarChange }) {
       if (editingId === milestone.id) resetForm()
       onCalendarChange()
     } catch (err) {
-      window.alert(err.message)
+      await dialogs.alert(err.message)
     }
   }
 

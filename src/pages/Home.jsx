@@ -7,6 +7,7 @@ import Finances from '../tabs/Finances.jsx'
 import Timetable from '../tabs/Timetable.jsx'
 import Contacts from '../tabs/Contacts.jsx'
 import InstallHint from '../components/InstallHint.jsx'
+import DialogProvider from '../components/DialogProvider.jsx'
 
 const TABS = [
   { id: 'overview', label: 'Start', component: Overview },
@@ -55,60 +56,62 @@ function Home({ user, onLogout }) {
   }, [])
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <h1>Bautagebuch</h1>
-        <div className="user-menu">
-          {user.picture && (
-            <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />
-          )}
-          <span className="user-email" title={user.email}>
-            {user.name ?? user.email}
-          </span>
-          <button type="button" className="secondary" onClick={onLogout}>
-            Abmelden
-          </button>
-        </div>
-      </header>
+    <DialogProvider>
+      <div className="app-shell">
+        <header className="app-header">
+          <h1>Bautagebuch</h1>
+          <div className="user-menu">
+            {user.picture && (
+              <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />
+            )}
+            <span className="user-email" title={user.email}>
+              {user.name ?? user.email}
+            </span>
+            <button type="button" className="secondary" onClick={onLogout}>
+              Abmelden
+            </button>
+          </div>
+        </header>
 
-      <InstallHint />
+        <InstallHint />
 
-      <nav className="tabs" role="tablist">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            id={`tab-${tab.id}`}
-            aria-selected={tab.id === current.id}
-            aria-controls={`panel-${tab.id}`}
-            className={tab.id === current.id ? 'tab active' : 'tab'}
-            onClick={() => chooseTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
+        <nav className="tabs" role="tablist">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`tab-${tab.id}`}
+              aria-selected={tab.id === current.id}
+              aria-controls={`panel-${tab.id}`}
+              className={tab.id === current.id ? 'tab active' : 'tab'}
+              onClick={() => chooseTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
 
-      <main
-        className="tab-panel"
-        role="tabpanel"
-        id={`panel-${current.id}`}
-        aria-labelledby={`tab-${current.id}`}
-      >
-        <ActiveComponent
-          user={user}
-          onOpenDiary={openDiary}
-          onOpenContact={openContact}
-          focusEntryId={focusEntryId}
-          focusContactId={focusContactId}
-          onFocused={() => {
-            setFocusEntryId(null)
-            setFocusContactId(null)
-          }}
-        />
-      </main>
-    </div>
+        <main
+          className="tab-panel"
+          role="tabpanel"
+          id={`panel-${current.id}`}
+          aria-labelledby={`tab-${current.id}`}
+        >
+          <ActiveComponent
+            user={user}
+            onOpenDiary={openDiary}
+            onOpenContact={openContact}
+            focusEntryId={focusEntryId}
+            focusContactId={focusContactId}
+            onFocused={() => {
+              setFocusEntryId(null)
+              setFocusContactId(null)
+            }}
+          />
+        </main>
+      </div>
+    </DialogProvider>
   )
 }
 

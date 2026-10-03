@@ -1715,3 +1715,36 @@ button.link.contact-link {
   padding: 0;
   font: inherit;
 }
+
+/* In-app confirm and alert (components/DialogProvider.jsx) */
+.app-dialog {
+  width: min(400px, calc(100% - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.app-dialog::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.app-dialog p {
+  margin: 0 0 1rem;
+  white-space: pre-line;
+}
+
+.app-dialog .form-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+button.danger-button {
+  background: var(--error);
+}
+
+button.danger-button:hover:not(:disabled) {
+  background: var(--error);
+  filter: brightness(0.9);
+}

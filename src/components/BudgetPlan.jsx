@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { usePersistentState } from '../storage.js'
+import { useDialogs } from '../dialogs.js'
 
 // Planned budget per expense category next to what was actually spent.
 // `categories` are the expense categories (with `plannedAmount`, null when
@@ -78,6 +79,7 @@ function BudgetPlan({
   const [editing, setEditing] = useState(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const dialogs = useDialogs()
   // Remembered on this device: whether the card is open, and which
   // categories show their items (all collapsed at first).
   const [open, setOpen] = usePersistentState('budget.open', true)
@@ -151,7 +153,8 @@ function BudgetPlan({
   async function handleDeleteItem(item) {
     const used = itemSpent.get(item.id) ?? 0
     const note = used > 0 ? ` Die zugeordneten Ausgaben (${format(used)}) bleiben in der Kategorie.` : ''
-    if (!window.confirm(`Den Posten „${item.name}“ löschen?${note}`)) return
+    const question = `Den Posten „${item.name}“ löschen?${note}`
+    if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     await run(() => onDeleteItem(item.id))
   }
 

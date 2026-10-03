@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useDialogs } from '../dialogs.js'
 
 // Add, rename and delete the categories of one type (expense or funding).
 // `usage` maps a category name to the number of transactions using it.
@@ -7,6 +8,7 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
   const [editing, setEditing] = useState(null) // { id, name }
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const dialogs = useDialogs()
 
   async function run(action) {
     setBusy(true)
@@ -49,7 +51,8 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
       )
       return
     }
-    if (!window.confirm(`Die Kategorie „${category.name}“ löschen?`)) return
+    const question = `Die Kategorie „${category.name}“ löschen?`
+    if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     await run(() => onDelete(category.id))
   }
 
