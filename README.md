@@ -11,8 +11,10 @@ there are four tabs:
   added, renamed and deleted under "Manage categories". Shows funding secured, spent annd
   remaining, a money-flow diagram from funding sources to expense
   categories, and a planned budget per expense category next to what has
-  been spent. The money-flow diagram also shows the planned but not yet
-  spent part of each category, hatched.
+  been spent. A category can be split into budget items (e.g. under "Dach":
+  Zimmerei, Spengler) with their own planned amounts; diary expenses can
+  be assigned to an item. The money-flow diagram also shows the planned
+  but not yet spent part of each category, hatched.
 - **Timetable** – the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). Diary entries of kind "Termin", and
   "Aufgabe" and "Mangel" entries with a due date, are added to it

@@ -1639,3 +1639,43 @@ tr.editing td {
     font-size: 0.875rem;
   }
 }
+
+.budget-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 0.25rem;
+}
+
+/* Budget items, nested under their category. */
+.budget-items {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0 0 0 0.85rem;
+  border-left: 2px solid var(--border);
+}
+
+.budget-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.35rem 0;
+  font-size: 0.92rem;
+}
+
+.budget-item .budget-detail {
+  font-size: 0.82rem;
+}
+
+.budget-meter.small {
+  height: 4px;
+}
+
+.budget-item-form {
+  flex-wrap: wrap;
+}
+
+.budget-item-form .budget-item-name {
+  flex: 1;
+  min-width: 9rem;
+  width: auto;
+}

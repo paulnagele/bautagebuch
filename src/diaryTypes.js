@@ -9,6 +9,10 @@ const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: '
 //   kind: 'text' | 'date' | 'time' | 'select' | 'amount' (euros, > 0)
 //   options: a select's choices { value: label }, or
 //   optionsFrom: a list the diary loads, e.g. 'expenseCategories'
+//   within: the choices depend on another field's value; optionsFrom then
+//     names a list of { id, name } per value of that field, the stored
+//     value is the id, and the field is optional and hidden when the list
+//     is empty
 //   suggestFrom: free text for people, with names from that list (e.g.
 //     'contacts') suggested while typing; several separated by commas
 //   required: must be filled in before saving
@@ -128,6 +132,14 @@ export const ENTRY_TYPES = {
         kind: 'select',
         optionsFrom: 'expenseCategories',
         required: true,
+      },
+      {
+        // One of the category's budget items, kept on the Finanzen tab.
+        key: 'budgetItem',
+        label: 'Posten',
+        kind: 'select',
+        optionsFrom: 'budgetItems',
+        within: 'category',
       },
       {
         key: 'amount',
