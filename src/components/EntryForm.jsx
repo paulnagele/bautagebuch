@@ -158,7 +158,7 @@ function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, o
       </label>
 
       <div className="full photo-field">
-        <span className="field-label">Fotos und Dateien</span>
+        <span className="field-label">{formType.receipts ? 'Beleg (Foto oder PDF der Rechnung)' : 'Fotos und Dateien'}</span>
         {form.photos.length > 0 && (
           <ul className="thumb-grid">
             {form.photos.map((photo) => (
@@ -213,7 +213,7 @@ function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, o
             onClick={() => cameraInput.current.click()}
             disabled={Boolean(busy)}
           >
-            Foto aufnehmen
+            {formType.receipts ? 'Beleg fotografieren' : 'Foto aufnehmen'}
           </button>
           <button
             type="button"

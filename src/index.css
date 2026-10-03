@@ -1797,3 +1797,21 @@ button.danger-button:hover:not(:disabled) {
 .search-contacts button.link {
   padding: 0 0.1rem;
 }
+
+.overview-sum {
+  font-size: 0.9rem;
+  font-weight: normal;
+}
+
+/* Finances: unpaid invoices and receipts */
+.stat-note {
+  font-size: 0.85rem;
+}
+
+.tx-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}

@@ -48,7 +48,9 @@ function EntryCard({
     ...detailSummaries(entry, lists, onOpenContact),
     entry.author,
   ].filter(Boolean)
-  const pills = type.fields.filter((f) => f.pill && entry.details[f.key])
+  const pills = type.fields.filter(
+    (f) => f.pill && entry.details[f.key] && entry.details[f.key] !== f.quiet,
+  )
 
   return (
     <li id={`entry-${entry.id}`} className={`card entry type-${key}${editing ? ' editing' : ''}`}>
