@@ -190,8 +190,12 @@ button.secondary:hover {
   display: flex;
   gap: 0.25rem;
   margin-bottom: 1.25rem;
-  border-bottom: 1px solid var(--border);
+  /* Drawn as a shadow, not a border, so the active tab's underline can sit
+     on it without poking out of the row: that made the row scroll up and
+     down and show a vertical scroll bar. */
+  box-shadow: inset 0 -1px 0 var(--border);
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .tabs .tab {
@@ -199,7 +203,6 @@ button.secondary:hover {
   color: var(--muted);
   border-radius: 0;
   border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
   white-space: nowrap;
 }
 
