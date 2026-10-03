@@ -1679,3 +1679,9 @@ tr.editing td {
   min-width: 9rem;
   width: auto;
 }
+
+/* A contact's name in a diary entry, linking to the contact */
+button.link.contact-link {
+  padding: 0;
+  font: inherit;
+}

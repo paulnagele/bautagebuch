@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { formatDate, newId, today, usePersistentState } from '../storage.js'
 import {
   ENTRY_TYPES,
@@ -11,6 +11,7 @@ import {
 } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
 import PeopleInput from '../components/PeopleInput.jsx'
+import PeopleLinks from '../components/PeopleLinks.jsx'
 import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 import { fromRow, toRow } from '../diaryEntries.js'
 import {
@@ -205,18 +206,24 @@ function checkDetails(type, formDetails, lists) {
 }
 
 // The extra fields of an entry as short texts for the list ("14:00 Uhr", …).
-function detailSummaries(entry, lists) {
+// People who are contacts link to them.
+function detailSummaries(entry, lists, onOpenContact) {
   return entryType(entry.type)
     .fields.filter((field) => !field.pill && entry.details[field.key])
     .map((field) => {
-      const value = entry.details[field.key]
+      let value = entry.details[field.key]
       if (field.within) return fieldOptions(field, value, lists, entry.details)[value] ?? null
+      if (field.suggestFrom) {
+        value = (
+          <PeopleLinks text={value} contacts={lists[field.suggestFrom] ?? []} onOpen={onOpenContact} />
+        )
+      }
       if (field.summary) return field.summary(value)
       return field.kind === 'select' ? (field.options?.[value] ?? value) : value
     })
 }
 
-function Diary({ user, focusEntryId, onFocused }) {
+function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const { rows: entries, status, error: loadError, insert, update, remove } = useCollection(
     'diary_entries',
     { fromRow, toRow },
@@ -774,7 +781,7 @@ function Diary({ user, focusEntryId, onFocused }) {
                     entry.workers !== '' && `${entry.workers} Arbeiter`,
                   ]
                 : []),
-              ...detailSummaries(entry, lists),
+              ...detailSummaries(entry, lists, onOpenContact),
               entry.author,
             ].filter(Boolean)
             const pills = type.fields.filter((f) => f.pill && entry.details[f.key])
@@ -800,7 +807,14 @@ function Diary({ user, focusEntryId, onFocused }) {
                     <span className="state-pill state-upcoming">Bevorstehend</span>
                   )}
                 </span>
-                <span className="muted">{meta.join(' · ')}</span>
+                <span className="muted">
+                  {meta.map((part, i) => (
+                    <Fragment key={i}>
+                      {i > 0 && ' · '}
+                      {part}
+                    </Fragment>
+                  ))}
+                </span>
               </div>
               <p className="entry-text">{entry.work}</p>
               {entry.photoIds.length > 0 && (

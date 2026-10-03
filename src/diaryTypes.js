@@ -16,7 +16,8 @@ const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: '
 //   suggestFrom: free text for people, with names from that list (e.g.
 //     'contacts') suggested while typing; several separated by commas
 //   required: must be filled in before saving
-//   summary(value): optional, how the value reads in the list
+//   summary(value): optional, how the value reads in the list; for
+//     suggestFrom fields a list of parts, so names can become links
 //   pill: show a select's value as a coloured label (`.state-<value>`)
 // progress: for kinds that get done (defects, to-dos): which field holds
 // the state, its "done" value, the button labels and the due-date field.
@@ -55,7 +56,8 @@ export const ENTRY_TYPES = {
         key: 'responsible',
         label: 'Zuständig (Firma / Gewerk)',
         kind: 'text',
-        summary: (v) => `Zuständig: ${v}`,
+        suggestFrom: 'contacts',
+        summary: (v) => ['Zuständig: ', v],
       },
       {
         key: 'deadline',
@@ -97,7 +99,8 @@ export const ENTRY_TYPES = {
         key: 'responsible',
         label: 'Wer kümmert sich?',
         kind: 'text',
-        summary: (v) => `Zuständig: ${v}`,
+        suggestFrom: 'contacts',
+        summary: (v) => ['Zuständig: ', v],
       },
     ],
   },
@@ -114,7 +117,7 @@ export const ENTRY_TYPES = {
         label: 'Mit wem',
         kind: 'text',
         suggestFrom: 'contacts',
-        summary: (v) => `mit ${v}`,
+        summary: (v) => ['mit ', v],
       },
     ],
   },
