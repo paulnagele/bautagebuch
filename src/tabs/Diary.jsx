@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { today, usePersistentState } from '../storage.js'
 import { ENTRY_TYPES, TYPE_KEYS, entryType, isOpen, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
@@ -7,6 +7,7 @@ import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 import { fromRow, toRow } from '../diaryEntries.js'
 import { checkDetails, compareEntries, emptyForm, formFromEntry } from '../diaryForm.js'
 import { entryFolderPath, uploadPending } from '../diaryUploads.js'
+import { inRange, matchesContact, matchesEntry, queryWords } from '../diarySearch.js'
 import { connectDrive, driveFolderUrl, getDriveFolderId } from '../drive.js'
 import { connectCalendar, deleteEvent, entryHasEvent, syncEntryEvent } from '../calendar.js'
 import EntryForm from '../components/EntryForm.jsx'
@@ -53,18 +54,12 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const [folderId, setFolderId] = useState(null)
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openOnly', false)
+  // Search text and date range; not remembered, so the diary always opens
+  // showing everything.
+  const [query, setQuery] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
 
-  const counts = Object.fromEntries(
-    TYPE_KEYS.map((key) => [key, entries.filter((e) => typeKey(e.type) === key).length]),
-  )
-  const activeFilter = filter === 'all' || TYPE_KEYS.includes(filter) ? filter : 'all'
-  // Kinds that get done (defects, to-dos) can be narrowed to open ones.
-  const canFilterOpen = Boolean(ENTRY_TYPES[activeFilter]?.progress)
-  const ofFilter = entries.filter((e) => activeFilter === 'all' || typeKey(e.type) === activeFilter)
-  const openCount = ofFilter.filter(isOpen).length
-  const sorted = ofFilter
-    .filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
-    .sort(compareEntries)
   const todayDate = today()
   const expenseCategoryRows = categoryStore.rows
     .filter((c) => c.type === 'expense')
@@ -79,6 +74,28 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
       ]),
     ),
     contacts: contactStore.rows,
+  }
+
+  const words = queryWords(query)
+  const searching = words.length > 0 || Boolean(from || to)
+  const found = entries.filter((e) => inRange(e, from, to) && matchesEntry(e, words, lists))
+  const foundContacts = contactStore.rows.filter((c) => matchesContact(c, words))
+  const counts = Object.fromEntries(
+    TYPE_KEYS.map((key) => [key, found.filter((e) => typeKey(e.type) === key).length]),
+  )
+  const activeFilter = filter === 'all' || TYPE_KEYS.includes(filter) ? filter : 'all'
+  // Kinds that get done (defects, to-dos) can be narrowed to open ones.
+  const canFilterOpen = Boolean(ENTRY_TYPES[activeFilter]?.progress)
+  const ofFilter = found.filter((e) => activeFilter === 'all' || typeKey(e.type) === activeFilter)
+  const openCount = ofFilter.filter(isOpen).length
+  const sorted = ofFilter
+    .filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
+    .sort(compareEntries)
+
+  function clearSearch() {
+    setQuery('')
+    setFrom('')
+    setTo('')
   }
 
   useEffect(() => {
@@ -288,6 +305,47 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
         </p>
       )}
       {entries.length > 0 && (
+        <div className="diary-search" role="search">
+          <input
+            type="search"
+            className="search-input"
+            placeholder="Tagebuch durchsuchen (Text, Person, Ort, Kategorie, …)"
+            aria-label="Tagebuch durchsuchen"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <div className="search-range">
+            <label>
+              von
+              <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+            </label>
+            <label>
+              bis
+              <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+            </label>
+            {searching && (
+              <button type="button" className="link" onClick={clearSearch}>
+                Suche zurücksetzen
+              </button>
+            )}
+          </div>
+          {foundContacts.length > 0 && (
+            <p className="search-contacts">
+              <span className="muted">Kontakte: </span>
+              {foundContacts.map((contact, i) => (
+                <Fragment key={contact.id}>
+                  {i > 0 && ', '}
+                  <button type="button" className="link" onClick={() => onOpenContact(contact)}>
+                    {contact.name}
+                  </button>
+                  {contact.role && <span className="muted"> ({contact.role})</span>}
+                </Fragment>
+              ))}
+            </p>
+          )}
+        </div>
+      )}
+      {entries.length > 0 && (
         <div className="diary-filter">
           <div className="filter-chips" role="group" aria-label="Einträge filtern">
             {['all', ...TYPE_KEYS].map((key) => (
@@ -299,7 +357,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
                 onClick={() => setFilter(key)}
               >
                 {key === 'all' ? 'Alle' : ENTRY_TYPES[key].plural}{' '}
-                <span className="chip-count">{key === 'all' ? entries.length : counts[key]}</span>
+                <span className="chip-count">{key === 'all' ? found.length : counts[key]}</span>
               </button>
             ))}
           </div>
@@ -318,7 +376,9 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
 
       {status === 'ready' && entries.length === 0 && <p className="empty">Noch keine Tagebucheinträge.</p>}
       {status === 'ready' && entries.length > 0 && sorted.length === 0 && (
-        <p className="empty">Keine passenden Einträge.</p>
+        <p className="empty">
+          {words.length > 0 ? `Keine Einträge passen zu „${query.trim()}“.` : 'Keine passenden Einträge.'}
+        </p>
       )}
 
       {sorted.length > 0 && (
