@@ -11,7 +11,7 @@ import InstallHint from '../components/InstallHint.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
 
 const TABS = [
-  { id: 'overview', label: 'Start', component: Overview },
+  { id: 'overview', label: 'Home', component: Overview },
   { id: 'diary', label: 'Tagebuch', component: Diary },
   { id: 'finances', label: 'Finanzen', component: Finances },
   { id: 'timetable', label: 'Zeitplan', component: Timetable },
