@@ -13,6 +13,7 @@ function fromRow(row) {
     phone: row.phone,
     email: row.email,
     notes: row.notes,
+    pinned: row.pinned ?? false,
   }
 }
 
@@ -24,11 +25,12 @@ function toRow(contact) {
     phone: contact.phone,
     email: contact.email,
     notes: contact.notes,
+    pinned: contact.pinned,
   }
 }
 
 function emptyForm() {
-  return { name: '', role: '', company: '', phone: '', email: '', notes: '' }
+  return { name: '', role: '', company: '', phone: '', email: '', notes: '', pinned: false }
 }
 
 // Keeps digits and a leading "+" so the number works as a tel: link.
@@ -78,7 +80,10 @@ function Contacts({ focusContactId, onFocused }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    const contact = Object.fromEntries(FIELDS.map((field) => [field, form[field].trim()]))
+    const contact = {
+      ...Object.fromEntries(FIELDS.map((field) => [field, form[field].trim()])),
+      pinned: form.pinned,
+    }
     if (!contact.name) {
       setError('Bitte einen Namen eingeben.')
       return
@@ -106,7 +111,10 @@ function Contacts({ focusContactId, onFocused }) {
   }
 
   function startEdit(contact) {
-    setForm(Object.fromEntries(FIELDS.map((field) => [field, contact[field]])))
+    setForm({
+      ...Object.fromEntries(FIELDS.map((field) => [field, contact[field]])),
+      pinned: contact.pinned,
+    })
     setEditingId(contact.id)
     setError('')
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -162,6 +170,15 @@ function Contacts({ focusContactId, onFocused }) {
           />
         </label>
 
+        <label className="pin-check full">
+          <input
+            type="checkbox"
+            checked={form.pinned}
+            onChange={(e) => setForm({ ...form, pinned: e.target.checked })}
+          />
+          Im Tagebuch immer zuerst vorschlagen
+        </label>
+
         {error && (
           <p className="error full" role="alert">
             {error}
@@ -210,7 +227,15 @@ function Contacts({ focusContactId, onFocused }) {
               id={`contact-${contact.id}`}
               className={contact.id === editingId ? 'card entry editing' : 'card entry'}
             >
-              <strong>{contact.name}</strong>
+              <strong>
+                {contact.name}
+                {contact.pinned && (
+                  <span className="pin-star" title="Wird immer zuerst vorgeschlagen">
+                    {' '}
+                    ★
+                  </span>
+                )}
+              </strong>
               {(contact.role || contact.company) && (
                 <span className="muted">
                   {[contact.role, contact.company].filter(Boolean).join(' · ')}

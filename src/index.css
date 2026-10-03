@@ -1815,3 +1815,21 @@ button.danger-button:hover:not(:disabled) {
   margin-left: 0.4rem;
   vertical-align: middle;
 }
+
+/* Pinned contacts: suggested first in the diary */
+.form-grid label.pin-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: normal;
+}
+
+.form-grid label.pin-check input {
+  width: auto;
+  flex: none;
+  margin: 0;
+}
+
+.pin-star {
+  color: #d4a017;
+}
