@@ -114,6 +114,13 @@ function compareEntries(a, b) {
   )
 }
 
+// Kinds with sortByDue (to-dos), when shown on their own: open ones first,
+// each by due date, soonest first.
+function compareByDue(a, b) {
+  const due = (e) => e.details[entryType(e.type).progress.due] || '9999'
+  return isOpen(b) - isOpen(a) || due(a).localeCompare(due(b)) || compareEntries(a, b)
+}
+
 // Expense categories as kept on the Finanzen tab.
 function categoryFromRow(row) {
   return { id: row.id, type: row.type, name: row.name, sortOrder: row.sort_order }
@@ -264,7 +271,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const openCount = ofFilter.filter(isOpen).length
   const sorted = ofFilter
     .filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
-    .sort(compareEntries)
+    .sort(ENTRY_TYPES[activeFilter]?.sortByDue ? compareByDue : compareEntries)
   const todayDate = today()
   const formType = entryType(form.type)
   const expenseCategoryRows = categoryStore.rows
