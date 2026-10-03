@@ -8,9 +8,9 @@ import DrivePhoto from './DrivePhoto.jsx'
 
 // The extra fields of an entry as short texts for the list ("14:00 Uhr", …).
 // People who are contacts link to them.
-function detailSummaries(entry, lists, onOpenContact) {
+function detailSummaries(entry, lists, onOpenContact, skip) {
   return entryType(entry.type)
-    .fields.filter((field) => !field.pill && entry.details[field.key])
+    .fields.filter((field) => !field.pill && field.key !== skip && entry.details[field.key])
     .map((field) => {
       let value = entry.details[field.key]
       if (field.within) return fieldOptions(field, value, lists, entry.details)[value] ?? null
@@ -38,14 +38,19 @@ function EntryCard({
 }) {
   const type = entryType(entry.type)
   const key = typeKey(entry.type)
+  // To-dos are headed by when they are due; the entry date moves to the
+  // small text.
+  const due = type.dueHeadline ? entry.details[type.progress.due] : ''
+  const overdue = isOverdue(entry, todayDate)
   const meta = [
+    due && `eingetragen am ${formatDate(entry.date)}`,
     ...(type.siteInfo
       ? [
           WEATHER_LABELS[entry.weather] ?? entry.weather,
           entry.workers !== '' && `${entry.workers} Arbeiter`,
         ]
       : []),
-    ...detailSummaries(entry, lists, onOpenContact),
+    ...detailSummaries(entry, lists, onOpenContact, due && type.progress.due),
     entry.author,
   ].filter(Boolean)
   const pills = type.fields.filter(
@@ -57,13 +62,17 @@ function EntryCard({
       <div className="entry-head">
         <span className="entry-title">
           <span className={`type-badge type-${key}`}>{type.label}</span>
-          <strong>{formatDate(entry.date)}</strong>
+          {due ? (
+            <strong className={overdue ? 'overdue-date' : undefined}>bis {formatDate(due)}</strong>
+          ) : (
+            <strong>{formatDate(entry.date)}</strong>
+          )}
           {pills.map((f) => (
             <span key={f.key} className={`state-pill state-${entry.details[f.key]}`}>
               {f.options[entry.details[f.key]] ?? entry.details[f.key]}
             </span>
           ))}
-          {isOverdue(entry, todayDate) && <span className="state-pill state-overdue">Überfällig</span>}
+          {overdue && <span className="state-pill state-overdue">Überfällig</span>}
           {key === 'appointment' && entry.date >= todayDate && (
             <span className="state-pill state-upcoming">Bevorstehend</span>
           )}

@@ -24,6 +24,8 @@ const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: '
 // which field holds the state, its "done" value, the button labels and
 // the due-date field. An entry without that field has its default.
 // sortByDue: open ones are listed first, by due date.
+// dueHeadline: the list shows the due date as the entry's big date, and the
+// entry date in the small text.
 export const ENTRY_TYPES = {
   status: {
     label: 'Status',
@@ -77,6 +79,7 @@ export const ENTRY_TYPES = {
     dateLabel: 'Eingetragen am',
     textLabel: 'Was ist zu tun?',
     sortByDue: true,
+    dueHeadline: true,
     progress: {
       field: 'state',
       done: 'done',
