@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { formatDate, today } from '../storage.js'
 import { friendlyError, useCollection } from '../useCollection.js'
+import { useDialogs } from '../dialogs.js'
 import { supabase } from '../supabase.js'
 import CategoryManager from '../components/CategoryManager.jsx'
 import MoneyFlow from '../components/MoneyFlow.jsx'
@@ -85,6 +86,10 @@ function fromRow(row) {
     diaryEntryId: row.diary_entry_id ?? null,
     // The budget item a diary expense is assigned to, if any.
     budgetItemId: row.budget_item_id ?? null,
+    // Diary expenses: false while the invoice is still open, and whether
+    // the entry has a photo or file of the receipt.
+    paid: row.paid ?? true,
+    hasReceipt: row.has_receipt ?? false,
   }
 }
 
@@ -202,7 +207,7 @@ function flowTargets(expenses, categories, funding) {
   return nodes
 }
 
-function Finances() {
+function Finances({ onOpenDiary }) {
   const {
     rows: items,
     status,
@@ -222,11 +227,15 @@ function Finances() {
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const formRef = useRef(null)
+  const dialogs = useDialogs()
 
   const funding = items.filter((i) => i.type === 'funding')
   const expenses = items.filter((i) => i.type === 'expense')
   const totalFunding = funding.reduce((s, i) => s + i.amount, 0)
   const totalSpent = expenses.reduce((s, i) => s + i.amount, 0)
+  // Invoices entered but not yet paid; included in what was spent.
+  const unpaid = expenses.filter((i) => !i.paid)
+  const totalUnpaid = unpaid.reduce((s, i) => s + i.amount, 0)
   const remaining = totalFunding - totalSpent
   const usedShare = totalFunding > 0 ? totalSpent / totalFunding : 0
   const sorted = [...items].sort((a, b) => b.date.localeCompare(a.date))
@@ -252,6 +261,11 @@ function Finances() {
     expenses.filter((e) => e.budgetItemId),
     'budgetItemId',
   )
+  const itemUnpaid = sumBy(
+    unpaid.filter((e) => e.budgetItemId),
+    'budgetItemId',
+  )
+  const unpaidByCategory = sumBy(unpaid, 'category')
   // What the plans still expect to be spent, beyond what already was.
   const spentByCategory = sumBy(expenses, 'category')
   const plannedOpen = plannedCategories.reduce(
@@ -375,12 +389,12 @@ function Finances() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Diese Buchung löschen?')) return
+    if (!(await dialogs.confirm('Diese Buchung löschen?', { confirmLabel: 'Löschen', danger: true }))) return
     try {
       await remove(id)
       if (editingId === id) resetForm()
     } catch (err) {
-      window.alert(err.message)
+      await dialogs.alert(err.message)
     }
   }
 
@@ -394,6 +408,9 @@ function Finances() {
         <div className="card stat">
           <span className="muted">Bisher ausgegeben</span>
           <strong>{euros.format(totalSpent)}</strong>
+          {totalUnpaid > 0 && (
+            <span className="muted stat-note">davon {euros.format(totalUnpaid)} noch nicht bezahlt</span>
+          )}
         </div>
         <div className="card stat">
           <span className="muted">Verbleibend</span>
@@ -447,6 +464,8 @@ function Finances() {
         spent={spentByCategory}
         items={budgetItems}
         itemSpent={itemSpent}
+        unpaid={unpaidByCategory}
+        itemUnpaid={itemUnpaid}
         itemsReadOnly={itemsMissing}
         funding={totalFunding}
         readOnly={categoriesMissing}
@@ -561,7 +580,19 @@ function Finances() {
               {sorted.map((item) => (
                 <tr key={item.id} className={item.id === editingId ? 'editing' : undefined}>
                   <td className="date">{formatDate(item.date)}</td>
-                  <td>{item.description}</td>
+                  <td>
+                    {item.description}
+                    {(!item.paid || item.hasReceipt) && (
+                      <span className="tx-tags">
+                        {!item.paid && <span className="state-pill state-open">Offen</span>}
+                        {item.hasReceipt && (
+                          <span className="state-pill" title="Beleg im Tagebucheintrag">
+                            🧾 Beleg
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </td>
                   <td>{item.category}</td>
                   <td className="num">
                     {item.type === 'funding' ? '+' : '−'}
@@ -569,9 +600,14 @@ function Finances() {
                   </td>
                   <td className="num row-actions">
                     {item.diaryEntryId ? (
-                      <span className="muted" title="Im Tagebuch bearbeiten oder löschen">
-                        aus dem Tagebuch
-                      </span>
+                      <button
+                        type="button"
+                        className="link"
+                        title="Im Tagebuch ansehen, bearbeiten oder löschen"
+                        onClick={() => onOpenDiary({ entry: { id: item.diaryEntryId, type: 'expense' } })}
+                      >
+                        im Tagebuch
+                      </button>
                     ) : (
                       <>
                         <button type="button" className="link" onClick={() => startEdit(item)}>

@@ -98,7 +98,8 @@ function entryEvent({ type, date, work, details }) {
       ...eventTimes(date, details.time),
     }
   }
-  const { label, progress } = entryType(type)
+  const { label, progress, noCalendar } = entryType(type)
+  if (noCalendar) return null
   const due = progress && details[progress.due]
   if (!due) return null
   const done = details[progress.field] === progress.done

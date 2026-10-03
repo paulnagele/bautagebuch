@@ -1,118 +1,19 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
-import { formatDate, newId, today, usePersistentState } from '../storage.js'
-import {
-  ENTRY_TYPES,
-  TYPE_KEYS,
-  defaultDetails,
-  entryType,
-  isOpen,
-  isOverdue,
-  typeKey,
-} from '../diaryTypes.js'
+import { Fragment, useCallback, useEffect, useState } from 'react'
+import { today, usePersistentState } from '../storage.js'
+import { ENTRY_TYPES, TYPE_KEYS, entryType, isOpen, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
-import PeopleInput from '../components/PeopleInput.jsx'
-import PeopleLinks from '../components/PeopleLinks.jsx'
+import { useDialogs } from '../dialogs.js'
 import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 import { fromRow, toRow } from '../diaryEntries.js'
-import {
-  connectDrive,
-  driveFileUrl,
-  driveFolderUrl,
-  getDriveFolderId,
-  getEntryFolderId,
-  uploadFile,
-  uploadPhoto,
-} from '../drive.js'
+import { checkDetails, compareEntries, emptyForm, formFromEntry } from '../diaryForm.js'
+import { entryFolderPath, uploadPending } from '../diaryUploads.js'
+import { inRange, matchesContact, matchesEntry, queryWords } from '../diarySearch.js'
+import { connectDrive, driveFolderUrl, getDriveFolderId } from '../drive.js'
 import { connectCalendar, deleteEvent, entryHasEvent, syncEntryEvent } from '../calendar.js'
-import DrivePhoto from '../components/DrivePhoto.jsx'
-
-// Stored in English so existing entries keep working; shown in German.
-const WEATHER_LABELS = {
-  Sunny: 'Sonnig',
-  Cloudy: 'Bewölkt',
-  Rain: 'Regen',
-  Snow: 'Schnee',
-  Wind: 'Wind',
-  Frost: 'Frost',
-}
-const WEATHER_OPTIONS = Object.keys(WEATHER_LABELS)
-
-// Keeps the original file type in the Drive file name (".jpg", ".heic", …).
-function extension(file) {
-  const match = /\.[a-z0-9]+$/i.exec(file.name ?? '')
-  return match ? match[0].toLowerCase() : '.jpg'
-}
-
-// Drive folder of an entry's photos and files: <kind>/<creation date>,
-// e.g. ['Mangel', '2026_10_02'] (created now for a new entry).
-function entryFolderPath(type, createdAt) {
-  const created = createdAt ? new Date(createdAt) : new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  const day = `${created.getFullYear()}_${pad(created.getMonth() + 1)}_${pad(created.getDate())}`
-  return [entryType(type).label, day]
-}
-
-// Uploads the photos and files not yet in Drive, one after another, into
-// the folder at folderPath. onProgress(n) runs before the n-th upload,
-// onProgress(n, uploaded) after it, with the form's photos and files as
-// far as they are uploaded.
-async function uploadPending({ photos, files, date }, folderPath, onProgress) {
-  const uploaded = { photos: [...photos], files: [...files] }
-  const jobs = [
-    ...photos.map((item, index) => ({ item, index, list: 'photos' })),
-    ...files.map((item, index) => ({ item, index, list: 'files' })),
-  ].filter((job) => job.item.blob)
-  // Progress by bytes, so one large photo on a slow connection still moves.
-  const totalBytes = jobs.reduce((sum, job) => sum + job.item.blob.size, 0) || 1
-  let doneBytes = 0
-  for (const [n, { item, index, list }] of jobs.entries()) {
-    const report = (loaded) =>
-      onProgress({ current: n + 1, total: jobs.length, fraction: (doneBytes + loaded) / totalBytes })
-    report(0)
-    const folderId = await getEntryFolderId(folderPath)
-    const { blob, ...rest } = item
-    const fileId =
-      list === 'photos'
-        ? await uploadPhoto(blob, `${date} Bautagebuch ${newId()}${extension(blob)}`, folderId, report)
-        : await uploadFile(blob, `${date} ${blob.name}`, folderId, report)
-    doneBytes += blob.size
-    uploaded[list] = uploaded[list].with(index, { ...rest, fileId })
-    onProgress({ current: n + 1, total: jobs.length, fraction: doneBytes / totalBytes }, { ...uploaded })
-  }
-  return uploaded
-}
-
-// Which entries also go into the Google Calendar (see calendar.js).
-const CALENDAR_HINTS = {
-  appointment: 'Termine werden auch im Google Kalender (Zeitplan) eingetragen.',
-  todo: 'Aufgaben werden am Tag „Erledigen bis“ im Google Kalender (Zeitplan) eingetragen.',
-  defect: 'Mängel mit „Zu beheben bis“ werden an diesem Tag im Google Kalender (Zeitplan) eingetragen.',
-}
-
-function emptyForm(type = 'status') {
-  // photos: { key, fileId } for photos already in Drive,
-  //         { key, blob } for new ones that still need uploading.
-  return {
-    type,
-    date: today(),
-    weather: 'Sunny',
-    workers: '',
-    work: '',
-    details: defaultDetails(type),
-    photos: [],
-    // files: { key, fileId, name } in Drive, or { key, blob, name } new.
-    files: [],
-  }
-}
-
-// Newest first; entries on the same day by time (appointments), then by
-// when they were written.
-function compareEntries(a, b) {
-  return (
-    b.date.localeCompare(a.date) ||
-    (b.details.time ?? '').localeCompare(a.details.time ?? '')
-  )
-}
+import EntryForm from '../components/EntryForm.jsx'
+import EntryCard from '../components/EntryCard.jsx'
+import BusyOverlay from '../components/BusyOverlay.jsx'
+import Lightbox from '../components/Lightbox.jsx'
 
 // Open entries of kinds with sortByDue (to-dos, defects) come first, by due
 // date, soonest first (without one at the end of them); everything else,
@@ -148,98 +49,6 @@ function contactToRow(contact) {
   return { name: contact.name, role: contact.role, company: contact.company, pinned: contact.pinned }
 }
 
-function DetailField({ field, value, options, lists, onChange }) {
-  if (field.suggestFrom) {
-    return <PeopleInput value={value} onChange={onChange} contacts={lists[field.suggestFrom] ?? []} />
-  }
-  if (field.kind === 'amount') {
-    return (
-      <input type="number" min="0" step="0.01" inputMode="decimal" value={value} onChange={onChange} />
-    )
-  }
-  if (field.kind === 'select') {
-    return (
-      <select value={value} onChange={onChange}>
-        {Object.entries(options).map(([key, label]) => (
-          <option key={key} value={key}>
-            {label}
-          </option>
-        ))}
-      </select>
-    )
-  }
-  return <input type={field.kind} value={value} onChange={onChange} />
-}
-
-// A select's choices; a value no longer in its list stays selectable.
-// A field `within` another one offers "none" plus the choices for that
-// field's value, and drops values that are not among them.
-function fieldOptions(field, value, lists, details = {}) {
-  if (field.options) return field.options
-  if (field.within) {
-    // An empty select means its first choice, as shown in the form.
-    const byValue = lists[field.optionsFrom] ?? new Map()
-    const choices = byValue.get(details[field.within] || byValue.keys().next().value) ?? []
-    if (choices.length === 0) return {}
-    return { '': '– keiner –', ...Object.fromEntries(choices.map((c) => [c.id, c.name])) }
-  }
-  const names = lists[field.optionsFrom] ?? []
-  const all = !value || names.includes(value) ? names : [...names, value]
-  return Object.fromEntries(all.map((name) => [name, name]))
-}
-
-// The extra fields as they are saved, or why they cannot be.
-// An empty select means its first choice, as shown in the form.
-function checkDetails(type, formDetails, lists) {
-  const details = defaultDetails(type, formDetails)
-  for (const field of entryType(type).fields) {
-    if (field.within) {
-      // Checked after the field it depends on, which comes first.
-      const options = fieldOptions(field, '', lists, details)
-      if (!Object.hasOwn(options, details[field.key])) details[field.key] = ''
-      continue
-    }
-    if (field.kind === 'select' && !details[field.key]) {
-      details[field.key] = Object.keys(fieldOptions(field, '', lists))[0] ?? ''
-    }
-    if (field.suggestFrom) {
-      // Drop the ", " left after picking the last suggestion.
-      details[field.key] = details[field.key].replace(/[\s,]+$/, '')
-    }
-    if (field.kind === 'amount' && details[field.key] !== '') {
-      details[field.key] = Math.round(Number(details[field.key]) * 100) / 100
-      if (!(details[field.key] > 0)) return { error: 'Bitte einen Betrag größer als 0 eingeben.' }
-    }
-    if (field.required && !details[field.key]) {
-      return {
-        error:
-          field.optionsFrom === 'expenseCategories'
-            ? 'Bitte zuerst in den Finanzen eine Ausgabenkategorie anlegen.'
-            : `Bitte „${field.label}“ ausfüllen.`,
-      }
-    }
-  }
-  return { details }
-}
-
-// The extra fields of an entry as short texts for the list ("14:00 Uhr", …).
-// People who are contacts link to them.
-function detailSummaries(entry, lists, onOpenContact) {
-  return entryType(entry.type)
-    .fields.filter((field) => !field.pill && entry.details[field.key])
-    .map((field) => {
-      let value = entry.details[field.key]
-      if (field.within) return fieldOptions(field, value, lists, entry.details)[value] ?? null
-      if (field.suggestFrom) {
-        value = (
-          <PeopleLinks text={value} contacts={lists[field.suggestFrom] ?? []} onOpen={onOpenContact} />
-        )
-      }
-      if (field.summary) return field.summary(value)
-      return field.kind === 'select' ? (field.options?.[value] ?? value) : value
-    })
-}
-
 function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const { rows: entries, status, error: loadError, insert, update, remove } = useCollection(
     'diary_entries',
@@ -250,8 +59,9 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [uploadProgress, setUploadProgress] = useState(null)
-  const errorRef = useRef(null)
   const [lightbox, setLightbox] = useState(null)
+  const closeLightbox = useCallback(() => setLightbox(null), [])
+  const dialogs = useDialogs()
   const categoryStore = useCollection('finance_categories', {
     fromRow: categoryFromRow,
     toRow: categoryToRow,
@@ -261,23 +71,13 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const [folderId, setFolderId] = useState(null)
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openOnly', false)
-  const fileInput = useRef(null)
-  const cameraInput = useRef(null)
-  const attachInput = useRef(null)
+  // Search text and date range; not remembered, so the diary always opens
+  // showing everything.
+  const [query, setQuery] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
 
-  const counts = Object.fromEntries(
-    TYPE_KEYS.map((key) => [key, entries.filter((e) => typeKey(e.type) === key).length]),
-  )
-  const activeFilter = filter === 'all' || TYPE_KEYS.includes(filter) ? filter : 'all'
-  // Kinds that get done (defects, to-dos) can be narrowed to open ones.
-  const canFilterOpen = Boolean(ENTRY_TYPES[activeFilter]?.progress)
-  const ofFilter = entries.filter((e) => activeFilter === 'all' || typeKey(e.type) === activeFilter)
-  const openCount = ofFilter.filter(isOpen).length
-  const sorted = ofFilter
-    .filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
-    .sort(compareByDue)
   const todayDate = today()
-  const formType = entryType(form.type)
   const expenseCategoryRows = categoryStore.rows
     .filter((c) => c.type === 'expense')
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de'))
@@ -293,6 +93,27 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
     contacts: contactStore.rows,
   }
 
+  const words = queryWords(query)
+  const searching = words.length > 0 || Boolean(from || to)
+  const found = entries.filter((e) => inRange(e, from, to) && matchesEntry(e, words, lists))
+  const foundContacts = contactStore.rows.filter((c) => matchesContact(c, words))
+  const counts = Object.fromEntries(
+    TYPE_KEYS.map((key) => [key, found.filter((e) => typeKey(e.type) === key).length]),
+  )
+  const activeFilter = filter === 'all' || TYPE_KEYS.includes(filter) ? filter : 'all'
+  // Kinds that get done (defects, to-dos) can be narrowed to open ones.
+  const canFilterOpen = Boolean(ENTRY_TYPES[activeFilter]?.progress)
+  const ofFilter = found.filter((e) => activeFilter === 'all' || typeKey(e.type) === activeFilter)
+  const openCount = ofFilter.filter(isOpen).length
+  const sorted = ofFilter
+    .filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
+    .sort(compareByDue)
+
+  function clearSearch() {
+    setQuery('')
+    setFrom('')
+    setTo('')
+  }
 
   useEffect(() => {
     getDriveFolderId().then(setFolderId, () => {})
@@ -312,78 +133,6 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
     }
     onFocused()
   }, [focusEntryId, status, onFocused])
-
-  useEffect(() => {
-    if (!lightbox) return
-    const close = (e) => e.key === 'Escape' && setLightbox(null)
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
-  }, [lightbox])
-
-  function setField(field) {
-    return (e) => setForm({ ...form, [field]: e.target.value })
-  }
-
-  function setDetail(key) {
-    return (e) => {
-      const details = { ...form.details, [key]: e.target.value }
-      // A choice that depends on this field no longer fits.
-      for (const field of formType.fields) if (field.within === key) details[field.key] = ''
-      setForm({ ...form, details })
-    }
-  }
-
-  function chooseType(type) {
-    setForm({
-      ...form,
-      type,
-      weather: form.weather || 'Sunny',
-      details: defaultDetails(type, form.details),
-    })
-    setError('')
-  }
-
-  // Photos are uploaded as picked, in full size and quality.
-  function addFiles(e) {
-    const files = [...e.target.files].filter((f) => f.type.startsWith('image/'))
-    e.target.value = ''
-    if (files.length === 0) return
-    setError('')
-    const added = files.map((file) => ({ key: newId(), blob: file }))
-    setForm((f) => ({ ...f, photos: [...f.photos, ...added] }))
-  }
-
-  // Any kind of file (PDF, plan, offer, …), kept in Drive's file folder.
-  function addAttachments(e) {
-    const picked = [...e.target.files]
-    e.target.value = ''
-    if (picked.length === 0) return
-    setError('')
-    const added = picked.map((file) => ({ key: newId(), blob: file, name: file.name }))
-    setForm((f) => ({ ...f, files: [...f.files, ...added] }))
-  }
-
-  function removeFormFile(key) {
-    setForm({ ...form, files: form.files.filter((f) => f.key !== key) })
-  }
-
-  function removeFormPhoto(key) {
-    setForm({ ...form, photos: form.photos.filter((p) => p.key !== key) })
-  }
-
-  // Bring a failed upload's message into view once the overlay closes.
-  useEffect(() => {
-    if (error) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [error])
-
-  // While saving, warn before the page is closed or reloaded, which would
-  // cancel the upload.
-  useEffect(() => {
-    if (!busy) return
-    const warn = (e) => e.preventDefault()
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [busy])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -490,16 +239,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   }
 
   function startEdit(entry) {
-    setForm({
-      type: typeKey(entry.type),
-      date: entry.date,
-      weather: entry.weather || 'Sunny',
-      workers: String(entry.workers),
-      work: entry.work,
-      details: defaultDetails(entry.type, entry.details),
-      photos: entry.photoIds.map((fileId) => ({ key: fileId, fileId })),
-      files: entry.files.map((f) => ({ key: f.id, fileId: f.id, name: f.name })),
-    })
+    setForm(formFromEntry(entry))
     setEditingId(entry.id)
     setError('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -523,10 +263,10 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
     try {
       await update(entry.id, { ...entry, details })
       if (calendarProblem) {
-        window.alert(`Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${calendarProblem}`)
+        await dialogs.alert(`Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${calendarProblem}`)
       }
     } catch (err) {
-      window.alert(err.message)
+      await dialogs.alert(err.message)
     }
   }
 
@@ -539,218 +279,88 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
       typeKey(entry.type) === 'expense' ? ' Die Ausgabe wird auch aus den Finanzen gelöscht.' : ''
     const eventId = entry.details.calendarEventId
     const calendarNote = eventId ? ' Er wird auch aus dem Google Kalender gelöscht.' : ''
-    if (!window.confirm(`Diesen Tagebucheintrag löschen?${calendarNote}${expenseNote}${photoNote}`)) return
+    const question = `Diesen Tagebucheintrag löschen?${calendarNote}${expenseNote}${photoNote}`
+    if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     if (eventId) {
       try {
         await connectCalendar(user.email)
         await deleteEvent(eventId)
       } catch (err) {
-        const question =
+        const retry =
           `Der Eintrag konnte nicht aus dem Google Kalender gelöscht werden (${err.message}). ` +
           'Den Eintrag trotzdem löschen?'
-        if (!window.confirm(question)) return
+        if (!(await dialogs.confirm(retry, { confirmLabel: 'Löschen', danger: true }))) return
       }
     }
     try {
       await remove(entry.id)
       if (editingId === entry.id) resetForm()
     } catch (err) {
-      window.alert(err.message)
+      await dialogs.alert(err.message)
     }
   }
 
   return (
     <section className="tab-content">
-      {busy && (
-        <div className="busy-overlay" role="alertdialog" aria-modal="true" aria-live="polite" aria-label={busy}>
-          <div className="busy-box">
-            <span className="spinner busy-spinner" aria-hidden="true" />
-            <p>{busy}</p>
-            {uploadProgress && (
-              <div className="busy-bar" aria-hidden="true">
-                <div style={{ width: `${Math.round(uploadProgress.fraction * 100)}%` }} />
-              </div>
-            )}
-            <p className="muted busy-note">Bitte die Seite nicht schließen.</p>
-          </div>
-        </div>
-      )}
-      <form className="card form-grid" onSubmit={handleSubmit} noValidate>
-        <h2>{editingId ? 'Eintrag bearbeiten' : 'Neuer Tagebucheintrag'}</h2>
-
-        <div className="full type-picker" role="radiogroup" aria-label="Art des Eintrags">
-          {TYPE_KEYS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="radio"
-              aria-checked={form.type === key}
-              className={`type-option type-${key}${form.type === key ? ' selected' : ''}`}
-              onClick={() => chooseType(key)}
-              disabled={Boolean(busy)}
-            >
-              {ENTRY_TYPES[key].label}
-            </button>
-          ))}
-        </div>
-
-        <label>
-          {formType.dateLabel}
-          <input type="date" value={form.date} onChange={setField('date')} />
-        </label>
-        {formType.siteInfo && (
-          <>
-            <label>
-              Wetter
-              <select value={form.weather} onChange={setField('weather')}>
-                {WEATHER_OPTIONS.map((w) => (
-                  <option key={w} value={w}>
-                    {WEATHER_LABELS[w]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Arbeiter vor Ort
-              <input type="number" min="0" value={form.workers} onChange={setField('workers')} />
-            </label>
-          </>
-        )}
-        {formType.fields.map((field) => {
-          const options =
-            field.kind === 'select'
-              ? fieldOptions(field, form.details[field.key], lists, form.details)
-              : null
-          if (field.within && Object.keys(options).length === 0) return null
-          return (
-            <label key={field.key}>
-              {field.label}
-              <DetailField
-                field={field}
-                value={form.details[field.key] ?? ''}
-                options={options}
-                lists={lists}
-                onChange={setDetail(field.key)}
-              />
-            </label>
-          )
-        })}
-        <label className="full">
-          {formType.textLabel}
-          <textarea rows="4" value={form.work} onChange={setField('work')} />
-        </label>
-
-        <div className="full photo-field">
-          <span className="field-label">Fotos und Dateien</span>
-          {form.photos.length > 0 && (
-            <ul className="thumb-grid">
-              {form.photos.map((photo) => (
-                <li key={photo.key} className="thumb">
-                  <DrivePhoto fileId={photo.fileId} blob={photo.blob} alt="" className="thumb-img" />
-                  <button
-                    type="button"
-                    className="thumb-remove"
-                    aria-label="Foto entfernen"
-                    onClick={() => removeFormPhoto(photo.key)}
-                    disabled={Boolean(busy)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {form.files.length > 0 && (
-            <ul className="file-list">
-              {form.files.map((file) => (
-                <li key={file.key} className="file-chip">
-                  <span className="file-name">{file.name}</span>
-                  <button
-                    type="button"
-                    className="link danger"
-                    aria-label={`${file.name} entfernen`}
-                    onClick={() => removeFormFile(file.key)}
-                    disabled={Boolean(busy)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={addFiles}
-          />
-          {/* Opens the camera directly; the gallery picker on some phones has no camera option. */}
-          <input
-            ref={cameraInput}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            hidden
-            onChange={addFiles}
-          />
-          <input ref={attachInput} type="file" multiple hidden onChange={addAttachments} />
-          <div className="upload-buttons">
-            <button
-              type="button"
-              className="secondary camera-button"
-              onClick={() => cameraInput.current.click()}
-              disabled={Boolean(busy)}
-            >
-              Foto aufnehmen
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => fileInput.current.click()}
-              disabled={Boolean(busy)}
-            >
-              Fotos hinzufügen
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => attachInput.current.click()}
-              disabled={Boolean(busy)}
-            >
-              Dateien hinzufügen
-            </button>
-          </div>
-        </div>
-
-        {CALENDAR_HINTS[form.type] && (
-          <p className="form-hint muted full">{CALENDAR_HINTS[form.type]}</p>
-        )}
-
-        {error && (
-          <p ref={errorRef} className="error full" role="alert">
-            {error}
-          </p>
-        )}
-
-        <div className="form-actions full">
-          <button type="submit" disabled={Boolean(busy)}>
-            {busy || (editingId ? 'Änderungen speichern' : 'Eintrag hinzufügen')}
-          </button>
-          {editingId && (
-            <button type="button" className="secondary" onClick={resetForm} disabled={Boolean(busy)}>
-              Abbrechen
-            </button>
-          )}
-        </div>
-      </form>
+      {busy && <BusyOverlay message={busy} progress={uploadProgress} />}
+      <EntryForm
+        form={form}
+        setForm={setForm}
+        editing={Boolean(editingId)}
+        busy={busy}
+        error={error}
+        onClearError={() => setError('')}
+        lists={lists}
+        onSubmit={handleSubmit}
+        onCancel={resetForm}
+      />
 
       {status === 'loading' && <p className="empty">Tagebuch wird geladen…</p>}
       {status === 'error' && (
         <p className="error" role="alert">
           {loadError}
         </p>
+      )}
+      {entries.length > 0 && (
+        <div className="diary-search" role="search">
+          <input
+            type="search"
+            className="search-input"
+            placeholder="Tagebuch durchsuchen (Text, Person, Ort, Kategorie, …)"
+            aria-label="Tagebuch durchsuchen"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <div className="search-range">
+            <label>
+              von
+              <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+            </label>
+            <label>
+              bis
+              <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+            </label>
+            {searching && (
+              <button type="button" className="link" onClick={clearSearch}>
+                Suche zurücksetzen
+              </button>
+            )}
+          </div>
+          {foundContacts.length > 0 && (
+            <p className="search-contacts">
+              <span className="muted">Kontakte: </span>
+              {foundContacts.map((contact, i) => (
+                <Fragment key={contact.id}>
+                  {i > 0 && ', '}
+                  <button type="button" className="link" onClick={() => onOpenContact(contact)}>
+                    {contact.name}
+                  </button>
+                  {contact.role && <span className="muted"> ({contact.role})</span>}
+                </Fragment>
+              ))}
+            </p>
+          )}
+        </div>
       )}
       {entries.length > 0 && (
         <div className="diary-filter">
@@ -764,7 +374,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
                 onClick={() => setFilter(key)}
               >
                 {key === 'all' ? 'Alle' : ENTRY_TYPES[key].plural}{' '}
-                <span className="chip-count">{key === 'all' ? entries.length : counts[key]}</span>
+                <span className="chip-count">{key === 'all' ? found.length : counts[key]}</span>
               </button>
             ))}
           </div>
@@ -783,107 +393,27 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
 
       {status === 'ready' && entries.length === 0 && <p className="empty">Noch keine Tagebucheinträge.</p>}
       {status === 'ready' && entries.length > 0 && sorted.length === 0 && (
-        <p className="empty">Keine passenden Einträge.</p>
+        <p className="empty">
+          {words.length > 0 ? `Keine Einträge passen zu „${query.trim()}“.` : 'Keine passenden Einträge.'}
+        </p>
       )}
 
       {sorted.length > 0 && (
         <ul className="entry-list">
-          {sorted.map((entry) => {
-            const type = entryType(entry.type)
-            const key = typeKey(entry.type)
-            const meta = [
-              ...(type.siteInfo
-                ? [
-                    WEATHER_LABELS[entry.weather] ?? entry.weather,
-                    entry.workers !== '' && `${entry.workers} Arbeiter`,
-                  ]
-                : []),
-              ...detailSummaries(entry, lists, onOpenContact),
-              entry.author,
-            ].filter(Boolean)
-            const pills = type.fields.filter((f) => f.pill && entry.details[f.key])
-            return (
-            <li
+          {sorted.map((entry) => (
+            <EntryCard
               key={entry.id}
-              id={`entry-${entry.id}`}
-              className={`card entry type-${key}${entry.id === editingId ? ' editing' : ''}`}
-            >
-              <div className="entry-head">
-                <span className="entry-title">
-                  <span className={`type-badge type-${key}`}>{type.label}</span>
-                  <strong>{formatDate(entry.date)}</strong>
-                  {pills.map((f) => (
-                    <span key={f.key} className={`state-pill state-${entry.details[f.key]}`}>
-                      {f.options[entry.details[f.key]] ?? entry.details[f.key]}
-                    </span>
-                  ))}
-                  {isOverdue(entry, todayDate) && (
-                    <span className="state-pill state-overdue">Überfällig</span>
-                  )}
-                  {key === 'appointment' && entry.date >= todayDate && (
-                    <span className="state-pill state-upcoming">Bevorstehend</span>
-                  )}
-                </span>
-                <span className="muted">
-                  {meta.map((part, i) => (
-                    <Fragment key={i}>
-                      {i > 0 && ' · '}
-                      {part}
-                    </Fragment>
-                  ))}
-                </span>
-              </div>
-              <p className="entry-text">{entry.work}</p>
-              {entry.photoIds.length > 0 && (
-                <ul className="thumb-grid entry-photos">
-                  {entry.photoIds.map((fileId, i) => {
-                    const alt = `Foto ${i + 1} vom ${formatDate(entry.date)}`
-                    return (
-                      <li key={fileId} className="thumb">
-                        <DrivePhoto
-                          fileId={fileId}
-                          alt={alt}
-                          className="thumb-img"
-                          onOpen={(src) => setLightbox({ src, alt })}
-                        />
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-              {entry.files.length > 0 && (
-                <ul className="file-list entry-files">
-                  {entry.files.map((file) => (
-                    <li key={file.id}>
-                      <a
-                        className="file-chip"
-                        href={driveFileUrl(file.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <span aria-hidden="true">📄</span>
-                        <span className="file-name">{file.name}</span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="entry-actions">
-                {type.progress && (
-                  <button type="button" className="link" onClick={() => toggleDone(entry)}>
-                    {isOpen(entry) ? type.progress.markDone : type.progress.reopen}
-                  </button>
-                )}
-                <button type="button" className="link" onClick={() => startEdit(entry)}>
-                  Bearbeiten
-                </button>
-                <button type="button" className="link danger" onClick={() => handleDelete(entry)}>
-                  Löschen
-                </button>
-              </div>
-            </li>
-            )
-          })}
+              entry={entry}
+              editing={entry.id === editingId}
+              todayDate={todayDate}
+              lists={lists}
+              onOpenContact={onOpenContact}
+              onOpenPhoto={setLightbox}
+              onToggleDone={toggleDone}
+              onEdit={startEdit}
+              onDelete={handleDelete}
+            />
+          ))}
         </ul>
       )}
 
@@ -895,20 +425,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
         </p>
       )}
 
-      {lightbox && (
-        <div
-          className="lightbox"
-          role="dialog"
-          aria-modal="true"
-          aria-label={lightbox.alt}
-          onClick={() => setLightbox(null)}
-        >
-          <img src={lightbox.src} alt={lightbox.alt} />
-          <button type="button" className="lightbox-close" aria-label="Schließen">
-            ×
-          </button>
-        </div>
-      )}
+      {lightbox && <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />}
     </section>
   )
 }

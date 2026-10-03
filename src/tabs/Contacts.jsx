@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useCollection } from '../useCollection.js'
+import { useDialogs } from '../dialogs.js'
 
 const FIELDS = ['name', 'role', 'company', 'phone', 'email', 'notes']
 
@@ -53,6 +54,7 @@ function Contacts({ focusContactId, onFocused }) {
   const [editingId, setEditingId] = useState(null)
   const [query, setQuery] = useState('')
   const formRef = useRef(null)
+  const dialogs = useDialogs()
 
   // Opened from a diary entry: scroll to that contact and flash it.
   useEffect(() => {
@@ -119,12 +121,13 @@ function Contacts({ focusContactId, onFocused }) {
   }
 
   async function handleDelete(contact) {
-    if (!window.confirm(`Den Kontakt „${contact.name}“ löschen?`)) return
+    const question = `Den Kontakt „${contact.name}“ löschen?`
+    if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     try {
       await remove(contact.id)
       if (editingId === contact.id) resetForm()
     } catch (err) {
-      window.alert(err.message)
+      await dialogs.alert(err.message)
     }
   }
 

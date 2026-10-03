@@ -18,9 +18,11 @@ const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: '
 //   required: must be filled in before saving
 //   summary(value): optional, how the value reads in the list; for
 //     suggestFrom fields a list of parts, so names can become links
-//   pill: show a select's value as a coloured label (`.state-<value>`)
-// progress: for kinds that get done (defects, to-dos): which field holds
-// the state, its "done" value, the button labels and the due-date field.
+//   pill: show a select's value as a coloured label (`.state-<value>`),
+//     except the value in `quiet`, if given
+// progress: for kinds that get done (defects, to-dos, unpaid expenses):
+// which field holds the state, its "done" value, the button labels and
+// the due-date field. An entry without that field has its default.
 // sortByDue: open ones are listed first, by due date.
 export const ENTRY_TYPES = {
   status: {
@@ -130,7 +132,20 @@ export const ENTRY_TYPES = {
     dateLabel: 'Datum',
     textLabel: 'Wofür?',
     // Each expense entry is also booked in Finanzen, kept in sync by the
-    // database (migration 20261002233000_diary_expenses.sql).
+    // database (migrations 20261002233000_diary_expenses.sql and
+    // 20261003060000_expense_payment.sql). An unpaid invoice is "open"
+    // until it is marked paid; expenses from before count as paid.
+    progress: {
+      field: 'payment',
+      done: 'paid',
+      markDone: 'Als bezahlt markieren',
+      reopen: 'Als offen markieren',
+      due: 'payBy',
+    },
+    // Unpaid invoices are not put into the Google Calendar.
+    noCalendar: true,
+    // Shown under the form: a photo or PDF of the invoice is the receipt.
+    receipts: true,
     fields: [
       {
         key: 'category',
@@ -154,6 +169,22 @@ export const ENTRY_TYPES = {
         required: true,
         summary: (v) => currency.format(v),
       },
+      {
+        key: 'payment',
+        label: 'Bezahlt?',
+        kind: 'select',
+        options: { paid: 'Bezahlt', open: 'Offen' },
+        default: 'paid',
+        pill: true,
+        // Only "Offen" gets a label; paid is the usual case.
+        quiet: 'paid',
+      },
+      {
+        key: 'payBy',
+        label: 'Zahlbar bis',
+        kind: 'date',
+        summary: (v) => `zahlbar bis ${formatDate(v)}`,
+      },
     ],
   },
 }
@@ -169,10 +200,14 @@ export function entryType(key) {
   return ENTRY_TYPES[typeKey(key)]
 }
 
-// Whether a defect or to-do still needs doing (false for other kinds).
+// Whether a defect or to-do still needs doing, or an expense paying
+// (false for other kinds).
 export function isOpen(entry) {
-  const progress = entryType(entry.type).progress
-  return Boolean(progress) && entry.details[progress.field] !== progress.done
+  const { progress, fields } = entryType(entry.type)
+  if (!progress) return false
+  const state =
+    entry.details[progress.field] ?? fields.find((f) => f.key === progress.field)?.default
+  return state !== progress.done
 }
 
 // Open and past its due date (today counts as still on time).

@@ -7,6 +7,9 @@ import { fromRow, toRow } from '../diaryEntries.js'
 const MAX_APPOINTMENTS = 5
 const MAX_TASKS = 8
 const MAX_PHOTOS = 12
+const MAX_INVOICES = 5
+
+const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
 
 // "Fr., 3. Okt." (or "3. Okt." without weekday), plus the year if it is
 // not this year's.
@@ -52,14 +55,14 @@ function Overview({ onOpenDiary }) {
     )
 
   // Soonest due first; without a due date at the end, oldest first.
-  const tasks = entries
-    .filter(isOpen)
-    .sort(
-      (a, b) =>
-        (dueDate(a) || '9999').localeCompare(dueDate(b) || '9999') ||
-        a.date.localeCompare(b.date),
-    )
+  const bySoonestDue = (a, b) =>
+    (dueDate(a) || '9999').localeCompare(dueDate(b) || '9999') || a.date.localeCompare(b.date)
+  const open = entries.filter(isOpen).sort(bySoonestDue)
+  const tasks = open.filter((e) => typeKey(e.type) !== 'expense')
   const overdueCount = tasks.filter((e) => isOverdue(e, todayDate)).length
+  // Invoices not yet paid (diary expenses marked "Offen").
+  const invoices = open.filter((e) => typeKey(e.type) === 'expense')
+  const invoiceTotal = invoices.reduce((sum, e) => sum + (Number(e.details.amount) || 0), 0)
 
   const photos = entries
     .filter((e) => e.photoIds.length > 0)
@@ -191,6 +194,57 @@ function Overview({ onOpenDiary }) {
           <p className="muted overview-more">und {tasks.length - MAX_TASKS} weitere</p>
         )}
       </div>
+
+      {invoices.length > 0 && (
+        <div className="card overview-card">
+          <div className="overview-head">
+            <h2>
+              Offene Rechnungen
+              <span className="muted overview-sum">{currency.format(invoiceTotal)}</span>
+            </h2>
+            <button
+              type="button"
+              className="link"
+              onClick={() => onOpenDiary({ filter: 'expense', openOnly: true })}
+            >
+              Alle offenen
+            </button>
+          </div>
+          <ul className="overview-list">
+            {invoices.slice(0, MAX_INVOICES).map((entry) => {
+              const due = dueDate(entry)
+              const overdue = isOverdue(entry, todayDate)
+              return (
+                <li key={entry.id}>
+                  <button
+                    type="button"
+                    className={`overview-item type-expense${overdue ? ' overdue' : ''}`}
+                    onClick={() => onOpenDiary({ entry })}
+                  >
+                    <span className="overview-what">
+                      <span className="overview-title">{firstLine(entry.work)}</span>
+                      <span className="overview-meta">
+                        <strong>{currency.format(Number(entry.details.amount) || 0)}</strong>
+                        {due ? (
+                          <span className={overdue ? 'overdue-date' : undefined}>
+                            zahlbar bis {relativeDay(due, todayDate) ?? shortDate(due, todayDate, false)}
+                          </span>
+                        ) : (
+                          <span className="muted">ohne Frist</span>
+                        )}
+                        {entry.details.category && <span className="muted">{entry.details.category}</span>}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          {invoices.length > MAX_INVOICES && (
+            <p className="muted overview-more">und {invoices.length - MAX_INVOICES} weitere</p>
+          )}
+        </div>
+      )}
 
       <div className="card overview-card overview-photos">
         <div className="overview-head">

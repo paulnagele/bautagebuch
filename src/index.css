@@ -1716,6 +1716,106 @@ button.link.contact-link {
   font: inherit;
 }
 
+/* In-app confirm and alert (components/DialogProvider.jsx) */
+.app-dialog {
+  width: min(400px, calc(100% - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.app-dialog::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.app-dialog p {
+  margin: 0 0 1rem;
+  white-space: pre-line;
+}
+
+.app-dialog .form-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+button.danger-button {
+  background: var(--error);
+}
+
+button.danger-button:hover:not(:disabled) {
+  background: var(--error);
+  filter: brightness(0.9);
+}
+
+/* Diary search */
+.diary-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.search-input {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  width: 100%;
+}
+
+.search-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+.search-range label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.search-range input {
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.search-contacts {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.search-contacts button.link {
+  padding: 0 0.1rem;
+}
+
+.overview-sum {
+  font-size: 0.9rem;
+  font-weight: normal;
+}
+
+/* Finances: unpaid invoices and receipts */
+.stat-note {
+  font-size: 0.85rem;
+}
+
+.tx-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
 /* Pinned contacts: suggested first in the diary */
 .form-grid label.pin-check {
   flex-direction: row;

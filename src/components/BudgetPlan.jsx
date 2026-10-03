@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { usePersistentState } from '../storage.js'
+import { useDialogs } from '../dialogs.js'
 
 // Planned budget per expense category next to what was actually spent.
 // `categories` are the expense categories (with `plannedAmount`, null when
@@ -11,7 +12,8 @@ import { usePersistentState } from '../storage.js'
 // A category can be split into items (`items`, e.g. Dachdecker, Spengler),
 // each with its own planned amount; the category's plan is then their sum.
 // `itemSpent` maps an item id to what was spent on it (diary expenses
-// assigned to that item).
+// assigned to that item). `unpaid` and `itemUnpaid` hold the part of
+// that which is still unpaid invoices, by category name and item id.
 
 function parseAmount(text) {
   const trimmed = text.trim()
@@ -21,7 +23,7 @@ function parseAmount(text) {
 }
 
 // Spent vs. planned: a bar (when there is a plan) and "x übrig · a von b".
-function Progress({ label, spent, planned, format, small }) {
+function Progress({ label, spent, unpaid = 0, planned, format, small }) {
   const share = planned > 0 ? spent / planned : spent > 0 ? Infinity : 0
   const over = planned !== null && spent > planned
   const left = (planned ?? 0) - spent
@@ -53,6 +55,7 @@ function Progress({ label, spent, planned, format, small }) {
         <span className="budget-amounts">
           {format(spent)}
           {planned !== null && <span className="muted"> von {format(planned)}</span>}
+          {unpaid > 0 && <span className="muted"> · davon {format(unpaid)} offen</span>}
         </span>
       </div>
     </>
@@ -64,6 +67,8 @@ function BudgetPlan({
   spent,
   items = [],
   itemSpent = new Map(),
+  unpaid = new Map(),
+  itemUnpaid = new Map(),
   itemsReadOnly,
   funding,
   readOnly,
@@ -78,6 +83,7 @@ function BudgetPlan({
   const [editing, setEditing] = useState(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const dialogs = useDialogs()
   // Remembered on this device: whether the card is open, and which
   // categories show their items (all collapsed at first).
   const [open, setOpen] = usePersistentState('budget.open', true)
@@ -95,12 +101,20 @@ function BudgetPlan({
       name: c.name,
       planned: c.plannedAmount,
       spent: spent.get(c.name) ?? 0,
+      unpaid: unpaid.get(c.name) ?? 0,
       items: itemsOf(c.id),
       editable: !readOnly,
     })),
     ...[...spent.entries()]
       .filter(([name, value]) => !names.has(name) && value > 0)
-      .map(([name, value]) => ({ id: `gone-${name}`, name, planned: null, spent: value, items: [] })),
+      .map(([name, value]) => ({
+        id: `gone-${name}`,
+        name,
+        planned: null,
+        spent: value,
+        unpaid: unpaid.get(name) ?? 0,
+        items: [],
+      })),
   ]
   const totalPlanned = rows.reduce((s, r) => s + (r.planned ?? 0), 0)
   const totalSpent = rows.reduce((s, r) => s + r.spent, 0)
@@ -151,7 +165,8 @@ function BudgetPlan({
   async function handleDeleteItem(item) {
     const used = itemSpent.get(item.id) ?? 0
     const note = used > 0 ? ` Die zugeordneten Ausgaben (${format(used)}) bleiben in der Kategorie.` : ''
-    if (!window.confirm(`Den Posten „${item.name}“ löschen?${note}`)) return
+    const question = `Den Posten „${item.name}“ löschen?${note}`
+    if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     await run(() => onDeleteItem(item.id))
   }
 
@@ -292,7 +307,13 @@ function BudgetPlan({
                     )
                   )}
                 </div>
-                <Progress label={row.name} spent={row.spent} planned={row.planned} format={format} />
+                <Progress
+                  label={row.name}
+                  spent={row.spent}
+                  unpaid={row.unpaid}
+                  planned={row.planned}
+                  format={format}
+                />
                 {hasItems && (
                   <button
                     type="button"
@@ -344,6 +365,7 @@ function BudgetPlan({
                             <Progress
                               label={item.name}
                               spent={itemSpent.get(item.id) ?? 0}
+                              unpaid={itemUnpaid.get(item.id) ?? 0}
                               planned={item.plannedAmount}
                               format={format}
                               small
