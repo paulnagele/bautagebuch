@@ -61,6 +61,8 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const [folderId, setFolderId] = useState(null)
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openOnly', false)
+  // Keys of the list parts (Offen, Demnächst, Verlauf) folded away.
+  const [collapsed, setCollapsed] = usePersistentState('diary.collapsed', [])
   // Search text and date range; not remembered, so the diary always opens
   // showing everything.
   const [query, setQuery] = useState('')
@@ -97,6 +99,17 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const openCount = ofFilter.filter(isOpen).length
   const shown = ofFilter.filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
   const sections = diarySections(shown, todayDate)
+  const focusSection = sections.find((section) =>
+    section.entries.some((entry) => entry.id === focusEntryId),
+  )?.key
+  // A lone part has no heading, so it cannot be folded away; the part
+  // holding an entry opened from the start page is unfolded.
+  const isCollapsed = (key) =>
+    sections.length > 1 && key !== focusSection && collapsed.includes(key)
+
+  function toggleSection(key) {
+    setCollapsed((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]))
+  }
 
   function clearSearch() {
     setQuery('')
@@ -111,6 +124,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   // Opened from the start page: scroll to that entry and flash it.
   useEffect(() => {
     if (!focusEntryId || status !== 'ready') return
+    if (focusSection) setCollapsed((keys) => keys.filter((k) => k !== focusSection))
     const element = document.getElementById(`entry-${focusEntryId}`)
     if (element) {
       element.scrollIntoView({ block: 'center' })
@@ -121,7 +135,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
       )
     }
     onFocused()
-  }, [focusEntryId, status, onFocused])
+  }, [focusEntryId, focusSection, status, onFocused, setCollapsed])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -387,31 +401,45 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
         </p>
       )}
 
-      {sections.map((section) => (
-        <section key={section.key} className="entry-section">
-          {sections.length > 1 && (
-            <h2 className="entry-section-title">
-              {section.title} <span className="chip-count">{section.entries.length}</span>
-            </h2>
-          )}
-          <ul className="entry-list">
-            {section.entries.map((entry) => (
-              <EntryCard
-                key={entry.id}
-                entry={entry}
-                editing={entry.id === editingId}
-                todayDate={todayDate}
-                lists={lists}
-                onOpenContact={onOpenContact}
-                onOpenPhoto={setLightbox}
-                onToggleDone={toggleDone}
-                onEdit={startEdit}
-                onDelete={handleDelete}
-              />
-            ))}
-          </ul>
-        </section>
-      ))}
+      {sections.map((section) => {
+        const folded = isCollapsed(section.key)
+        return (
+          <section key={section.key} className="entry-section">
+            {sections.length > 1 && (
+              <h2 className="entry-section-title">
+                <button
+                  type="button"
+                  aria-expanded={!folded}
+                  onClick={() => toggleSection(section.key)}
+                >
+                  <span className="section-chevron" aria-hidden="true">
+                    {folded ? '▸' : '▾'}
+                  </span>
+                  {section.title} <span className="chip-count">{section.entries.length}</span>
+                </button>
+              </h2>
+            )}
+            {!folded && (
+              <ul className="entry-list">
+                {section.entries.map((entry) => (
+                  <EntryCard
+                    key={entry.id}
+                    entry={entry}
+                    editing={entry.id === editingId}
+                    todayDate={todayDate}
+                    lists={lists}
+                    onOpenContact={onOpenContact}
+                    onOpenPhoto={setLightbox}
+                    onToggleDone={toggleDone}
+                    onEdit={startEdit}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+        )
+      })}
 
       {folderId && (
         <p className="muted drive-link">

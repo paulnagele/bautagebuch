@@ -1842,10 +1842,26 @@ button.danger-button:hover:not(:disabled) {
 }
 
 .entry-section-title {
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+}
+
+.entry-section-title button {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  margin: 0.5rem 0 0;
-  font-size: 1rem;
+  padding: 0.2rem 0;
+  background: transparent;
   color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+}
+
+.entry-section-title button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text);
+}
+
+.section-chevron {
+  width: 1em;
 }
