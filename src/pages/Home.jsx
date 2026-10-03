@@ -20,6 +20,7 @@ function Home({ user, onLogout }) {
   // The app always opens on the start page.
   const [activeTab, setActiveTab] = useState(TABS[0].id)
   const [focusEntryId, setFocusEntryId] = useState(null)
+  const [focusContactId, setFocusContactId] = useState(null)
   const current = TABS.find((tab) => tab.id === activeTab) ?? TABS[0]
   const ActiveComponent = current.component
 
@@ -34,8 +35,16 @@ function Home({ user, onLogout }) {
     window.scrollTo({ top: 0 })
   }
 
+  // Opens the contacts, scrolled to one contact.
+  function openContact(contact) {
+    setFocusContactId(contact.id)
+    setActiveTab('contacts')
+    window.scrollTo({ top: 0 })
+  }
+
   function chooseTab(id) {
     setFocusEntryId(null)
+    setFocusContactId(null)
     setActiveTab(id)
   }
 
@@ -90,8 +99,13 @@ function Home({ user, onLogout }) {
         <ActiveComponent
           user={user}
           onOpenDiary={openDiary}
+          onOpenContact={openContact}
           focusEntryId={focusEntryId}
-          onFocused={() => setFocusEntryId(null)}
+          focusContactId={focusContactId}
+          onFocused={() => {
+            setFocusEntryId(null)
+            setFocusContactId(null)
+          }}
         />
       </main>
     </div>
