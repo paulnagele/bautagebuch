@@ -93,6 +93,7 @@ export const ENTRY_TYPES = {
         key: 'responsible',
         label: 'Wer kümmert sich?',
         kind: 'text',
+        suggestFrom: 'contacts',
         summary: (v) => `Zuständig: ${v}`,
       },
     ],
