@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCollection } from '../useCollection.js'
 
 const FIELDS = ['name', 'role', 'company', 'phone', 'email', 'notes']
@@ -40,7 +40,7 @@ function matches(contact, query) {
   return !q || FIELDS.some((field) => contact[field].toLowerCase().includes(q))
 }
 
-function Contacts() {
+function Contacts({ focusContactId, onFocused }) {
   const { rows: contacts, status, error: loadError, insert, update, remove } = useCollection(
     'contacts',
     { fromRow, toRow },
@@ -51,6 +51,21 @@ function Contacts() {
   const [editingId, setEditingId] = useState(null)
   const [query, setQuery] = useState('')
   const formRef = useRef(null)
+
+  // Opened from a diary entry: scroll to that contact and flash it.
+  useEffect(() => {
+    if (!focusContactId || status !== 'ready') return
+    const element = document.getElementById(`contact-${focusContactId}`)
+    if (element) {
+      element.scrollIntoView({ block: 'center' })
+      const accent = getComputedStyle(element).getPropertyValue('--accent')
+      element.animate(
+        [{ boxShadow: `0 0 0 3px ${accent}` }, { boxShadow: '0 0 0 3px transparent' }],
+        { duration: 2500, easing: 'ease-in' },
+      )
+    }
+    onFocused()
+  }, [focusContactId, status, onFocused])
 
   const sorted = [...contacts].sort((a, b) => a.name.localeCompare(b.name, 'de'))
   const shown = sorted.filter((contact) => matches(contact, query))
@@ -189,6 +204,7 @@ function Contacts() {
           {shown.map((contact) => (
             <li
               key={contact.id}
+              id={`contact-${contact.id}`}
               className={contact.id === editingId ? 'card entry editing' : 'card entry'}
             >
               <strong>{contact.name}</strong>
