@@ -114,6 +114,17 @@ function compareEntries(a, b) {
   )
 }
 
+// Open entries of kinds with sortByDue (to-dos, defects) come first, by due
+// date, soonest first (without one at the end of them); everything else,
+// done ones included, newest first.
+function compareByDue(a, b) {
+  const waiting = (e) => Boolean(entryType(e.type).sortByDue) && isOpen(e)
+  if (waiting(a) !== waiting(b)) return waiting(b) - waiting(a)
+  if (!waiting(a)) return compareEntries(a, b)
+  const due = (e) => e.details[entryType(e.type).progress.due] || '9999'
+  return due(a).localeCompare(due(b)) || compareEntries(a, b)
+}
+
 // Expense categories as kept on the Finanzen tab.
 function categoryFromRow(row) {
   return { id: row.id, type: row.type, name: row.name, sortOrder: row.sort_order }
@@ -124,11 +135,17 @@ function categoryToRow(category) {
 }
 
 function contactFromRow(row) {
-  return { id: row.id, name: row.name, role: row.role ?? '', company: row.company ?? '' }
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role ?? '',
+    company: row.company ?? '',
+    pinned: row.pinned ?? false,
+  }
 }
 
 function contactToRow(contact) {
-  return { name: contact.name, role: contact.role, company: contact.company }
+  return { name: contact.name, role: contact.role, company: contact.company, pinned: contact.pinned }
 }
 
 function DetailField({ field, value, options, lists, onChange }) {
@@ -258,7 +275,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const openCount = ofFilter.filter(isOpen).length
   const sorted = ofFilter
     .filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
-    .sort(compareEntries)
+    .sort(compareByDue)
   const todayDate = today()
   const formType = entryType(form.type)
   const expenseCategoryRows = categoryStore.rows

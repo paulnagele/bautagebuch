@@ -3,7 +3,7 @@ import { useState } from 'react'
 // Free text for one or more people ("Hr. Gruber, Elektro Maier"), with
 // contacts suggested for the name being typed after the last comma.
 // Picking a suggestion puts the contact's name there; anything typed by
-// hand stays as it is. The value is plain text.
+// hand stays as it is. The value is plain text. Pinned contacts come first.
 const MAX_SUGGESTIONS = 6
 
 function splitLast(value) {
@@ -31,7 +31,7 @@ function PeopleInput({ value, onChange, contacts }) {
     .filter((c) => !listed.has(c.name.toLowerCase()))
     .filter((c) => c.name.toLowerCase() !== query)
     .filter((c) => [c.name, c.role, c.company].some((text) => text.toLowerCase().includes(query)))
-    .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+    .sort((a, b) => b.pinned - a.pinned || a.name.localeCompare(b.name, 'de'))
     .slice(0, MAX_SUGGESTIONS)
   const shown = open && suggestions.length > 0
   const activeIndex = Math.min(active, suggestions.length - 1)
@@ -94,7 +94,10 @@ function PeopleInput({ value, onChange, contacts }) {
               }}
               onMouseEnter={() => setActive(i)}
             >
-              <span>{contact.name}</span>
+              <span>
+                {contact.name}
+                {contact.pinned && <span className="pin-star"> ★</span>}
+              </span>
               {describe(contact) && <span className="muted">{describe(contact)}</span>}
             </li>
           ))}
