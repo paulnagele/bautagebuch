@@ -21,7 +21,7 @@ const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: '
 //   pill: show a select's value as a coloured label (`.state-<value>`)
 // progress: for kinds that get done (defects, to-dos): which field holds
 // the state, its "done" value, the button labels and the due-date field.
-// sortByDue: listed by due date (open ones first) when shown on their own.
+// sortByDue: open ones are listed first, by due date.
 export const ENTRY_TYPES = {
   status: {
     label: 'Status',
@@ -37,6 +37,7 @@ export const ENTRY_TYPES = {
     plural: 'Mängel',
     dateLabel: 'Festgestellt am',
     textLabel: 'Beschreibung des Mangels',
+    sortByDue: true,
     progress: {
       field: 'state',
       done: 'fixed',
