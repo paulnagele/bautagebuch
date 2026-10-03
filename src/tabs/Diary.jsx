@@ -5,7 +5,8 @@ import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
 import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 import { fromRow, toRow } from '../diaryEntries.js'
-import { checkDetails, compareEntries, emptyForm, formFromEntry } from '../diaryForm.js'
+import { checkDetails, emptyForm, formFromEntry } from '../diaryForm.js'
+import { diarySections } from '../diarySections.js'
 import { entryFolderPath, uploadPending } from '../diaryUploads.js'
 import { inRange, matchesContact, matchesEntry, queryWords } from '../diarySearch.js'
 import { connectDrive, driveFolderUrl, getDriveFolderId } from '../drive.js'
@@ -14,17 +15,6 @@ import EntryForm from '../components/EntryForm.jsx'
 import EntryCard from '../components/EntryCard.jsx'
 import BusyOverlay from '../components/BusyOverlay.jsx'
 import Lightbox from '../components/Lightbox.jsx'
-
-// Open entries of kinds with sortByDue (to-dos, defects) come first, by due
-// date, soonest first (without one at the end of them); everything else,
-// done ones included, newest first.
-function compareByDue(a, b) {
-  const waiting = (e) => Boolean(entryType(e.type).sortByDue) && isOpen(e)
-  if (waiting(a) !== waiting(b)) return waiting(b) - waiting(a)
-  if (!waiting(a)) return compareEntries(a, b)
-  const due = (e) => e.details[entryType(e.type).progress.due] || '9999'
-  return due(a).localeCompare(due(b)) || compareEntries(a, b)
-}
 
 // Expense categories as kept on the Finanzen tab.
 function categoryFromRow(row) {
@@ -105,9 +95,8 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const canFilterOpen = Boolean(ENTRY_TYPES[activeFilter]?.progress)
   const ofFilter = found.filter((e) => activeFilter === 'all' || typeKey(e.type) === activeFilter)
   const openCount = ofFilter.filter(isOpen).length
-  const sorted = ofFilter
-    .filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
-    .sort(compareByDue)
+  const shown = ofFilter.filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
+  const sections = diarySections(shown, todayDate)
 
   function clearSearch() {
     setQuery('')
@@ -392,30 +381,37 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
       )}
 
       {status === 'ready' && entries.length === 0 && <p className="empty">Noch keine Tagebucheinträge.</p>}
-      {status === 'ready' && entries.length > 0 && sorted.length === 0 && (
+      {status === 'ready' && entries.length > 0 && shown.length === 0 && (
         <p className="empty">
           {words.length > 0 ? `Keine Einträge passen zu „${query.trim()}“.` : 'Keine passenden Einträge.'}
         </p>
       )}
 
-      {sorted.length > 0 && (
-        <ul className="entry-list">
-          {sorted.map((entry) => (
-            <EntryCard
-              key={entry.id}
-              entry={entry}
-              editing={entry.id === editingId}
-              todayDate={todayDate}
-              lists={lists}
-              onOpenContact={onOpenContact}
-              onOpenPhoto={setLightbox}
-              onToggleDone={toggleDone}
-              onEdit={startEdit}
-              onDelete={handleDelete}
-            />
-          ))}
-        </ul>
-      )}
+      {sections.map((section) => (
+        <section key={section.key} className="entry-section">
+          {sections.length > 1 && (
+            <h2 className="entry-section-title">
+              {section.title} <span className="chip-count">{section.entries.length}</span>
+            </h2>
+          )}
+          <ul className="entry-list">
+            {section.entries.map((entry) => (
+              <EntryCard
+                key={entry.id}
+                entry={entry}
+                editing={entry.id === editingId}
+                todayDate={todayDate}
+                lists={lists}
+                onOpenContact={onOpenContact}
+                onOpenPhoto={setLightbox}
+                onToggleDone={toggleDone}
+                onEdit={startEdit}
+                onDelete={handleDelete}
+              />
+            ))}
+          </ul>
+        </section>
+      ))}
 
       {folderId && (
         <p className="muted drive-link">

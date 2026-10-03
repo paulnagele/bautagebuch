@@ -23,7 +23,6 @@ const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: '
 // progress: for kinds that get done (defects, to-dos, unpaid expenses):
 // which field holds the state, its "done" value, the button labels and
 // the due-date field. An entry without that field has its default.
-// sortByDue: open ones are listed first, by due date.
 // dueHeadline: the list shows the due date as the entry's big date, and the
 // entry date in the small text.
 export const ENTRY_TYPES = {
@@ -41,7 +40,6 @@ export const ENTRY_TYPES = {
     plural: 'Mängel',
     dateLabel: 'Festgestellt am',
     textLabel: 'Beschreibung des Mangels',
-    sortByDue: true,
     dueHeadline: true,
     progress: {
       field: 'state',
@@ -79,7 +77,6 @@ export const ENTRY_TYPES = {
     plural: 'Aufgaben',
     dateLabel: 'Eingetragen am',
     textLabel: 'Was ist zu tun?',
-    sortByDue: true,
     dueHeadline: true,
     progress: {
       field: 'state',

@@ -1833,3 +1833,19 @@ button.danger-button:hover:not(:disabled) {
 .pin-star {
   color: #d4a017;
 }
+
+/* Diary list parts: Offen, Demnächst, Verlauf */
+.entry-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.entry-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+  color: var(--muted);
+}
