@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { saveJSON } from '../storage.js'
+import { useSwipeTabs } from '../useSwipeTabs.js'
 import { loadGoogleScript } from '../google.js'
 import Overview from '../tabs/Overview.jsx'
 import Diary from '../tabs/Diary.jsx'
@@ -22,6 +23,8 @@ function Home({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState(TABS[0].id)
   const [focusEntryId, setFocusEntryId] = useState(null)
   const [focusContactId, setFocusContactId] = useState(null)
+  // Which way the last swipe went, so the new tab slides in from that side.
+  const [slide, setSlide] = useState(null)
   const current = TABS.find((tab) => tab.id === activeTab) ?? TABS[0]
   const ActiveComponent = current.component
 
@@ -32,6 +35,7 @@ function Home({ user, onLogout }) {
     saveJSON('diary.filter', entry ? entry.type : filter)
     saveJSON('diary.openOnly', entry ? false : openOnly)
     setFocusEntryId(entry?.id ?? null)
+    setSlide(null)
     setActiveTab('diary')
     window.scrollTo({ top: 0 })
   }
@@ -39,6 +43,7 @@ function Home({ user, onLogout }) {
   // Opens the contacts, scrolled to one contact.
   function openContact(contact) {
     setFocusContactId(contact.id)
+    setSlide(null)
     setActiveTab('contacts')
     window.scrollTo({ top: 0 })
   }
@@ -46,8 +51,18 @@ function Home({ user, onLogout }) {
   function chooseTab(id) {
     setFocusEntryId(null)
     setFocusContactId(null)
+    setSlide(null)
     setActiveTab(id)
   }
+
+  // On phones, swiping left or right moves to the next or previous tab.
+  useSwipeTabs((step) => {
+    const next = TABS[TABS.indexOf(current) + step]
+    if (!next) return
+    chooseTab(next.id)
+    setSlide(step > 0 ? 'next' : 'prev')
+    window.scrollTo({ top: 0 })
+  })
 
   // Google's script is needed to connect Google Drive for photos. Load it
   // early so the "connect" click can open the popup right away.
@@ -93,7 +108,8 @@ function Home({ user, onLogout }) {
         </nav>
 
         <main
-          className="tab-panel"
+          key={current.id}
+          className={slide ? `tab-panel slide-${slide}` : 'tab-panel'}
           role="tabpanel"
           id={`panel-${current.id}`}
           aria-labelledby={`tab-${current.id}`}

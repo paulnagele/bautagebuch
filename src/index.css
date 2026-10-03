@@ -146,6 +146,8 @@ button.secondary:hover {
   max-width: 1000px;
   margin: 0 auto;
   padding: 1rem 1rem 3rem;
+  /* A tab sliding in after a swipe must not widen the page. */
+  overflow-x: clip;
 }
 
 .app-header {
@@ -231,6 +233,36 @@ button.secondary:hover {
 
 .install-hint button.link {
   color: var(--muted);
+}
+
+/* After a swipe, the new tab slides in from the side it came from. */
+.tab-panel.slide-next {
+  animation: slide-from-right 0.2s ease-out;
+}
+
+.tab-panel.slide-prev {
+  animation: slide-from-left 0.2s ease-out;
+}
+
+@keyframes slide-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(2.5rem);
+  }
+}
+
+@keyframes slide-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-2.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-panel.slide-next,
+  .tab-panel.slide-prev {
+    animation: none;
+  }
 }
 
 /* Shared building blocks */
