@@ -5,7 +5,8 @@ import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
 import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 import { fromRow, toRow } from '../diaryEntries.js'
-import { checkDetails, compareEntries, emptyForm, formFromEntry } from '../diaryForm.js'
+import { checkDetails, emptyForm, formFromEntry } from '../diaryForm.js'
+import { diarySections } from '../diarySections.js'
 import { entryFolderPath, uploadPending } from '../diaryUploads.js'
 import { inRange, matchesContact, matchesEntry, queryWords } from '../diarySearch.js'
 import { connectDrive, driveFolderUrl, getDriveFolderId } from '../drive.js'
@@ -14,17 +15,6 @@ import EntryForm from '../components/EntryForm.jsx'
 import EntryCard from '../components/EntryCard.jsx'
 import BusyOverlay from '../components/BusyOverlay.jsx'
 import Lightbox from '../components/Lightbox.jsx'
-
-// Open entries of kinds with sortByDue (to-dos, defects) come first, by due
-// date, soonest first (without one at the end of them); everything else,
-// done ones included, newest first.
-function compareByDue(a, b) {
-  const waiting = (e) => Boolean(entryType(e.type).sortByDue) && isOpen(e)
-  if (waiting(a) !== waiting(b)) return waiting(b) - waiting(a)
-  if (!waiting(a)) return compareEntries(a, b)
-  const due = (e) => e.details[entryType(e.type).progress.due] || '9999'
-  return due(a).localeCompare(due(b)) || compareEntries(a, b)
-}
 
 // Expense categories as kept on the Finanzen tab.
 function categoryFromRow(row) {
@@ -71,6 +61,8 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const [folderId, setFolderId] = useState(null)
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openOnly', false)
+  // Keys of the list parts (Offen, Demnächst, Verlauf) folded away.
+  const [collapsed, setCollapsed] = usePersistentState('diary.collapsed', [])
   // Search text and date range; not remembered, so the diary always opens
   // showing everything.
   const [query, setQuery] = useState('')
@@ -105,9 +97,19 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   const canFilterOpen = Boolean(ENTRY_TYPES[activeFilter]?.progress)
   const ofFilter = found.filter((e) => activeFilter === 'all' || typeKey(e.type) === activeFilter)
   const openCount = ofFilter.filter(isOpen).length
-  const sorted = ofFilter
-    .filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
-    .sort(compareByDue)
+  const shown = ofFilter.filter((e) => !(canFilterOpen && openOnly && !isOpen(e)))
+  const sections = diarySections(shown, todayDate)
+  const focusSection = sections.find((section) =>
+    section.entries.some((entry) => entry.id === focusEntryId),
+  )?.key
+  // A lone part has no heading, so it cannot be folded away; the part
+  // holding an entry opened from the start page is unfolded.
+  const isCollapsed = (key) =>
+    sections.length > 1 && key !== focusSection && collapsed.includes(key)
+
+  function toggleSection(key) {
+    setCollapsed((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]))
+  }
 
   function clearSearch() {
     setQuery('')
@@ -122,6 +124,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   // Opened from the start page: scroll to that entry and flash it.
   useEffect(() => {
     if (!focusEntryId || status !== 'ready') return
+    if (focusSection) setCollapsed((keys) => keys.filter((k) => k !== focusSection))
     const element = document.getElementById(`entry-${focusEntryId}`)
     if (element) {
       element.scrollIntoView({ block: 'center' })
@@ -132,7 +135,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
       )
     }
     onFocused()
-  }, [focusEntryId, status, onFocused])
+  }, [focusEntryId, focusSection, status, onFocused, setCollapsed])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -392,30 +395,51 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
       )}
 
       {status === 'ready' && entries.length === 0 && <p className="empty">Noch keine Tagebucheinträge.</p>}
-      {status === 'ready' && entries.length > 0 && sorted.length === 0 && (
+      {status === 'ready' && entries.length > 0 && shown.length === 0 && (
         <p className="empty">
           {words.length > 0 ? `Keine Einträge passen zu „${query.trim()}“.` : 'Keine passenden Einträge.'}
         </p>
       )}
 
-      {sorted.length > 0 && (
-        <ul className="entry-list">
-          {sorted.map((entry) => (
-            <EntryCard
-              key={entry.id}
-              entry={entry}
-              editing={entry.id === editingId}
-              todayDate={todayDate}
-              lists={lists}
-              onOpenContact={onOpenContact}
-              onOpenPhoto={setLightbox}
-              onToggleDone={toggleDone}
-              onEdit={startEdit}
-              onDelete={handleDelete}
-            />
-          ))}
-        </ul>
-      )}
+      {sections.map((section) => {
+        const folded = isCollapsed(section.key)
+        return (
+          <section key={section.key} className="entry-section">
+            {sections.length > 1 && (
+              <h2 className="entry-section-title">
+                <button
+                  type="button"
+                  aria-expanded={!folded}
+                  onClick={() => toggleSection(section.key)}
+                >
+                  <span className="section-chevron" aria-hidden="true">
+                    {folded ? '▸' : '▾'}
+                  </span>
+                  {section.title} <span className="chip-count">{section.entries.length}</span>
+                </button>
+              </h2>
+            )}
+            {!folded && (
+              <ul className="entry-list">
+                {section.entries.map((entry) => (
+                  <EntryCard
+                    key={entry.id}
+                    entry={entry}
+                    editing={entry.id === editingId}
+                    todayDate={todayDate}
+                    lists={lists}
+                    onOpenContact={onOpenContact}
+                    onOpenPhoto={setLightbox}
+                    onToggleDone={toggleDone}
+                    onEdit={startEdit}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+        )
+      })}
 
       {folderId && (
         <p className="muted drive-link">
