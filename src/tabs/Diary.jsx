@@ -124,11 +124,17 @@ function categoryToRow(category) {
 }
 
 function contactFromRow(row) {
-  return { id: row.id, name: row.name, role: row.role ?? '', company: row.company ?? '' }
+  return {
+    id: row.id,
+    name: row.name,
+    role: row.role ?? '',
+    company: row.company ?? '',
+    pinned: row.pinned ?? false,
+  }
 }
 
 function contactToRow(contact) {
-  return { name: contact.name, role: contact.role, company: contact.company }
+  return { name: contact.name, role: contact.role, company: contact.company, pinned: contact.pinned }
 }
 
 function DetailField({ field, value, options, lists, onChange }) {
