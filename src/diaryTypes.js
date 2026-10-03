@@ -42,6 +42,7 @@ export const ENTRY_TYPES = {
     dateLabel: 'Festgestellt am',
     textLabel: 'Beschreibung des Mangels',
     sortByDue: true,
+    dueHeadline: true,
     progress: {
       field: 'state',
       done: 'fixed',
