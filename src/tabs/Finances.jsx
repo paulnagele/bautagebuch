@@ -5,6 +5,7 @@ import { supabase } from '../supabase.js'
 import CategoryManager from '../components/CategoryManager.jsx'
 import MoneyFlow from '../components/MoneyFlow.jsx'
 import BudgetPlan from '../components/BudgetPlan.jsx'
+import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 
 // Used only until the finance_categories table exists (migrations not yet
 // applied); the migrations start the table with the same lists.
@@ -82,6 +83,8 @@ function fromRow(row) {
     amount: Number(row.amount),
     // Set for expenses entered in the diary; those are changed there.
     diaryEntryId: row.diary_entry_id ?? null,
+    // The budget item a diary expense is assigned to, if any.
+    budgetItemId: row.budget_item_id ?? null,
   }
 }
 
@@ -213,6 +216,7 @@ function Finances() {
     fromRow: categoryFromRow,
     toRow: categoryToRow,
   })
+  const itemStore = useCollection('budget_items', { fromRow: itemFromRow, toRow: itemToRow })
   const [form, setForm] = useState(() => emptyForm())
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -235,9 +239,22 @@ function Finances() {
       ]
     : categoryStore.rows
   const expenseCategories = categoryRows.filter((c) => c.type === 'expense').sort(byOrder)
+  // Until the budget items table exists, categories have no items.
+  const itemsMissing = itemStore.status === 'error'
+  const budgetItems = itemsMissing ? [] : [...itemStore.rows].sort(itemOrder)
+  // A category split into items is planned as the sum of its items.
+  const plannedCategories = expenseCategories.map((c) => {
+    const own = budgetItems.filter((item) => item.categoryId === c.id)
+    if (own.length === 0) return c
+    return { ...c, plannedAmount: own.reduce((sum, item) => sum + item.plannedAmount, 0) }
+  })
+  const itemSpent = sumBy(
+    expenses.filter((e) => e.budgetItemId),
+    'budgetItemId',
+  )
   // What the plans still expect to be spent, beyond what already was.
   const spentByCategory = sumBy(expenses, 'category')
-  const plannedOpen = expenseCategories.reduce(
+  const plannedOpen = plannedCategories.reduce(
     (sum, c) => sum + Math.max(0, (c.plannedAmount ?? 0) - (spentByCategory.get(c.name) ?? 0)),
     0,
   )
@@ -276,6 +293,23 @@ function Finances() {
   async function setPlannedAmount(id, plannedAmount) {
     const category = expenseCategories.find((c) => c.id === id)
     await categoryStore.update(id, { ...category, plannedAmount })
+  }
+
+  async function addBudgetItem(categoryId, name, plannedAmount) {
+    const siblings = budgetItems.filter((item) => item.categoryId === categoryId)
+    const sortOrder = Math.max(0, ...siblings.map((item) => item.sortOrder)) + 1
+    await itemStore.insert({ categoryId, name, plannedAmount, sortOrder })
+  }
+
+  async function updateBudgetItem(id, changes) {
+    const item = budgetItems.find((i) => i.id === id)
+    await itemStore.update(id, { ...item, ...changes })
+  }
+
+  async function deleteBudgetItem(id) {
+    await itemStore.remove(id)
+    // Assigned expenses lose their item (on delete set null).
+    await reloadItems()
   }
 
   async function deleteCategory(id) {
@@ -402,19 +436,25 @@ function Finances() {
           funding,
           Math.max(0, totalSpent + plannedOpen - totalFunding),
         )}
-        targets={flowTargets(expenses, expenseCategories, totalFunding)}
+        targets={flowTargets(expenses, plannedCategories, totalFunding)}
         total={Math.max(totalFunding, totalSpent + plannedOpen)}
         format={(value) => euros.format(value)}
         formatShare={(share) => percent.format(share)}
       />
 
       <BudgetPlan
-        categories={expenseCategories}
+        categories={plannedCategories}
         spent={spentByCategory}
+        items={budgetItems}
+        itemSpent={itemSpent}
+        itemsReadOnly={itemsMissing}
         funding={totalFunding}
         readOnly={categoriesMissing}
         format={(value) => euros.format(value)}
         onSetPlan={setPlannedAmount}
+        onAddItem={addBudgetItem}
+        onUpdateItem={updateBudgetItem}
+        onDeleteItem={deleteBudgetItem}
       />
 
       <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>

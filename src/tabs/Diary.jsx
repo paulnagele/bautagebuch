@@ -12,6 +12,7 @@ import {
 import { useCollection } from '../useCollection.js'
 import PeopleInput from '../components/PeopleInput.jsx'
 import PeopleLinks from '../components/PeopleLinks.jsx'
+import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 import { fromRow, toRow } from '../diaryEntries.js'
 import {
   connectDrive,
@@ -154,8 +155,17 @@ function DetailField({ field, value, options, lists, onChange }) {
 }
 
 // A select's choices; a value no longer in its list stays selectable.
-function fieldOptions(field, value, lists) {
+// A field `within` another one offers "none" plus the choices for that
+// field's value, and drops values that are not among them.
+function fieldOptions(field, value, lists, details = {}) {
   if (field.options) return field.options
+  if (field.within) {
+    // An empty select means its first choice, as shown in the form.
+    const byValue = lists[field.optionsFrom] ?? new Map()
+    const choices = byValue.get(details[field.within] || byValue.keys().next().value) ?? []
+    if (choices.length === 0) return {}
+    return { '': '– keiner –', ...Object.fromEntries(choices.map((c) => [c.id, c.name])) }
+  }
   const names = lists[field.optionsFrom] ?? []
   const all = !value || names.includes(value) ? names : [...names, value]
   return Object.fromEntries(all.map((name) => [name, name]))
@@ -166,6 +176,12 @@ function fieldOptions(field, value, lists) {
 function checkDetails(type, formDetails, lists) {
   const details = defaultDetails(type, formDetails)
   for (const field of entryType(type).fields) {
+    if (field.within) {
+      // Checked after the field it depends on, which comes first.
+      const options = fieldOptions(field, '', lists, details)
+      if (!Object.hasOwn(options, details[field.key])) details[field.key] = ''
+      continue
+    }
     if (field.kind === 'select' && !details[field.key]) {
       details[field.key] = Object.keys(fieldOptions(field, '', lists))[0] ?? ''
     }
@@ -196,6 +212,7 @@ function detailSummaries(entry, lists, onOpenContact) {
     .fields.filter((field) => !field.pill && entry.details[field.key])
     .map((field) => {
       let value = entry.details[field.key]
+      if (field.within) return fieldOptions(field, value, lists, entry.details)[value] ?? null
       if (field.suggestFrom) {
         value = (
           <PeopleLinks text={value} contacts={lists[field.suggestFrom] ?? []} onOpen={onOpenContact} />
@@ -223,6 +240,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
     toRow: categoryToRow,
   })
   const contactStore = useCollection('contacts', { fromRow: contactFromRow, toRow: contactToRow })
+  const itemStore = useCollection('budget_items', { fromRow: itemFromRow, toRow: itemToRow })
   const [folderId, setFolderId] = useState(null)
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openOnly', false)
@@ -243,11 +261,18 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
     .sort(compareEntries)
   const todayDate = today()
   const formType = entryType(form.type)
+  const expenseCategoryRows = categoryStore.rows
+    .filter((c) => c.type === 'expense')
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de'))
   const lists = {
-    expenseCategories: categoryStore.rows
-      .filter((c) => c.type === 'expense')
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de'))
-      .map((c) => c.name),
+    expenseCategories: expenseCategoryRows.map((c) => c.name),
+    // Budget items by category name (empty until the table exists).
+    budgetItems: new Map(
+      expenseCategoryRows.map((c) => [
+        c.name,
+        itemStore.rows.filter((item) => item.categoryId === c.id).sort(itemOrder),
+      ]),
+    ),
     contacts: contactStore.rows,
   }
 
@@ -283,7 +308,12 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   }
 
   function setDetail(key) {
-    return (e) => setForm({ ...form, details: { ...form.details, [key]: e.target.value } })
+    return (e) => {
+      const details = { ...form.details, [key]: e.target.value }
+      // A choice that depends on this field no longer fits.
+      for (const field of formType.fields) if (field.within === key) details[field.key] = ''
+      setForm({ ...form, details })
+    }
   }
 
   function chooseType(type) {
@@ -569,18 +599,25 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
             </label>
           </>
         )}
-        {formType.fields.map((field) => (
-          <label key={field.key}>
-            {field.label}
-            <DetailField
-              field={field}
-              value={form.details[field.key] ?? ''}
-              options={field.kind === 'select' ? fieldOptions(field, form.details[field.key], lists) : null}
-              lists={lists}
-              onChange={setDetail(field.key)}
-            />
-          </label>
-        ))}
+        {formType.fields.map((field) => {
+          const options =
+            field.kind === 'select'
+              ? fieldOptions(field, form.details[field.key], lists, form.details)
+              : null
+          if (field.within && Object.keys(options).length === 0) return null
+          return (
+            <label key={field.key}>
+              {field.label}
+              <DetailField
+                field={field}
+                value={form.details[field.key] ?? ''}
+                options={options}
+                lists={lists}
+                onChange={setDetail(field.key)}
+              />
+            </label>
+          )
+        })}
         <label className="full">
           {formType.textLabel}
           <textarea rows="4" value={form.work} onChange={setField('work')} />
