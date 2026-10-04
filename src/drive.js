@@ -76,6 +76,9 @@ const drive = createGoogleAccess({
   clientId: config.googleClientId,
 })
 
+// For connecting Drive together with another Google API (connectTogether).
+export const driveAccess = drive
+
 const validToken = drive.connected
 const driveFetch = drive.fetch
 

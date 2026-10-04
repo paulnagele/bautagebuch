@@ -7,9 +7,8 @@ import CategoryManager from '../components/CategoryManager.jsx'
 import MoneyFlow from '../components/MoneyFlow.jsx'
 import BudgetPlan from '../components/BudgetPlan.jsx'
 import QuoteList from '../components/QuoteList.jsx'
-import PaymentPlan from '../components/PaymentPlan.jsx'
 import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
-import { paymentFromRow, paymentToRow, quoteFromRow, quoteToRow } from '../planning.js'
+import { quoteFromRow, quoteToRow } from '../planning.js'
 import { connectDrive, getEntryFolderId, uploadFile } from '../drive.js'
 
 // Used only until the finance_categories table exists (migrations not yet
@@ -236,7 +235,6 @@ function Finances({ user, onOpenDiary }) {
   })
   const itemStore = useCollection('budget_items', { fromRow: itemFromRow, toRow: itemToRow })
   const quoteStore = useCollection('quotes', { fromRow: quoteFromRow, toRow: quoteToRow })
-  const paymentStore = useCollection('payment_plan', { fromRow: paymentFromRow, toRow: paymentToRow })
   const contactStore = useCollection('contacts', { fromRow: contactFromRow, toRow: contactToRow })
   const [form, setForm] = useState(() => emptyForm())
   const [error, setError] = useState('')
@@ -245,7 +243,7 @@ function Finances({ user, onOpenDiary }) {
   // The funding form stays folded behind a button until needed; it opens
   // by itself to edit a booking.
   const [formOpen, setFormOpen] = useState(false)
-  // Remembered on this device, like the budget plan and payment schedule.
+  // Remembered on this device, like the budget plan.
   const [bookingsOpen, setBookingsOpen] = usePersistentState('bookings.open', true)
   const formRef = useRef(null)
   const dialogs = useDialogs()
@@ -297,14 +295,9 @@ function Finances({ user, onOpenDiary }) {
     (sum, c) => sum + Math.max(0, (c.plannedAmount ?? 0) - (spentByCategory.get(c.name) ?? 0)),
     0,
   )
-  const itemsByCategoryName = new Map(
-    expenseCategories.map((c) => [c.name, budgetItems.filter((item) => item.categoryId === c.id)]),
-  )
   const companyNames = [
     ...new Set(contactStore.rows.flatMap((c) => [c.company, c.name]).filter(Boolean)),
   ].sort((a, b) => a.localeCompare(b, 'de'))
-  // Diary expenses by their entry, for the payment schedule's state.
-  const invoicesByEntry = new Map(expenses.filter((e) => e.diaryEntryId).map((e) => [e.diaryEntryId, e]))
   const fundingCategories = categoryRows.filter((c) => c.type === 'funding').sort(byOrder)
   const baseCategories = (form.type === 'funding' ? fundingCategories : expenseCategories).map(
     (c) => c.name,
@@ -339,7 +332,7 @@ function Finances({ user, onOpenDiary }) {
       new_name: name,
     })
     if (renameError) throw new Error(friendlyError(renameError))
-    await Promise.all([categoryStore.reload(), reloadItems(), paymentStore.reload()])
+    await Promise.all([categoryStore.reload(), reloadItems()])
   }
 
   async function setPlannedAmount(id, plannedAmount) {
@@ -389,33 +382,9 @@ function Finances({ user, onOpenDiary }) {
     await Promise.all([quoteStore.reload(), itemStore.reload()])
   }
 
-  // ---- payment schedule (Zahlungsplan) ----
-
-  async function recordPayment(payment) {
-    const { error: recordError } = await supabase.rpc('record_planned_payment', {
-      payment_id: payment.id,
-      entry_date: today(),
-    })
-    if (recordError) throw new Error(friendlyError(recordError))
-    await Promise.all([paymentStore.reload(), reloadItems()])
-  }
-
-  function openDiaryEntry(id) {
-    onOpenDiary({ entry: { id, type: 'expense' } })
-  }
-
-  // Planned payments store the category by name, so they would be left
-  // without one; quotes (via the Posten) and the category's time slots in
-  // the Bauablauf (Zeitplan) are deleted with it.
+  // Quotes (via the Posten) and the category's time slots in the
+  // Bauablauf (Zeitplan) are deleted with it.
   async function checkCategoryDelete(category) {
-    const payments = paymentStore.rows.filter((p) => p.category === category.name).length
-    if (payments > 0) {
-      return {
-        blocked:
-          `„${category.name}“ hat ${payments === 1 ? 'eine geplante Zahlung' : `${payments} geplante Zahlungen`} ` +
-          'im Zahlungsplan. Ändere oder lösche sie zuerst.',
-      }
-    }
     const itemIds = new Set(budgetItems.filter((i) => i.categoryId === category.id).map((i) => i.id))
     const quotes = quoteStore.rows.filter((q) => itemIds.has(q.budgetItemId)).length
     // Not loaded on this tab, so counted here; unknown if that fails.
@@ -600,22 +569,6 @@ function Finances({ user, onOpenDiary }) {
         }
       />
 
-      {paymentStore.status !== 'error' && (
-        <PaymentPlan
-          payments={paymentStore.rows}
-          categories={expenseCategories.map((c) => c.name)}
-          itemsByCategory={itemsByCategoryName}
-          invoices={invoicesByEntry}
-          todayDate={today()}
-          format={(value) => currency.format(value)}
-          readOnly={categoriesMissing}
-          onAdd={(payment) => paymentStore.insert(payment)}
-          onUpdate={(id, payment) => paymentStore.update(id, payment)}
-          onDelete={(id) => paymentStore.remove(id)}
-          onRecord={recordPayment}
-          onOpenEntry={openDiaryEntry}
-        />
-      )}
 
       {!formOpen && (
         <button type="button" className="secondary add-funding" onClick={() => setFormOpen(true)}>

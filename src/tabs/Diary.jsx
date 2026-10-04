@@ -9,9 +9,16 @@ import { checkDetails, emptyForm, formFromEntry } from '../diaryForm.js'
 import { diarySections } from '../diarySections.js'
 import { entryFolderPath, uploadPending } from '../diaryUploads.js'
 import { inRange, matchesContact, matchesEntry, queryWords } from '../diarySearch.js'
-import { connectDrive, driveFolderUrl, getDriveFolderId } from '../drive.js'
+import { driveAccess, driveFolderUrl, getDriveFolderId } from '../drive.js'
 import { assignDocument, assignmentFromRow, assignmentToRow, unmarkDocument } from '../documents.js'
-import { connectCalendar, deleteEvent, entryHasEvent, syncEntryEvent } from '../calendar.js'
+import {
+  calendarAccess,
+  connectCalendar,
+  deleteEvent,
+  entryHasEvent,
+  syncEntryEvent,
+} from '../calendar.js'
+import { connectTogether } from '../google.js'
 import EntryForm from '../components/EntryForm.jsx'
 import EntryCard from '../components/EntryCard.jsx'
 import BusyOverlay from '../components/BusyOverlay.jsx'
@@ -167,31 +174,27 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
     setError('')
 
     // Appointments, and to-dos and defects with a due date, also go into
-    // the Google Calendar (Zeitplan). Connect first, while the click still
-    // counts as user action, otherwise the browser blocks Google's popup.
-    // If the calendar fails, the entry is still saved, with a note.
+    // the Google Calendar (Zeitplan); new photos and files go to Drive.
+    // Connect first, while the click still counts as user action,
+    // otherwise the browser blocks Google's popup; when both are needed,
+    // both are asked for in one popup. If the calendar fails, the entry is
+    // still saved, with a note.
     const original = entries.find((e) => e.id === editingId)
     const oldEventId = original?.details.calendarEventId
     const calendarEntry = { type: form.type, date: form.date, work: form.work.trim(), details }
-    const hasEvent = entryHasEvent(calendarEntry)
-    let calendarProblem = ''
-    let calendarConnected = false
-    if (hasEvent || oldEventId) {
-      try {
-        await connectCalendar(user.email)
-        calendarConnected = true
-      } catch (err) {
-        calendarProblem = err.message
-      }
-    }
-
+    const needsCalendar = entryHasEvent(calendarEntry) || Boolean(oldEventId)
     const pending = [...form.photos, ...form.files].filter((p) => p.blob).length
+    const accesses = [needsCalendar && calendarAccess, pending > 0 && driveAccess].filter(Boolean)
+    const problems = await connectTogether(accesses, user.email)
+    const problemOf = (access) => problems[accesses.indexOf(access)] ?? ''
+    let calendarProblem = problemOf(calendarAccess)
+    const calendarConnected = needsCalendar && !calendarProblem
+
     let uploaded = { photos: form.photos, files: form.files }
     if (pending > 0) {
       try {
-        // Must run first, while the click still counts as user action,
-        // otherwise the browser blocks Google's popup.
-        await connectDrive(user.email)
+        const driveProblem = problemOf(driveAccess)
+        if (driveProblem) throw new Error(driveProblem)
         const createdAt = original?.createdAt
         const folderPath = entryFolderPath(form.type, editingId ? createdAt : null)
         uploaded = await uploadPending(form, folderPath, (progress, sofar) => {

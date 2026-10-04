@@ -131,10 +131,69 @@ export function createGoogleAccess({ scope, storageKey, name, clientId }) {
     return response
   }
 
+  // Takes a token from a consent popup that asked for several APIs at
+  // once (connectTogether); false if this API's access was not granted.
+  function adopt(response) {
+    if (!window.google.accounts.oauth2.hasGrantedAllScopes(response, scope)) return false
+    setToken({
+      accessToken: response.access_token,
+      expiresAt: Date.now() + Number(response.expires_in) * 1000,
+    })
+    return true
+  }
+
   return {
+    name,
+    scope,
+    clientId,
+    adopt,
     connect,
     fetch: apiFetch,
     connected: () => Boolean(validToken()),
     disconnect: () => setToken(null),
   }
+}
+
+// Connects several Google APIs (e.g. Calendar and Drive) with one consent
+// popup. Opening a second popup right after the first fails, because the
+// browser counts only the first one as caused by the click. Must be called
+// directly from a click handler. Resolves to one error message per API
+// ('' when connected), in the order given; never rejects.
+export async function connectTogether(accesses, email) {
+  const missing = accesses.filter((access) => !access.connected())
+  if (missing.length <= 1) {
+    return Promise.all(
+      accesses.map((access) => access.connect(email).then(() => '', (err) => err.message)),
+    )
+  }
+  if (!googleReady()) {
+    const message = 'Google wird noch geladen. Bitte gleich noch einmal versuchen.'
+    return accesses.map((access) => (access.connected() ? '' : message))
+  }
+  const failure = await new Promise((resolve) => {
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: missing[0].clientId,
+      scope: missing.map((access) => access.scope).join(' '),
+      login_hint: email,
+      callback: (response) => {
+        if (response.error) {
+          resolve((name) => `Der Zugriff auf ${name} wurde nicht erlaubt (${response.error}).`)
+          return
+        }
+        const refused = missing.filter((access) => !access.adopt(response))
+        resolve(refused.length ? (name) => `Bitte den Zugriff auf ${name} erlauben.` : null)
+      },
+      error_callback: (err) => {
+        resolve(
+          err?.type === 'popup_failed_to_open'
+            ? () => 'Das Google-Fenster wurde blockiert. Bitte Pop-ups für diese Seite erlauben.'
+            : (name) => `Die Anmeldung bei ${name} wurde abgebrochen.`,
+        )
+      },
+    })
+    client.requestAccessToken({ prompt: '' })
+  })
+  return accesses.map((access) =>
+    access.connected() ? '' : failure ? failure(access.name) : `Nicht mit ${access.name} verbunden.`,
+  )
 }
