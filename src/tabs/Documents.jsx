@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../supabase.js'
-import { friendlyError, useCollection } from '../useCollection.js'
+import { useCollection } from '../useCollection.js'
 import { usePersistentState, formatDate } from '../storage.js'
 import { fromRow, toRow } from '../diaryEntries.js'
 import { itemFromRow, itemToRow } from '../budgetItems.js'
@@ -8,13 +7,18 @@ import { quoteFromRow, quoteToRow } from '../planning.js'
 import { driveFileUrl } from '../drive.js'
 import {
   UNSORTED,
+  assignDocument,
   assignmentFromRow,
   assignmentToRow,
   collectDocuments,
   documentTypeId,
   typeFromRow,
   typeToRow,
+  unmarkDocument,
 } from '../documents.js'
+
+// Dropdown value that takes a marked photo out of the documents again.
+const NOT_A_DOCUMENT = 'none'
 import DocumentTypeManager from '../components/DocumentTypeManager.jsx'
 
 function matches(document, query) {
@@ -42,7 +46,7 @@ function Documents({ onOpenDiary, onOpenTab }) {
 
   const types = [...typeStore.rows].sort((a, b) => a.name.localeCompare(b.name, 'de'))
   const assignments = new Map(assignmentStore.rows.map((a) => [a.fileId, a.typeId]))
-  const documents = collectDocuments(entryStore.rows, quoteStore.rows, itemStore.rows).map(
+  const documents = collectDocuments(entryStore.rows, quoteStore.rows, itemStore.rows, assignments).map(
     (document) => ({ ...document, typeId: documentTypeId(document, assignments, types) }),
   )
   const found = documents.filter((document) => matches(document, query))
@@ -66,13 +70,13 @@ function Documents({ onOpenDiary, onOpenTab }) {
   async function assign(document, typeId) {
     setSaving(document.fileId)
     setError('')
-    const { error: saveError } = await supabase.from('document_assignments').upsert({
-      file_id: document.fileId,
-      type_id: typeId === UNSORTED ? null : typeId,
-      updated_at: new Date().toISOString(),
-    })
-    if (saveError) setError(friendlyError(saveError))
-    else await assignmentStore.reload()
+    try {
+      if (typeId === NOT_A_DOCUMENT) await unmarkDocument(document.fileId)
+      else await assignDocument(document.fileId, typeId === UNSORTED ? null : typeId)
+      await assignmentStore.reload()
+    } catch (err) {
+      setError(err.message)
+    }
     setSaving(null)
   }
 
@@ -156,7 +160,7 @@ function Documents({ onOpenDiary, onOpenTab }) {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      <span aria-hidden="true">{document.photo ? '🧾' : '📄'}</span>
+                      <span aria-hidden="true">{document.photo ? (document.optional ? '🖼️' : '🧾') : '📄'}</span>
                       <span className="file-name">{document.name}</span>
                     </a>
                     <span className="muted document-meta">
@@ -178,6 +182,9 @@ function Documents({ onOpenDiary, onOpenTab }) {
                           {type.name}
                         </option>
                       ))}
+                      {document.optional && (
+                        <option value={NOT_A_DOCUMENT}>Kein Dokument (nur Foto)</option>
+                      )}
                     </select>
                   </li>
                 ))}

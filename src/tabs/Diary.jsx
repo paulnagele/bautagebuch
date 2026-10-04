@@ -10,6 +10,7 @@ import { diarySections } from '../diarySections.js'
 import { entryFolderPath, uploadPending } from '../diaryUploads.js'
 import { inRange, matchesContact, matchesEntry, queryWords } from '../diarySearch.js'
 import { connectDrive, driveFolderUrl, getDriveFolderId } from '../drive.js'
+import { assignDocument, assignmentFromRow, assignmentToRow, unmarkDocument } from '../documents.js'
 import { connectCalendar, deleteEvent, entryHasEvent, syncEntryEvent } from '../calendar.js'
 import EntryForm from '../components/EntryForm.jsx'
 import EntryCard from '../components/EntryCard.jsx'
@@ -66,6 +67,12 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
   })
   const contactStore = useCollection('contacts', { fromRow: contactFromRow, toRow: contactToRow })
   const itemStore = useCollection('budget_items', { fromRow: itemFromRow, toRow: itemToRow })
+  // Photos of status entries marked as documents (shown on Dokumente).
+  const assignmentStore = useCollection('document_assignments', {
+    fromRow: assignmentFromRow,
+    toRow: assignmentToRow,
+  })
+  const documentIds = new Set(assignmentStore.rows.map((a) => a.fileId))
   const [folderId, setFolderId] = useState(null)
   const [filter, setFilter] = usePersistentState('diary.filter', 'all')
   const [openOnly, setOpenOnly] = usePersistentState('diary.openOnly', false)
@@ -298,6 +305,16 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
     }
   }
 
+  async function toggleDocument(fileId) {
+    try {
+      if (documentIds.has(fileId)) await unmarkDocument(fileId)
+      else await assignDocument(fileId, null)
+      await assignmentStore.reload()
+    } catch (err) {
+      await dialogs.alert(err.message)
+    }
+  }
+
   async function handleDelete(entry) {
     const photoNote =
       entry.photoIds.length > 0 || entry.files.length > 0
@@ -456,6 +473,8 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
                     onOpenContact={onOpenContact}
                     onOpenPhoto={setLightbox}
                     onToggleDone={toggleDone}
+                    documentIds={documentIds}
+                    onToggleDocument={toggleDocument}
                     onEdit={startEdit}
                     onDelete={handleDelete}
                   />

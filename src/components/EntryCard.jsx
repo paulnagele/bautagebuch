@@ -2,6 +2,7 @@ import { Fragment } from 'react'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { WEATHER_LABELS, fieldOptions } from '../diaryForm.js'
 import { driveFileUrl } from '../drive.js'
+import { canMarkPhotos } from '../documents.js'
 import { formatDate } from '../storage.js'
 import PeopleLinks from './PeopleLinks.jsx'
 import DrivePhoto from './DrivePhoto.jsx'
@@ -33,6 +34,8 @@ function EntryCard({
   onOpenContact,
   onOpenPhoto,
   onToggleDone,
+  documentIds,
+  onToggleDocument,
   onEdit,
   onDelete,
 }) {
@@ -91,6 +94,7 @@ function EntryCard({
         <ul className="thumb-grid entry-photos">
           {entry.photoIds.map((fileId, i) => {
             const alt = `Foto ${i + 1} vom ${formatDate(entry.date)}`
+            const isDocument = documentIds.has(fileId)
             return (
               <li key={fileId} className="thumb">
                 <DrivePhoto
@@ -99,6 +103,18 @@ function EntryCard({
                   className="thumb-img"
                   onOpen={(src) => onOpenPhoto({ src, alt })}
                 />
+                {canMarkPhotos(entry) && (
+                  <button
+                    type="button"
+                    className={isDocument ? 'thumb-document marked' : 'thumb-document'}
+                    aria-pressed={isDocument}
+                    title={isDocument ? 'Ist ein Dokument (antippen zum Entfernen)' : 'Als Dokument markieren'}
+                    aria-label={`Foto ${i + 1} als Dokument`}
+                    onClick={() => onToggleDocument(fileId)}
+                  >
+                    {isDocument ? '📄 Dokument' : '+ 📄'}
+                  </button>
+                )}
               </li>
             )
           })}

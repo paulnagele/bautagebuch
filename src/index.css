@@ -2113,3 +2113,28 @@ button.link.payment-add {
     margin-top: 0.35rem;
   }
 }
+
+/* Diary: marking a status photo as a document */
+button.thumb-document {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
+button.thumb-document:hover:not(:disabled) {
+  background: rgb(0 0 0 / 0.75);
+  opacity: 1;
+}
+
+button.thumb-document.marked,
+button.thumb-document.marked:hover:not(:disabled) {
+  background: var(--accent);
+  opacity: 1;
+}
