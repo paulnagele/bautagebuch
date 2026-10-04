@@ -86,12 +86,6 @@ export function weatherChoice({ code, windMax, tempMin, tempMax }) {
   return 'Sunny'
 }
 
-// "3–12 °C", rounded to whole degrees.
-export function temperatureText(tempMin, tempMax) {
-  const round = (t) => Math.round(t).toString().replace('-', '−')
-  return `${round(tempMin)}–${round(tempMax)} °C`
-}
-
 async function loadDay(date) {
   const { latitude, longitude } = await getCoords()
   const now = today()
@@ -113,13 +107,10 @@ async function loadDay(date) {
   const tempMin = daily?.temperature_2m_min?.[0]
   if (code == null || tempMax == null || tempMin == null) return null
   const windMax = daily.wind_speed_10m_max?.[0] ?? 0
-  return {
-    weather: weatherChoice({ code, windMax, tempMin, tempMax }),
-    temperature: temperatureText(tempMin, tempMax),
-  }
+  return { weather: weatherChoice({ code, windMax, tempMin, tempMax }) }
 }
 
-// { weather, temperature } for the site on that day, or null when there is
+// { weather } for the site on that day, or null when there is
 // no data for it (e.g. too far ahead). Rejects when the site's location or
 // the weather can't be loaded.
 export function siteWeather(date) {

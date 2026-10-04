@@ -29,7 +29,7 @@ export function emptyForm(type = 'status') {
     type,
     date: today(),
     weather: 'Sunny',
-    // Weather and temperature are filled in automatically until changed.
+    // The weather is filled in automatically until changed.
     weatherAuto: true,
     workers: '',
     work: '',

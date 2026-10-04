@@ -44,7 +44,7 @@ function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, o
   const needsWeather = autoWeather && form.weatherFor !== form.date
 
   // New status entries get the site's weather for their date, until the
-  // weather or temperature is changed by hand.
+  // weather is changed by hand.
   useEffect(() => {
     if (!needsWeather) return
     let cancelled = false
@@ -59,12 +59,7 @@ function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, o
         if (!found) return
         setForm((f) =>
           f.date === date && f.weatherAuto
-            ? {
-                ...f,
-                weather: found.weather,
-                weatherFor: date,
-                details: { ...f.details, temperature: found.temperature },
-              }
+            ? { ...f, weather: found.weather, weatherFor: date }
             : f,
         )
       },
@@ -93,8 +88,7 @@ function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, o
       const details = { ...form.details, [key]: e.target.value }
       // A choice that depends on this field no longer fits.
       for (const field of formType.fields) if (field.within === key) details[field.key] = ''
-      // A temperature typed in by hand is kept.
-      setForm({ ...form, details, weatherAuto: form.weatherAuto && key !== 'temperature' })
+      setForm({ ...form, details })
     }
   }
 
