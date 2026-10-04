@@ -129,6 +129,7 @@ function Home({ user, onLogout }) {
             user={user}
             onOpenDiary={openDiary}
             onOpenContact={openContact}
+            onOpenTab={chooseTab}
             focusEntryId={focusEntryId}
             focusContactId={focusContactId}
             diaryDraft={diaryDraft}

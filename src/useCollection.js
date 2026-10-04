@@ -127,7 +127,9 @@ export function friendlyError(error) {
     return 'Der Eintrag existiert nicht mehr oder du hast keinen Zugriff darauf.'
   }
   if (error.code === 'P0002') {
-    return 'Die Kategorie wurde nicht gefunden.'
+    return /category/i.test(error.message)
+      ? 'Die Kategorie wurde nicht gefunden.'
+      : 'Der Eintrag existiert nicht mehr.'
   }
   if (/Failed to fetch|NetworkError/i.test(error.message)) {
     return 'Der Server ist nicht erreichbar. Bitte die Internetverbindung prüfen.'

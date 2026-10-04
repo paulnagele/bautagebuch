@@ -1,6 +1,7 @@
 import { today } from '../storage.js'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
+import { paymentFromRow, paymentState, paymentToRow } from '../planning.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 import { fromRow, toRow } from '../diaryEntries.js'
 
@@ -42,8 +43,9 @@ function dueDate(entry) {
 // The start page: what comes next, what is still open, and the newest
 // photos. Everything opens in the diary; data is the diary's own and stays
 // live through the same Realtime subscription.
-function Overview({ onOpenDiary }) {
+function Overview({ onOpenDiary, onOpenTab }) {
   const { rows: entries, status, error } = useCollection('diary_entries', { fromRow, toRow })
+  const paymentStore = useCollection('payment_plan', { fromRow: paymentFromRow, toRow: paymentToRow })
   const todayDate = today()
 
   const appointments = entries
@@ -63,6 +65,13 @@ function Overview({ onOpenDiary }) {
   // Invoices not yet paid (diary expenses marked "Offen").
   const invoices = open.filter((e) => typeKey(e.type) === 'expense')
   const invoiceTotal = invoices.reduce((sum, e) => sum + (Number(e.details.amount) || 0), 0)
+  // Payments from the Zahlungsplan that are due or due soon, with no
+  // invoice recorded yet.
+  const duePayments = paymentStore.rows
+    .filter((p) => !p.diaryEntryId)
+    .map((payment) => ({ payment, state: paymentState(payment, null, todayDate) }))
+    .filter(({ state }) => state.key === 'due' || state.key === 'soon')
+    .sort((a, b) => a.payment.dueDate.localeCompare(b.payment.dueDate))
 
   const photos = entries
     .filter((e) => e.photoIds.length > 0)
@@ -242,6 +251,42 @@ function Overview({ onOpenDiary }) {
           </ul>
           {invoices.length > MAX_INVOICES && (
             <p className="muted overview-more">und {invoices.length - MAX_INVOICES} weitere</p>
+          )}
+        </div>
+      )}
+
+      {duePayments.length > 0 && (
+        <div className="card overview-card">
+          <div className="overview-head">
+            <h2>Anstehende Zahlungen</h2>
+            <button type="button" className="link" onClick={() => onOpenTab('finances')}>
+              Zahlungsplan
+            </button>
+          </div>
+          <ul className="overview-list">
+            {duePayments.slice(0, MAX_INVOICES).map(({ payment, state }) => (
+              <li key={payment.id}>
+                <button
+                  type="button"
+                  className={`overview-item type-expense${state.key === 'due' ? ' overdue' : ''}`}
+                  onClick={() => onOpenTab('finances')}
+                >
+                  <span className="overview-what">
+                    <span className="overview-title">{payment.name}</span>
+                    <span className="overview-meta">
+                      <strong>{currency.format(payment.amount)}</strong>
+                      <span className={state.key === 'due' ? 'overdue-date' : undefined}>
+                        fällig {relativeDay(payment.dueDate, todayDate) ?? shortDate(payment.dueDate, todayDate, false)}
+                      </span>
+                      <span className="muted">{payment.category}</span>
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {duePayments.length > MAX_INVOICES && (
+            <p className="muted overview-more">und {duePayments.length - MAX_INVOICES} weitere</p>
           )}
         </div>
       )}

@@ -6,7 +6,11 @@ import { supabase } from '../supabase.js'
 import CategoryManager from '../components/CategoryManager.jsx'
 import MoneyFlow from '../components/MoneyFlow.jsx'
 import BudgetPlan from '../components/BudgetPlan.jsx'
+import QuoteList from '../components/QuoteList.jsx'
+import PaymentPlan from '../components/PaymentPlan.jsx'
 import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
+import { paymentFromRow, paymentToRow, quoteFromRow, quoteToRow } from '../planning.js'
+import { connectDrive, getEntryFolderId, uploadFile } from '../drive.js'
 
 // Used only until the finance_categories table exists (migrations not yet
 // applied); the migrations start the table with the same lists.
@@ -207,7 +211,16 @@ function flowTargets(expenses, categories, funding) {
   return nodes
 }
 
-function Finances({ onOpenDiary }) {
+// Contacts, only to suggest companies for quotes.
+function contactFromRow(row) {
+  return { id: row.id, name: row.name, company: row.company ?? '' }
+}
+
+function contactToRow(contact) {
+  return { name: contact.name, company: contact.company }
+}
+
+function Finances({ user, onOpenDiary }) {
   const {
     rows: items,
     status,
@@ -222,6 +235,9 @@ function Finances({ onOpenDiary }) {
     toRow: categoryToRow,
   })
   const itemStore = useCollection('budget_items', { fromRow: itemFromRow, toRow: itemToRow })
+  const quoteStore = useCollection('quotes', { fromRow: quoteFromRow, toRow: quoteToRow })
+  const paymentStore = useCollection('payment_plan', { fromRow: paymentFromRow, toRow: paymentToRow })
+  const contactStore = useCollection('contacts', { fromRow: contactFromRow, toRow: contactToRow })
   const [form, setForm] = useState(() => emptyForm())
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -272,6 +288,14 @@ function Finances({ onOpenDiary }) {
     (sum, c) => sum + Math.max(0, (c.plannedAmount ?? 0) - (spentByCategory.get(c.name) ?? 0)),
     0,
   )
+  const itemsByCategoryName = new Map(
+    expenseCategories.map((c) => [c.name, budgetItems.filter((item) => item.categoryId === c.id)]),
+  )
+  const companyNames = [
+    ...new Set(contactStore.rows.flatMap((c) => [c.company, c.name]).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, 'de'))
+  // Diary expenses by their entry, for the payment schedule's state.
+  const invoicesByEntry = new Map(expenses.filter((e) => e.diaryEntryId).map((e) => [e.diaryEntryId, e]))
   const fundingCategories = categoryRows.filter((c) => c.type === 'funding').sort(byOrder)
   const baseCategories = (form.type === 'funding' ? fundingCategories : expenseCategories).map(
     (c) => c.name,
@@ -329,6 +353,46 @@ function Finances({ onOpenDiary }) {
     await itemStore.remove(id)
     // Assigned expenses lose their item (on delete set null).
     await reloadItems()
+  }
+
+  // ---- quotes (Angebote) per budget item ----
+
+  // Drive folder for quote PDFs: Haus / Angebote / <upload date>.
+  function quoteFolderPath() {
+    return ['Angebote', today().replaceAll('-', '_')]
+  }
+
+  async function addQuote(budgetItemId, { company, amount, file }) {
+    let files = []
+    if (file) {
+      // First, while the click still counts, or the browser blocks Google's popup.
+      await connectDrive(user.email)
+      const folderId = await getEntryFolderId(quoteFolderPath())
+      const id = await uploadFile(file, `${today()} Angebot ${company} ${file.name}`, folderId)
+      files = [{ id, name: file.name }]
+    }
+    await quoteStore.insert({ budgetItemId, company, amount, files })
+  }
+
+  async function chooseQuote(quote, pick) {
+    const { error: chooseError } = await supabase.rpc('choose_quote', { quote_id: quote.id, pick })
+    if (chooseError) throw new Error(friendlyError(chooseError))
+    await Promise.all([quoteStore.reload(), itemStore.reload()])
+  }
+
+  // ---- payment schedule (Zahlungsplan) ----
+
+  async function recordPayment(payment) {
+    const { error: recordError } = await supabase.rpc('record_planned_payment', {
+      payment_id: payment.id,
+      entry_date: today(),
+    })
+    if (recordError) throw new Error(friendlyError(recordError))
+    await Promise.all([paymentStore.reload(), reloadItems()])
+  }
+
+  function openDiaryEntry(id) {
+    onOpenDiary({ entry: { id, type: 'expense' } })
   }
 
   async function deleteCategory(id) {
@@ -479,7 +543,40 @@ function Finances({ onOpenDiary }) {
         onAddItem={addBudgetItem}
         onUpdateItem={updateBudgetItem}
         onDeleteItem={deleteBudgetItem}
+        itemExtra={
+          quoteStore.status === 'error'
+            ? undefined
+            : (item) => (
+                <QuoteList
+                  item={item}
+                  quotes={quoteStore.rows.filter((q) => q.budgetItemId === item.id)}
+                  companies={companyNames}
+                  format={(value) => currency.format(value)}
+                  readOnly={categoriesMissing}
+                  onAdd={addQuote}
+                  onChoose={chooseQuote}
+                  onDelete={(quote) => quoteStore.remove(quote.id)}
+                />
+              )
+        }
       />
+
+      {paymentStore.status !== 'error' && (
+        <PaymentPlan
+          payments={paymentStore.rows}
+          categories={expenseCategories.map((c) => c.name)}
+          itemsByCategory={itemsByCategoryName}
+          invoices={invoicesByEntry}
+          todayDate={today()}
+          format={(value) => currency.format(value)}
+          readOnly={categoriesMissing}
+          onAdd={(payment) => paymentStore.insert(payment)}
+          onUpdate={(id, payment) => paymentStore.update(id, payment)}
+          onDelete={(id) => paymentStore.remove(id)}
+          onRecord={recordPayment}
+          onOpenEntry={openDiaryEntry}
+        />
+      )}
 
       <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
         <h2>
