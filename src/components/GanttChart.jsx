@@ -2,17 +2,24 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { formatDate, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
+import { fromRow as entryFromRow, toRow as entryToRow } from '../diaryEntries.js'
+import { shownDate } from '../diarySections.js'
+import { entryType, isOpen, typeKey } from '../diaryTypes.js'
 
 // Gantt chart for the Zeitplan tab: one row per expense category from
 // Finanzen, each with any number of time slots (schedule_slots table),
-// plus milestones as markers and a line for today. The time axis scrolls
-// sideways on its own, so swiping between tabs leaves it alone.
+// plus milestones as markers and a line for today. Diary entries with a
+// category show in its row: appointments on their day, to-dos and defects
+// on their due date (small dots below the bars). Tapping a bar lists the
+// category's entries in that time. The time axis scrolls sideways on its
+// own, so swiping between tabs leaves it alone.
 
 // px per day: a month is about 150px wide, on phones about 90px.
 const DAY_WIDTH_WIDE = 5
 const DAY_WIDTH_NARROW = 3
 const NARROW = '(max-width: 640px)'
 const LANE_HEIGHT = 30 // px per stacked bar
+const DOT_ROW = 14 // px for the diary entries' dots below the bars
 const COLORS = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1})`)
 
 function slotFromRow(row) {
@@ -112,13 +119,32 @@ function useDayWidth() {
   return narrow ? DAY_WIDTH_NARROW : DAY_WIDTH_WIDE
 }
 
+// Entries that show as dots: appointments, and to-dos and defects with a
+// due date (their date in the list, see shownDate).
+function isDot(entry) {
+  const key = typeKey(entry.type)
+  if (key === 'appointment') return true
+  return Boolean(entryType(entry.type).dueHeadline && shownDate(entry) !== entry.date)
+}
+
+// A to-do or defect that is done shows faded.
+function isDone(entry) {
+  return Boolean(entryType(entry.type).progress) && !isOpen(entry)
+}
+
+function entryTitle(entry) {
+  const first = entry.work.split('\n').find((line) => line.trim()) ?? ''
+  return `${entryType(entry.type).label}: ${first}`
+}
+
 function emptyForm(categoryId = '') {
   const start = today()
   return { categoryId, name: '', start, end: start }
 }
 
-function GanttChart({ milestones }) {
+function GanttChart({ milestones, onOpenDiary }) {
   const slotStore = useCollection('schedule_slots', { fromRow: slotFromRow, toRow: slotToRow })
+  const entryStore = useCollection('diary_entries', { fromRow: entryFromRow, toRow: entryToRow })
   const categoryStore = useCollection('finance_categories', {
     fromRow: categoryFromRow,
     toRow: categoryToRow,
@@ -138,6 +164,22 @@ function GanttChart({ milestones }) {
     .filter((c) => c.type === 'expense')
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de'))
   const slots = slotStore.rows
+  // Diary entries by category name, each with the date it is listed under.
+  const entriesByCategory = new Map()
+  for (const entry of entryStore.rows) {
+    const name = entry.details.category
+    if (!name) continue
+    if (!entriesByCategory.has(name)) entriesByCategory.set(name, [])
+    entriesByCategory.get(name).push({ entry, date: shownDate(entry) })
+  }
+  const editingSlot = slots.find((s) => s.id === editingId)
+  const editingCategory = categories.find((c) => c.id === editingSlot?.categoryId)
+  // The category's entries in the time of the bar being edited.
+  const slotEntries = editingSlot
+    ? (entriesByCategory.get(editingCategory?.name) ?? [])
+        .filter(({ date }) => date >= editingSlot.start && date <= editingSlot.end)
+        .sort((a, b) => a.date.localeCompare(b.date))
+    : []
   const todayDay = dayNumber(today())
   const { first, end, months } = timeRange(slots, milestones, todayDay)
   const width = (end - first) * dayWidth
@@ -279,6 +321,9 @@ function GanttChart({ milestones }) {
             {categories.map((category, index) => {
               const { placed, lanes } = assignLanes(slots.filter((s) => s.categoryId === category.id))
               const color = COLORS[index % COLORS.length]
+              const dots = (entriesByCategory.get(category.name) ?? []).filter(
+                ({ entry, date }) => isDot(entry) && dayNumber(date) >= first && dayNumber(date) < end,
+              )
               return (
                 <div className="gantt-row" key={category.id} style={{ '--bar-color': color }}>
                   <div className="gantt-label">
@@ -293,7 +338,10 @@ function GanttChart({ milestones }) {
                       +
                     </button>
                   </div>
-                  <div className="gantt-track" style={{ minHeight: lanes * LANE_HEIGHT + 8 }}>
+                  <div
+                    className="gantt-track"
+                    style={{ minHeight: lanes * LANE_HEIGHT + 8 + (dots.length > 0 ? DOT_ROW : 0) }}
+                  >
                     {months.map((day) => (
                       <div key={day} className="gantt-gridline" style={{ left: (day - first) * dayWidth }} />
                     ))}
@@ -320,6 +368,17 @@ function GanttChart({ milestones }) {
                         {slot.name}
                       </button>
                     ))}
+                    {dots.map(({ entry, date }) => (
+                      <button
+                        type="button"
+                        key={entry.id}
+                        className={`gantt-dot type-${typeKey(entry.type)}${isDone(entry) ? ' done' : ''}`}
+                        style={{ left: x(date) + dayWidth / 2, top: lanes * LANE_HEIGHT + 8 }}
+                        onClick={() => onOpenDiary({ entry })}
+                        title={`${entryTitle(entry)} · ${formatDate(date)}`}
+                        aria-label={`${entryTitle(entry)}, ${formatDate(date)}, im Tagebuch öffnen`}
+                      />
+                    ))}
                     {todayX >= 0 && todayX < width && (
                       <div className="gantt-today" style={{ left: todayX + dayWidth / 2 }} />
                     )}
@@ -340,7 +399,40 @@ function GanttChart({ milestones }) {
               <span className="gantt-diamond" aria-hidden="true" /> Meilenstein
             </span>
           )}
-          <span>Tippe auf „+“ für einen neuen Zeitraum oder auf einen Balken zum Bearbeiten.</span>
+          {entriesByCategory.size > 0 && (
+            <span>
+              <span className="gantt-dot-legend" aria-hidden="true" /> Termin oder Frist aus dem Tagebuch
+            </span>
+          )}
+          <span>
+            Tippe auf „+“ für einen neuen Zeitraum, auf einen Balken für seine Einträge und zum Bearbeiten.
+          </span>
+        </div>
+      )}
+
+      {editingSlot && (
+        <div className="gantt-entries">
+          <h3>
+            Tagebuch: {editingSlot.name}{' '}
+            <span className="muted">
+              ({formatDate(editingSlot.start)} – {formatDate(editingSlot.end)})
+            </span>
+          </h3>
+          {slotEntries.length === 0 ? (
+            <p className="muted">
+              Keine Einträge mit der Kategorie „{editingCategory?.name}“ in diesem Zeitraum.
+            </p>
+          ) : (
+            <ul>
+              {slotEntries.map(({ entry, date }) => (
+                <li key={entry.id}>
+                  <button type="button" className="link" onClick={() => onOpenDiary({ entry })}>
+                    <span className="muted">{formatDate(date)}</span> {entryTitle(entry)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

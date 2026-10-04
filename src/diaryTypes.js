@@ -20,6 +20,7 @@ const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: '
 //     suggestFrom fields a list of parts, so names can become links
 //   pill: show a select's value as a coloured label (`.state-<value>`),
 //     except the value in `quiet`, if given
+//   optional: a select that can stay empty ("– keine –")
 // progress: for kinds that get done (defects, to-dos, unpaid expenses):
 // which field holds the state, its "done" value, the button labels and
 // the due-date field. An entry without that field has its default.
@@ -34,7 +35,16 @@ export const ENTRY_TYPES = {
     // Weather and workers on site (own database columns, older than types).
     // New entries get the day's weather filled in (weather.js).
     siteInfo: true,
-    fields: [],
+    fields: [
+      {
+        // The trade's row in the Bauablauf (Zeitplan), where the entry shows.
+        key: 'category',
+        label: 'Kategorie (Bauablauf)',
+        kind: 'select',
+        optionsFrom: 'expenseCategories',
+        optional: true,
+      },
+    ],
   },
   defect: {
     label: 'Mangel',
@@ -70,6 +80,14 @@ export const ENTRY_TYPES = {
         label: 'Zu beheben bis',
         kind: 'date',
         summary: (v) => `bis ${formatDate(v)}`,
+      },
+      {
+        // The trade's row in the Bauablauf (Zeitplan), where the entry shows.
+        key: 'category',
+        label: 'Kategorie (Bauablauf)',
+        kind: 'select',
+        optionsFrom: 'expenseCategories',
+        optional: true,
       },
     ],
   },
@@ -109,6 +127,14 @@ export const ENTRY_TYPES = {
         suggestFrom: 'contacts',
         summary: (v) => ['Zuständig: ', v],
       },
+      {
+        // The trade's row in the Bauablauf (Zeitplan), where the entry shows.
+        key: 'category',
+        label: 'Kategorie (Bauablauf)',
+        kind: 'select',
+        optionsFrom: 'expenseCategories',
+        optional: true,
+      },
     ],
   },
   appointment: {
@@ -125,6 +151,14 @@ export const ENTRY_TYPES = {
         kind: 'text',
         suggestFrom: 'contacts',
         summary: (v) => ['mit ', v],
+      },
+      {
+        // The trade's row in the Bauablauf (Zeitplan), where the entry shows.
+        key: 'category',
+        label: 'Kategorie (Bauablauf)',
+        kind: 'select',
+        optionsFrom: 'expenseCategories',
+        optional: true,
       },
     ],
   },

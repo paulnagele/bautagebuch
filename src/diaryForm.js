@@ -78,7 +78,8 @@ export function fieldOptions(field, value, lists, details = {}) {
   }
   const names = lists[field.optionsFrom] ?? []
   const all = !value || names.includes(value) ? names : [...names, value]
-  return Object.fromEntries(all.map((name) => [name, name]))
+  const choices = Object.fromEntries(all.map((name) => [name, name]))
+  return field.optional ? { '': '– keine –', ...choices } : choices
 }
 
 // The extra fields as they are saved, or why they cannot be.

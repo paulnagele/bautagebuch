@@ -245,7 +245,7 @@ function Milestones({ user, store, onCalendarChange }) {
   )
 }
 
-function Timetable({ user }) {
+function Timetable({ user, onOpenDiary }) {
   const [calendarId, setCalendarId] = useState(null)
   const [error, setError] = useState('')
   // Changing the key reloads the embedded calendar after a change.
@@ -259,7 +259,7 @@ function Timetable({ user }) {
   const embedUrl = calendarId && calendarEmbedUrl(calendarId)
   return (
     <section className="tab-content">
-      <GanttChart milestones={milestoneStore.rows} />
+      <GanttChart milestones={milestoneStore.rows} onOpenDiary={onOpenDiary} />
       <Milestones
         user={user}
         store={milestoneStore}

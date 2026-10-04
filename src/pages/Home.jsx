@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { saveJSON } from '../storage.js'
+import { newId, saveJSON } from '../storage.js'
 import { useSwipeTabs } from '../useSwipeTabs.js'
 import { loadGoogleScript } from '../google.js'
+import { clearShareParam, doneWithShared, takeShared } from '../share.js'
 import { emptyForm as emptyDiaryForm } from '../diaryForm.js'
 import Overview from '../tabs/Overview.jsx'
 import Diary from '../tabs/Diary.jsx'
@@ -86,6 +87,40 @@ function Home({ user, onLogout }) {
   // early so the "connect" click can open the popup right away.
   useEffect(() => {
     loadGoogleScript().catch(() => {})
+  }, [])
+
+  // Shared from another app ("Teilen → Bautagebuch"): open a new diary
+  // entry with the pictures as photos, the other files attached and any
+  // shared text as its text. It starts as a Status entry; the kind can be
+  // changed in the form (e.g. Ausgabe for an invoice).
+  useEffect(() => {
+    let cancelled = false
+    takeShared().then((shared) => {
+      clearShareParam()
+      if (cancelled || !shared) return
+      const photos = []
+      const files = []
+      for (const file of shared.files) {
+        if (file.type.startsWith('image/')) photos.push({ key: newId(), blob: file })
+        else files.push({ key: newId(), blob: file, name: file.name })
+      }
+      doneWithShared()
+      // Added to the draft of a new entry (nothing is being edited yet, as
+      // the app has just opened).
+      setDiaryForm((form) => ({
+        ...form,
+        work: [form.work.trim(), shared.text].filter(Boolean).join('\n\n'),
+        photos: [...form.photos, ...photos],
+        files: [...form.files, ...files],
+      }))
+      setDiaryFormOpen(true)
+      setFocusEntryId(null)
+      setSlide(null)
+      setActiveTab('diary')
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (
