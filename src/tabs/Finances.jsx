@@ -1,14 +1,17 @@
-import { useRef, useState } from 'react'
-import { formatDate, today, usePersistentState } from '../storage.js'
+import { today } from '../storage.js'
 import { friendlyError, useCollection } from '../useCollection.js'
-import { useDialogs } from '../dialogs.js'
 import { supabase } from '../supabase.js'
 import CategoryManager from '../components/CategoryManager.jsx'
 import MoneyFlow from '../components/MoneyFlow.jsx'
 import BudgetPlan from '../components/BudgetPlan.jsx'
 import QuoteList from '../components/QuoteList.jsx'
+import Bookings from '../components/Bookings.jsx'
 import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 import { quoteFromRow, quoteToRow } from '../planning.js'
+import { byOrder, categoryFromRow, categoryToRow } from '../categories.js'
+import { contactFromRow, contactToRow } from '../contacts.js'
+import { fromRow, toRow } from '../transactions.js'
+import { flowSources, flowTargets, sumBy } from '../moneyFlow.js'
 import { connectDrive, getEntryFolderId, uploadFile } from '../drive.js'
 
 // Used only until the finance_categories table exists (migrations not yet
@@ -44,179 +47,8 @@ const euros = new Intl.NumberFormat('de-DE', {
 })
 const percent = new Intl.NumberFormat('de-DE', { style: 'percent', maximumFractionDigits: 1 })
 
-// Validated categorical palette (see index.css), used for funding sources in
-// the money-flow diagram. A source keeps the colour of its position in the
-// category list; beyond eight sources the rest are grouped as "Weitere Quellen"
-// instead of inventing more colours.
-const SERIES_COLORS = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1})`)
-const OTHER_COLOR = 'var(--muted)'
-
-function categoryFromRow(row) {
-  return {
-    id: row.id,
-    type: row.type,
-    name: row.name,
-    sortOrder: row.sort_order,
-    plannedAmount: row.planned_amount == null ? null : Number(row.planned_amount),
-  }
-}
-
-function categoryToRow(category) {
-  const row = { type: category.type, name: category.name, sort_order: category.sortOrder }
-  // Only sent when set, so adding categories keeps working before the
-  // planned-budget migration has been applied.
-  if (category.plannedAmount !== undefined) row.planned_amount = category.plannedAmount
-  return row
-}
-
-function byOrder(a, b) {
-  return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de')
-}
-
 function defaultCategories(type, names) {
   return names.map((name, i) => ({ id: `default-${type}-${i}`, type, name, sortOrder: i }))
-}
-
-function fromRow(row) {
-  return {
-    id: row.id,
-    date: row.tx_date,
-    type: row.type,
-    category: row.category,
-    description: row.description,
-    amount: Number(row.amount),
-    // Set for expenses entered in the diary; those are changed there.
-    diaryEntryId: row.diary_entry_id ?? null,
-    // The budget item a diary expense is assigned to, if any.
-    budgetItemId: row.budget_item_id ?? null,
-    // Diary expenses: false while the invoice is still open, and whether
-    // the entry has a photo or file of the receipt.
-    paid: row.paid ?? true,
-    hasReceipt: row.has_receipt ?? false,
-  }
-}
-
-function toRow(item) {
-  return {
-    tx_date: item.date,
-    type: item.type,
-    category: item.category,
-    description: item.description,
-    amount: item.amount,
-  }
-}
-
-function sumBy(items, key) {
-  const totals = new Map()
-  for (const item of items) {
-    totals.set(item[key], (totals.get(item[key]) ?? 0) + item.amount)
-  }
-  return totals
-}
-
-// New expenses are entered in the diary (entry kind "Ausgabe"), so the
-// form here adds funding; older expenses can still be edited with it.
-function emptyForm(type = 'funding') {
-  // An empty category means "the first category of this type".
-  return { date: today(), type, category: '', description: '', amount: '' }
-}
-
-// Funding sources in list order (plus any no longer in the list), coloured
-// by position so colours stay put when amounts change.
-const DETAILS_PER_NODE = 3
-
-// The entries behind one source or category, grouped by description: the
-// largest few, the rest combined as "+ n weitere".
-function entryDetails(items) {
-  const totals = sumBy(items, 'description')
-  const sorted = [...totals.entries()]
-    .map(([name, value]) => ({ name, value }))
-    .filter((d) => d.value > 0)
-    .sort((a, b) => b.value - a.value)
-  if (sorted.length <= DETAILS_PER_NODE + 1) return sorted
-  const shown = sorted.slice(0, DETAILS_PER_NODE)
-  const rest = sorted.slice(DETAILS_PER_NODE)
-  return [
-    ...shown,
-    { name: `+ ${rest.length} weitere`, value: rest.reduce((sum, d) => sum + d.value, 0) },
-  ]
-}
-
-function itemsByCategory(items) {
-  const groups = new Map()
-  for (const item of items) {
-    if (!groups.has(item.category)) groups.set(item.category, [])
-    groups.get(item.category).push(item)
-  }
-  return groups
-}
-
-// Funding sources in list order (plus any no longer in the list), coloured
-// by position so colours stay put when amounts change.
-function flowSources(sourceNames, funding, unfunded) {
-  const groups = itemsByCategory(funding)
-  const ordered = [...sourceNames, ...[...groups.keys()].filter((n) => !sourceNames.includes(n))]
-  const nodes = []
-  const folded = []
-  ordered.forEach((name, i) => {
-    const items = groups.get(name) ?? []
-    const value = items.reduce((sum, item) => sum + item.amount, 0)
-    if (value <= 0) return
-    if (i < SERIES_COLORS.length) {
-      nodes.push({ name, value, color: SERIES_COLORS[i], details: entryDetails(items) })
-    } else {
-      folded.push(...items)
-    }
-  })
-  if (folded.length > 0) {
-    nodes.push({
-      name: 'Weitere Quellen',
-      value: folded.reduce((sum, item) => sum + item.amount, 0),
-      color: OTHER_COLOR,
-      details: entryDetails(folded),
-    })
-  }
-  if (unfunded > 0) nodes.push({ name: 'Noch nicht finanziert', value: unfunded, kind: 'unfunded' })
-  return nodes
-}
-
-// Expense categories, largest first, then what is left over.
-// Expense categories, largest first, then what is left over. A category
-// with a plan it has not used up yet also gets the open rest of that plan
-// (`planned`), drawn hatched next to what was spent.
-function flowTargets(expenses, categories, funding) {
-  const groups = itemsByCategory(expenses)
-  const plans = new Map(
-    categories.filter((c) => c.plannedAmount != null).map((c) => [c.name, c.plannedAmount]),
-  )
-  const names = [...new Set([...groups.keys(), ...plans.keys()])]
-  const nodes = names
-    .map((name) => {
-      const items = groups.get(name) ?? []
-      const spent = items.reduce((sum, item) => sum + item.amount, 0)
-      const planned = Math.max(0, (plans.get(name) ?? 0) - spent)
-      return { name, value: spent + planned, spent, planned, details: entryDetails(items) }
-    })
-    .filter((node) => node.value > 0)
-    .sort((a, b) => b.value - a.value)
-  const used = nodes.reduce((sum, node) => sum + node.value, 0)
-  if (funding > used) {
-    nodes.push({
-      name: plans.size > 0 ? 'Noch nicht verplant' : 'Noch nicht ausgegeben',
-      value: funding - used,
-      kind: 'unspent',
-    })
-  }
-  return nodes
-}
-
-// Contacts, only to suggest companies for quotes.
-function contactFromRow(row) {
-  return { id: row.id, name: row.name, company: row.company ?? '' }
-}
-
-function contactToRow(contact) {
-  return { name: contact.name, company: contact.company }
 }
 
 function Finances({ user, onOpenDiary }) {
@@ -236,18 +68,6 @@ function Finances({ user, onOpenDiary }) {
   const itemStore = useCollection('budget_items', { fromRow: itemFromRow, toRow: itemToRow })
   const quoteStore = useCollection('quotes', { fromRow: quoteFromRow, toRow: quoteToRow })
   const contactStore = useCollection('contacts', { fromRow: contactFromRow, toRow: contactToRow })
-  const [form, setForm] = useState(() => emptyForm())
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [editingId, setEditingId] = useState(null)
-  // The funding form stays folded behind a button until needed; it opens
-  // by itself to edit a booking.
-  const [formOpen, setFormOpen] = useState(false)
-  // Remembered on this device, like the budget plan.
-  const [bookingsOpen, setBookingsOpen] = usePersistentState('bookings.open', true)
-  const formRef = useRef(null)
-  const dialogs = useDialogs()
-
   const funding = items.filter((i) => i.type === 'funding')
   const expenses = items.filter((i) => i.type === 'expense')
   const totalFunding = funding.reduce((s, i) => s + i.amount, 0)
@@ -257,7 +77,6 @@ function Finances({ user, onOpenDiary }) {
   const totalUnpaid = unpaid.reduce((s, i) => s + i.amount, 0)
   const remaining = totalFunding - totalSpent
   const usedShare = totalFunding > 0 ? totalSpent / totalFunding : 0
-  const sorted = [...items].sort((a, b) => b.date.localeCompare(a.date))
   // Until the categories table exists, fall back to the built-in lists.
   const categoriesMissing = categoryStore.status === 'error'
   const categoryRows = categoriesMissing
@@ -299,16 +118,6 @@ function Finances({ user, onOpenDiary }) {
     ...new Set(contactStore.rows.flatMap((c) => [c.company, c.name]).filter(Boolean)),
   ].sort((a, b) => a.localeCompare(b, 'de'))
   const fundingCategories = categoryRows.filter((c) => c.type === 'funding').sort(byOrder)
-  const baseCategories = (form.type === 'funding' ? fundingCategories : expenseCategories).map(
-    (c) => c.name,
-  )
-  const formCategory = form.category || baseCategories[0] || ''
-  // Keep an entry's category selectable even if it is no longer in the list.
-  const categories =
-    !formCategory || baseCategories.includes(formCategory)
-      ? baseCategories
-      : [...baseCategories, formCategory]
-
   const usage = { expense: new Map(), funding: new Map() }
   for (const item of items) {
     const counts = usage[item.type]
@@ -401,77 +210,6 @@ function Finances({ user, onOpenDiary }) {
 
   async function deleteCategory(id) {
     await categoryStore.remove(id)
-  }
-
-  function setField(field) {
-    return (e) => setForm({ ...form, [field]: e.target.value })
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    const amount = Math.round(Number(form.amount) * 100) / 100
-    if (!form.date || !form.description.trim() || !(amount > 0)) {
-      setError('Bitte Datum, Beschreibung und einen Betrag größer als 0 eingeben.')
-      return
-    }
-    if (!formCategory) {
-      setError('Bitte zuerst eine Kategorie anlegen (Kategorien verwalten).')
-      return
-    }
-    setSaving(true)
-    setError('')
-    const item = {
-      date: form.date,
-      type: form.type,
-      category: formCategory,
-      description: form.description.trim(),
-      amount,
-    }
-    try {
-      if (editingId) {
-        await update(editingId, item)
-        resetForm()
-      } else {
-        await insert(item)
-        setForm({ ...emptyForm(form.type), category: formCategory })
-      }
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function resetForm() {
-    setForm(emptyForm())
-    setEditingId(null)
-    setError('')
-    setFormOpen(false)
-  }
-
-  function startEdit(item) {
-    setForm({
-      date: item.date,
-      type: item.type,
-      category: item.category,
-      description: item.description,
-      amount: String(item.amount),
-    })
-    setEditingId(item.id)
-    setError('')
-    setFormOpen(true)
-    // Once the opened form is on the page.
-    requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-
-  async function handleDelete(id) {
-    if (!(await dialogs.confirm('Diese Buchung löschen?', { confirmLabel: 'Löschen', danger: true }))) return
-    try {
-      await remove(id)
-      if (editingId === id) resetForm()
-    } catch (err) {
-      await dialogs.alert(err.message)
-    }
   }
 
   return (
@@ -569,186 +307,30 @@ function Finances({ user, onOpenDiary }) {
         }
       />
 
-
-      {!formOpen && (
-        <button type="button" className="secondary add-funding" onClick={() => setFormOpen(true)}>
-          + Finanzierung hinzufügen
-        </button>
-      )}
-      {formOpen && (
-        <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
-          <h2>
-            {!editingId
-              ? 'Neue Finanzierung'
-              : form.type === 'funding'
-                ? 'Finanzierung bearbeiten'
-                : 'Ausgabe bearbeiten'}
-          </h2>
-          {!editingId && (
-            <p className="muted full form-hint">
-              Ausgaben trägst du im Tagebuch ein (Eintragsart „Ausgabe“).
-            </p>
-          )}
-          <label>
-            Datum
-            <input type="date" value={form.date} onChange={setField('date')} />
-          </label>
-          <label>
-            {form.type === 'funding' ? 'Quelle' : 'Kategorie'}
-            <select value={formCategory} onChange={setField('category')}>
-              {categories.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Betrag (€)
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.amount}
-              onChange={setField('amount')}
-            />
-          </label>
-          <label className="full">
-            Beschreibung
-            <input
-              type="text"
-              placeholder={form.type === 'funding' ? 'z. B. Kredit, 1. Tranche' : 'z. B. Beton für Fundament'}
-              value={form.description}
-              onChange={setField('description')}
-            />
-          </label>
-
-          {error && (
-            <p className="error full" role="alert">
-              {error}
-            </p>
-          )}
-
-          <div className="form-actions full">
-            <button type="submit" disabled={saving}>
-              {saving
-                ? 'Wird gespeichert…'
-                : editingId
-                  ? 'Änderungen speichern'
-                  : form.type === 'funding'
-                    ? 'Finanzierung hinzufügen'
-                    : 'Ausgabe hinzufügen'}
-            </button>
-            <button type="button" className="secondary" onClick={resetForm} disabled={saving}>
-              Abbrechen
-            </button>
-          </div>
-        </form>
-      )}
-
-      <CategoryManager
-        expense={expenseCategories}
-        funding={fundingCategories}
-        usage={usage}
-        itemCounts={itemCounts}
-        readOnly={categoriesMissing}
-        notice={categoriesMissing ? categoryStore.error : ''}
-        checkDelete={checkCategoryDelete}
-        onAdd={addCategory}
-        onRename={renameCategory}
-        onDelete={deleteCategory}
-      />
-
-      {status === 'loading' && <p className="empty">Finanzen werden geladen…</p>}
-      {status === 'error' && (
-        <p className="error" role="alert">
-          {loadError}
-        </p>
-      )}
-      {status === 'ready' && sorted.length === 0 ? (
-        <p className="empty">Noch keine Buchungen.</p>
-      ) : sorted.length === 0 ? null : (
-        <div className="card bookings">
-          <div className="budget-head">
-            <h2>
-              <button
-                type="button"
-                className="budget-toggle"
-                aria-expanded={bookingsOpen}
-                onClick={() => setBookingsOpen(!bookingsOpen)}
-              >
-                <span className="budget-chevron" aria-hidden="true">
-                  {bookingsOpen ? '▾' : '▸'}
-                </span>
-                Buchungen <span className="chip-count">{sorted.length}</span>
-              </button>
-            </h2>
-          </div>
-          {bookingsOpen && (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Datum</th>
-                    <th>Beschreibung</th>
-                    <th>Quelle / Kategorie</th>
-                    <th className="num">Betrag</th>
-                    <th aria-label="Aktionen"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((item) => (
-                    <tr key={item.id} className={item.id === editingId ? 'editing' : undefined}>
-                      <td className="date">{formatDate(item.date)}</td>
-                      <td>
-                        {item.description}
-                        {(!item.paid || item.hasReceipt) && (
-                          <span className="tx-tags">
-                            {!item.paid && <span className="state-pill state-open">Offen</span>}
-                            {item.hasReceipt && (
-                              <span className="state-pill" title="Beleg im Tagebucheintrag">
-                                🧾 Beleg
-                              </span>
-                            )}
-                          </span>
-                        )}
-                      </td>
-                      <td>{item.category}</td>
-                      <td className="num">
-                        {item.type === 'funding' ? '+' : '−'}
-                        {currency.format(item.amount)}
-                      </td>
-                      <td className="num row-actions">
-                        {item.diaryEntryId ? (
-                          <button
-                            type="button"
-                            className="link"
-                            title="Im Tagebuch ansehen, bearbeiten oder löschen"
-                            onClick={() => onOpenDiary({ entry: { id: item.diaryEntryId, type: 'expense' } })}
-                          >
-                            im Tagebuch
-                          </button>
-                        ) : (
-                          <>
-                            <button type="button" className="link" onClick={() => startEdit(item)}>
-                              Bearbeiten
-                            </button>
-                            <button
-                              type="button"
-                              className="link danger"
-                              onClick={() => handleDelete(item.id)}
-                            >
-                              Löschen
-                            </button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+      <Bookings
+        items={items}
+        status={status}
+        loadError={loadError}
+        insert={insert}
+        update={update}
+        remove={remove}
+        expenseCategories={expenseCategories}
+        fundingCategories={fundingCategories}
+        onOpenDiary={onOpenDiary}
+      >
+        <CategoryManager
+          expense={expenseCategories}
+          funding={fundingCategories}
+          usage={usage}
+          itemCounts={itemCounts}
+          readOnly={categoriesMissing}
+          notice={categoriesMissing ? categoryStore.error : ''}
+          checkDelete={checkCategoryDelete}
+          onAdd={addCategory}
+          onRename={renameCategory}
+          onDelete={deleteCategory}
+        />
+      </Bookings>
     </section>
   )
 }

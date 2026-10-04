@@ -1,33 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
+import { contactFromRow, contactToRow } from '../contacts.js'
 
 const FIELDS = ['name', 'role', 'company', 'phone', 'email', 'notes']
-
-function fromRow(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    role: row.role,
-    company: row.company,
-    phone: row.phone,
-    email: row.email,
-    notes: row.notes,
-    pinned: row.pinned ?? false,
-  }
-}
-
-function toRow(contact) {
-  return {
-    name: contact.name,
-    role: contact.role,
-    company: contact.company,
-    phone: contact.phone,
-    email: contact.email,
-    notes: contact.notes,
-    pinned: contact.pinned,
-  }
-}
 
 function emptyForm() {
   return { name: '', role: '', company: '', phone: '', email: '', notes: '', pinned: false }
@@ -46,7 +22,7 @@ function matches(contact, query) {
 function Contacts({ focusContactId, onFocused }) {
   const { rows: contacts, status, error: loadError, insert, update, remove } = useCollection(
     'contacts',
-    { fromRow, toRow },
+    { fromRow: contactFromRow, toRow: contactToRow },
   )
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState('')

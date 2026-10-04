@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { newId, saveJSON } from '../storage.js'
 import { useSwipeTabs } from '../useSwipeTabs.js'
 import { loadGoogleScript } from '../google.js'
@@ -6,13 +6,38 @@ import { clearShareParam, doneWithShared, takeShared } from '../share.js'
 import { emptyForm as emptyDiaryForm } from '../diaryForm.js'
 import Overview from '../tabs/Overview.jsx'
 import Diary from '../tabs/Diary.jsx'
-import Finances from '../tabs/Finances.jsx'
-import Timetable from '../tabs/Timetable.jsx'
 import Contacts from '../tabs/Contacts.jsx'
-import Documents from '../tabs/Documents.jsx'
 import InstallHint from '../components/InstallHint.jsx'
 import UpdateHint from '../components/UpdateHint.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
+
+// Finanzen, Zeitplan and Dokumente are loaded when first opened, so the
+// app starts with less to download.
+const Finances = lazyTab(() => import('../tabs/Finances.jsx'))
+const Timetable = lazyTab(() => import('../tabs/Timetable.jsx'))
+const Documents = lazyTab(() => import('../tabs/Documents.jsx'))
+
+// A tab loaded on demand. If its file can't be fetched (offline, or the
+// app was updated meanwhile and the old file is gone), the tab says so.
+function lazyTab(load) {
+  return lazy(() =>
+    load().catch(() => ({
+      default: function TabUnavailable() {
+        return (
+          <section className="tab-content">
+            <p className="error" role="alert">
+              Dieser Bereich konnte nicht geladen werden. Bitte die Internetverbindung prüfen und
+              die App neu laden.
+            </p>
+            <button type="button" onClick={() => window.location.reload()}>
+              Neu laden
+            </button>
+          </section>
+        )
+      },
+    })),
+  )
+}
 
 const TABS = [
   { id: 'overview', label: 'Home', component: Overview },
@@ -168,19 +193,21 @@ function Home({ user, onLogout }) {
           id={`panel-${current.id}`}
           aria-labelledby={`tab-${current.id}`}
         >
-          <ActiveComponent
-            user={user}
-            onOpenDiary={openDiary}
-            onOpenContact={openContact}
-            onOpenTab={chooseTab}
-            focusEntryId={focusEntryId}
-            focusContactId={focusContactId}
-            diaryDraft={diaryDraft}
-            onFocused={() => {
-              setFocusEntryId(null)
-              setFocusContactId(null)
-            }}
-          />
+          <Suspense fallback={<p className="empty">Wird geladen…</p>}>
+            <ActiveComponent
+              user={user}
+              onOpenDiary={openDiary}
+              onOpenContact={openContact}
+              onOpenTab={chooseTab}
+              focusEntryId={focusEntryId}
+              focusContactId={focusContactId}
+              diaryDraft={diaryDraft}
+              onFocused={() => {
+                setFocusEntryId(null)
+                setFocusContactId(null)
+              }}
+            />
+          </Suspense>
         </main>
       </div>
     </DialogProvider>

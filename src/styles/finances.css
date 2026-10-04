@@ -1,0 +1,614 @@
+/* Finances */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat strong {
+  font-size: clamp(1.1rem, 4.5vw, 1.4rem);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Finances: charts */
+.chart {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.chart-empty {
+  margin: 0;
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, calc(-100% - 10px));
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+}
+
+/* Finances: budget meter */
+.meter-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.meter-head {
+  display: flex;
+  justify-content: space-between;
+}
+
+.meter {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--series-1);
+}
+
+.meter-fill.over {
+  background: var(--error);
+}
+
+.meter-note {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* Finances: expense / funding switch */
+.segmented {
+  display: inline-flex;
+  justify-self: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.segmented button:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.segmented button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Finances: category manager */
+.category-manager summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.category-manager[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+.category-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.category-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.category-list h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.category-list ul {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+}
+
+.category-list li {
+  border-bottom: 1px solid var(--border);
+}
+
+.category-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.4rem;
+}
+
+.category-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.category-count {
+  min-width: 1.5rem;
+  text-align: right;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.category-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.category-add {
+  gap: 0.5rem;
+}
+
+.category-list .error {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+}
+
+.category-manager > .error {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+/* Finances: money-flow diagram */
+.flow-canvas {
+  overflow-x: auto;
+  margin: 0 -0.25rem;
+}
+
+.flow-canvas svg {
+  display: block;
+}
+
+.flow-link {
+  fill: var(--text);
+  fill-opacity: 0.14;
+  cursor: default;
+  transition: fill-opacity 0.15s;
+}
+
+.flow-link[style] {
+  fill-opacity: 0.32;
+}
+
+.flow-link:hover,
+.flow-link:focus-visible {
+  fill-opacity: 0.5;
+  outline: none;
+}
+
+.flow-link.unspent {
+  fill: none;
+  stroke: var(--muted);
+  stroke-dasharray: 4 3;
+  stroke-opacity: 0.8;
+}
+
+.flow-link.unfunded {
+  fill: var(--error);
+  fill-opacity: 0.18;
+}
+
+.flow-node {
+  fill: var(--muted);
+}
+
+.flow-node.hub {
+  fill: var(--text);
+}
+
+.flow-node.unspent {
+  fill: var(--surface);
+  stroke: var(--muted);
+  stroke-dasharray: 3 2;
+}
+
+.flow-node.unfunded {
+  fill: var(--error);
+}
+
+.flow-label {
+  fill: var(--text);
+  font-size: 12.5px;
+}
+
+.flow-label .flow-amount {
+  fill: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-hub-label {
+  font-weight: 600;
+}
+
+.flow-detail-label {
+  font-size: 11.5px;
+}
+
+/* Labels drawn over flows get an outline in the card colour. */
+.flow-label.halo {
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.flow-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flow-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.flow-toggle:has(input:disabled) {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Planned but not yet spent: hatched in the text colour. */
+.flow-hatch-line {
+  stroke: var(--text);
+  stroke-width: 2;
+  stroke-opacity: 0.35;
+}
+
+.flow-link.planned {
+  fill: url(#flow-hatch);
+  fill-opacity: 1;
+}
+
+.flow-link.planned:hover,
+.flow-link.planned:focus-visible {
+  fill: url(#flow-hatch);
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.flow-node.planned {
+  fill: url(#flow-hatch);
+  stroke: var(--muted);
+}
+
+.flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.flow-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.flow-swatch {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  background: var(--muted);
+}
+
+.flow-swatch.planned {
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--text) 35%, transparent) 0 2px,
+    transparent 2px 4.2px
+  );
+  border: 1px solid var(--muted);
+}
+
+.flow-canvas svg.narrow .flow-label {
+  font-size: 11px;
+}
+
+/* Finances: planned budget per category */
+.budget-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.budget-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+
+button.budget-toggle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.budget-toggle:hover:not(:disabled) {
+  background: none;
+}
+
+.budget-chevron {
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+}
+
+button.link.budget-items-toggle {
+  align-self: flex-start;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.budget-total {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-hint {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.budget-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.budget-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.budget-row:last-child {
+  border-bottom: none;
+}
+
+.budget-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.budget-name {
+  flex: 1;
+  min-width: 8rem;
+  overflow-wrap: anywhere;
+}
+
+.budget-detail {
+  justify-content: space-between;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-amounts {
+  white-space: nowrap;
+}
+
+.budget-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.budget-edit input {
+  width: 8rem;
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.budget-meter {
+  height: 6px;
+}
+
+.budget-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 0.25rem;
+}
+
+/* Budget items, nested under their category. */
+.budget-items {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0 0 0 0.85rem;
+  border-left: 2px solid var(--border);
+}
+
+.budget-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.35rem 0;
+  font-size: 0.92rem;
+}
+
+.budget-item .budget-detail {
+  font-size: 0.82rem;
+}
+
+.budget-meter.small {
+  height: 4px;
+}
+
+.budget-item-form {
+  flex-wrap: wrap;
+}
+
+.budget-item-form .budget-item-name {
+  flex: 1;
+  min-width: 9rem;
+  width: auto;
+}
+
+/* Finances: unpaid invoices and receipts */
+.stat-note {
+  font-size: 0.85rem;
+}
+
+.tx-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+/* Finances: quotes (Angebote) per budget item */
+.quotes {
+  margin-top: 0.25rem;
+}
+
+button.link.quote-toggle {
+  padding: 0.15rem 0;
+  font-size: 0.85rem;
+}
+
+.quote-list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.quote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.quote.chosen {
+  border-color: var(--success);
+}
+
+.quote-company {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 10rem;
+  font-weight: 600;
+}
+
+.quote-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.quote-actions a.link {
+  padding: 0.25rem 0.4rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.quote-form {
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+}
+
+.quote-file {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Finanzen: funding form behind a button, bookings fold away */
+button.add-funding {
+  align-self: flex-start;
+}
+
+.bookings .table-wrap {
+  margin: 0.75rem -1rem -1rem;
+  border-top: 1px solid var(--border);
+}
+
+.bookings tr:last-child td {
+  border-bottom: none;
+}

@@ -1,5 +1,5 @@
 // The kinds of diary entries. To add one, add an entry here (and a badge
-// colour in index.css, `.type-<key>`); the database needs no change.
+// colour in styles/diary.css, `.type-<key>`); the database needs no change.
 import { formatDate } from './storage.js'
 
 const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })

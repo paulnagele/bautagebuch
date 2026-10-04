@@ -9,9 +9,7 @@ export function fromRow(row) {
     date: row.entry_date,
     weather: row.weather,
     workers: row.workers ?? '',
-    // Entries have one text; notes from before (or from an older app
-    // version) are shown as part of it and merged into it when saved.
-    work: row.notes ? `${row.work}\n\n${row.notes}` : row.work,
+    work: row.work,
     details: row.details ?? {},
     photoIds: row.photo_ids ?? [],
     files: row.files ?? [],
@@ -28,7 +26,6 @@ export function toRow(entry) {
     weather: siteInfo ? entry.weather : '',
     workers: !siteInfo || entry.workers === '' ? null : Number(entry.workers),
     work: entry.work,
-    notes: '',
     details: entry.details,
     photo_ids: entry.photoIds,
     files: entry.files,

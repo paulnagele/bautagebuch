@@ -1,0 +1,659 @@
+/* Diary */
+.entry-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.entry-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.entry-text {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+}
+
+.entry-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+/* Diary files */
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  max-width: 100%;
+}
+
+.entry-files {
+  margin-top: 0.75rem;
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.25rem 0.4rem 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+a.file-chip {
+  padding-right: 0.6rem;
+}
+
+a.file-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-chip button.link {
+  padding: 0 0.3rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* Diary entry kinds. Each kind sets --type; add a line for a new kind. */
+.type-status {
+  --type: var(--series-1);
+}
+
+.type-todo {
+  --type: var(--series-5);
+}
+
+.type-defect {
+  --type: var(--series-8);
+}
+
+.type-appointment {
+  --type: var(--series-7);
+}
+
+.type-expense {
+  --type: var(--series-4);
+}
+
+.type-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.type-option {
+  flex: 1 1 0;
+  min-width: 90px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.type-option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--type) 10%, var(--bg));
+}
+
+.type-option.selected,
+.type-option.selected:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--type) 16%, var(--surface));
+  border-color: var(--type);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.entry-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.type-badge,
+.state-pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.type-badge {
+  background: color-mix(in srgb, var(--type) 16%, var(--surface));
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--type) 45%, transparent);
+}
+
+.entry.card {
+  border-left: 4px solid var(--type, var(--border));
+}
+
+.state-pill {
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.state-open {
+  color: var(--error);
+  border-color: currentColor;
+}
+
+.state-fixed,
+.state-done {
+  color: var(--success);
+  border-color: currentColor;
+}
+
+.state-overdue {
+  color: #fff;
+  background: var(--error);
+  border-color: var(--error);
+}
+
+.state-upcoming {
+  color: var(--accent);
+  border-color: currentColor;
+}
+
+.diary-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+button.chip {
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+button.chip:hover:not(:disabled) {
+  background: var(--bg);
+}
+
+button.chip.active,
+button.chip.active:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.chip-count {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.open-only {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+/* Diary photos */
+.field-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.photo-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.people-input {
+  position: relative;
+}
+
+.people-suggestions {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.12);
+  font-weight: normal;
+}
+
+.people-suggestions li {
+  display: flex;
+  flex-direction: column;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+}
+
+.people-suggestions li.active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.people-suggestions .muted {
+  font-size: 0.8rem;
+}
+
+.upload-buttons {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 420px;
+}
+
+/* Taking a photo only makes sense on phones and tablets. */
+.upload-buttons .camera-button {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  .upload-buttons .camera-button {
+    display: block;
+  }
+}
+
+/* Always side by side; on narrow phones a label may wrap inside its button. */
+.upload-buttons button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: 0.5rem;
+}
+
+.thumb-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.entry-photos {
+  margin-top: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+.thumb {
+  position: relative;
+  aspect-ratio: 1;
+}
+
+.thumb-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.image-loading,
+.image-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.image-missing {
+  padding: 0.25rem;
+  background: var(--bg);
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+}
+
+.image-missing:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.image-loading {
+  border-radius: 6px;
+  background: var(--track);
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--muted);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.image-button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.image-button:hover:not(:disabled) {
+  background: none;
+  opacity: 0.85;
+}
+
+.thumb-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.65);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.thumb-remove:hover:not(:disabled) {
+  background: rgb(0 0 0 / 0.85);
+}
+
+.busy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 0.55);
+}
+
+.busy-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(320px, 100%);
+  padding: 1.5rem;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+}
+
+.busy-box p {
+  margin: 0;
+}
+
+.busy-spinner {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+  border-color: var(--accent);
+  border-right-color: transparent;
+}
+
+.busy-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.busy-bar div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+.busy-note {
+  font-size: 0.85rem;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 0.85);
+  cursor: zoom-out;
+}
+
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 6px;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.15);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+/* A contact's name in a diary entry, linking to the contact */
+button.link.contact-link {
+  padding: 0;
+  font: inherit;
+}
+
+/* Diary search */
+.diary-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.search-input {
+  font: inherit;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  width: 100%;
+}
+
+.search-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+.search-range label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.search-range input {
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.search-contacts {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.search-contacts button.link {
+  padding: 0 0.1rem;
+}
+
+/* Pinned contacts: suggested first in the diary */
+.form-grid label.pin-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: normal;
+}
+
+.form-grid label.pin-check input {
+  width: auto;
+  flex: none;
+  margin: 0;
+}
+
+.pin-star {
+  color: #d4a017;
+}
+
+/* Diary list parts: Offen, Demnächst, Verlauf */
+.entry-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.entry-section-title {
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+}
+
+.entry-section-title button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+}
+
+.entry-section-title button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text);
+}
+
+.section-chevron {
+  width: 1em;
+}
+
+/* Diary: marking a status photo as a document */
+button.thumb-document {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
+button.thumb-document:hover:not(:disabled) {
+  background: rgb(0 0 0 / 0.75);
+  opacity: 1;
+}
+
+button.thumb-document.marked,
+button.thumb-document.marked:hover:not(:disabled) {
+  background: var(--accent);
+  opacity: 1;
+}
+
+/* Files that are pictures: shown a bit smaller than the entry's photos */
+.entry-file-images {
+  margin-top: 0.75rem;
+  grid-template-columns: repeat(auto-fill, 88px);
+}
+
+/* Diary: the form is folded behind "+ Neuer Eintrag" */
+button.new-entry {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-weight: 600;
+}
+
+/* On phones, a round "+" stays at hand further down the list. */
+button.new-entry-fab {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  button.new-entry-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    right: 1rem;
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    z-index: 15;
+    width: 3.5rem;
+    height: 3.5rem;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 1.8rem;
+    line-height: 1;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
+  }
+
+  /* Room below the last entry, so the button never covers its actions. */
+  .tab-content:has(> .new-entry) {
+    padding-bottom: 5rem;
+  }
+}

@@ -31,8 +31,35 @@ async function precache() {
   if (!response.ok) return
   const html = await response.clone().text()
   await cache.put('./', response)
-  const assets = [...html.matchAll(/(?:src|href)="\.?\/?(assets\/[^"]+)"/g)]
-  await cache.addAll(assets.map((match) => match[1]))
+  await keepAssets(cache, html)
+}
+
+// Caches every built file the page uses: the ones it names, and the ones
+// its scripts load later (the tabs loaded when first opened). Returns
+// their file names.
+async function keepAssets(cache, html) {
+  const paths = [...html.matchAll(/(?:src|href)="\.?\/?(assets\/[^"]+)"/g)].map((match) => match[1])
+  const names = new Set()
+  while (paths.length > 0) {
+    const path = paths.shift()
+    const name = path.slice(path.lastIndexOf('/') + 1)
+    if (names.has(name)) continue
+    names.add(name)
+    let response = await cache.match(path)
+    if (!response) {
+      response = await fetch(path)
+      if (!response.ok) continue
+      await cache.put(path, response.clone())
+    }
+    if (!name.endsWith('.js')) continue
+    // Scripts name the built files they load relative to themselves
+    // ("./Finances-1a2B3c4D.js"; the part after the dash is a hash).
+    const script = await response.text()
+    for (const match of script.matchAll(/["'`]\.\/([\w.-]+-[\w-]{8}\.(?:js|css))["'`]/g)) {
+      paths.push(`assets/${match[1]}`)
+    }
+  }
+  return names
 }
 
 self.addEventListener('activate', (event) => {
@@ -100,12 +127,14 @@ async function cacheFirst(request) {
   return response
 }
 
-// Drop assets of earlier deploys that the current page no longer uses.
+// Fetch the files of a new deploy, so they work offline too, and drop
+// those of earlier deploys that the current page no longer uses.
 async function pruneAssets(cache, html) {
+  const used = await keepAssets(cache, html)
   for (const request of await cache.keys()) {
     const path = new URL(request.url).pathname
     const name = path.slice(path.lastIndexOf('/') + 1)
-    if (path.includes('/assets/') && !html.includes(name)) {
+    if (path.includes('/assets/') && !used.has(name)) {
       cache.delete(request)
     }
   }

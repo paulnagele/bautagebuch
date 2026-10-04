@@ -4,6 +4,7 @@ import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
 import { fromRow as entryFromRow, toRow as entryToRow } from '../diaryEntries.js'
 import { shownDate } from '../diarySections.js'
+import { categoryFromRow, categoryToRow, expenseCategories } from '../categories.js'
 import { entryType, isOpen, typeKey } from '../diaryTypes.js'
 
 // Gantt chart for the Zeitplan tab: one row per expense category from
@@ -39,14 +40,6 @@ function slotToRow(slot) {
     start_date: slot.start,
     end_date: slot.end,
   }
-}
-
-function categoryFromRow(row) {
-  return { id: row.id, type: row.type, name: row.name, sortOrder: row.sort_order }
-}
-
-function categoryToRow(category) {
-  return { type: category.type, name: category.name, sort_order: category.sortOrder }
 }
 
 // Whole days since 1970-01-01 for an ISO date, ignoring time zones.
@@ -160,9 +153,7 @@ function GanttChart({ milestones, onOpenDiary }) {
   const dialogs = useDialogs()
   const dayWidth = useDayWidth()
 
-  const categories = categoryStore.rows
-    .filter((c) => c.type === 'expense')
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de'))
+  const categories = expenseCategories(categoryStore.rows)
   const slots = slotStore.rows
   // Diary entries by category name, each with the date it is listed under.
   const entriesByCategory = new Map()
