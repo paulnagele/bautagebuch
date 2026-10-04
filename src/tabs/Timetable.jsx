@@ -35,15 +35,26 @@ function emptyForm() {
 
 // Each milestone is also an all-day event in the Google Calendar. Connect
 // first, while the click still counts as user action, otherwise the
-// browser blocks Google's popup. Returns the milestone with its event ID,
-// and a message if the calendar could not be updated (it is saved anyway).
-async function withCalendarEvent(milestone, email) {
+// browser blocks Google's popup. Returns a message if that failed.
+async function connectFirst(email) {
   try {
     await connectCalendar(email)
-    const eventId = await syncMilestoneEvent(milestone, milestone.eventId)
-    return { milestone: { ...milestone, eventId }, problem: '' }
+    return ''
   } catch (err) {
-    return { milestone, problem: err.message }
+    return err.message
+  }
+}
+
+// Once the milestone is saved (so a failed save leaves no event behind),
+// its event is changed to match and a new event ID stored. Returns a
+// message if the calendar could not be updated (it is saved anyway).
+async function syncSaved(saved, update) {
+  try {
+    const eventId = await syncMilestoneEvent(saved, saved.eventId)
+    if (eventId !== (saved.eventId ?? null)) await update(saved.id, { ...saved, eventId })
+    return ''
+  } catch (err) {
+    return err.message
   }
 }
 
@@ -85,21 +96,26 @@ function Milestones({ user, onCalendarChange }) {
     setError('')
     setBusy(true)
     const original = rows.find((m) => m.id === editingId)
-    const { milestone, problem } = await withCalendarEvent(
-      { name, date: form.date, reached: original?.reached ?? false, eventId: original?.eventId ?? null },
-      user.email,
-    )
+    const milestone = {
+      name,
+      date: form.date,
+      reached: original?.reached ?? false,
+      eventId: original?.eventId ?? null,
+    }
+    let problem = await connectFirst(user.email)
+    let saved
     try {
-      if (editingId) await update(editingId, milestone)
-      else await insert(milestone)
-      resetForm()
-      if (problem) setError(calendarWarning(problem))
-      onCalendarChange()
+      saved = editingId ? await update(editingId, milestone) : await insert(milestone)
     } catch (err) {
       setError(err.message)
-    } finally {
       setBusy(false)
+      return
     }
+    resetForm()
+    if (!problem) problem = await syncSaved(saved, update)
+    setBusy(false)
+    if (problem) setError(calendarWarning(problem))
+    onCalendarChange()
   }
 
   function startEdit(milestone) {
@@ -110,17 +126,17 @@ function Milestones({ user, onCalendarChange }) {
   }
 
   async function toggleReached(original) {
-    const { milestone, problem } = await withCalendarEvent(
-      { ...original, reached: !original.reached },
-      user.email,
-    )
+    let problem = await connectFirst(user.email)
+    let saved
     try {
-      await update(original.id, milestone)
-      if (problem) await dialogs.alert(calendarWarning(problem))
-      onCalendarChange()
+      saved = await update(original.id, { ...original, reached: !original.reached })
     } catch (err) {
       await dialogs.alert(err.message)
+      return
     }
+    if (!problem) problem = await syncSaved(saved, update)
+    if (problem) await dialogs.alert(calendarWarning(problem))
+    onCalendarChange()
   }
 
   async function handleDelete(milestone) {

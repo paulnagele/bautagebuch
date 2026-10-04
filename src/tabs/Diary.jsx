@@ -39,13 +39,21 @@ function contactToRow(contact) {
   return { name: contact.name, role: contact.role, company: contact.company, pinned: contact.pinned }
 }
 
-function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
+// An entry's details with its calendar event's ID set, or removed (null).
+function withEventId(details, eventId) {
+  const next = { ...details }
+  if (eventId) next.calendarEventId = eventId
+  else delete next.calendarEventId
+  return next
+}
+
+function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
   const { rows: entries, status, error: loadError, insert, update, remove } = useCollection(
     'diary_entries',
     { fromRow, toRow },
   )
-  const [form, setForm] = useState(emptyForm)
-  const [editingId, setEditingId] = useState(null)
+  // The draft lives in Home, so it survives switching tabs.
+  const { form, setForm, editingId, setEditingId } = diaryDraft
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [uploadProgress, setUploadProgress] = useState(null)
@@ -198,39 +206,43 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
       }
     }
 
+    // The entry is saved before the calendar is changed, so a failed save
+    // leaves no event behind. It keeps its event's ID until the calendar
+    // is updated, so an event that could not be deleted is tried again on
+    // the next save, and deleted with the entry.
     setBusy('Wird gespeichert…')
-    let calendarEventId = hasEvent ? oldEventId : null
-    if (calendarConnected) {
-      try {
-        calendarEventId = await syncEntryEvent(calendarEntry, oldEventId)
-      } catch (err) {
-        calendarProblem = err.message
-      }
-    }
     const entry = {
       type: form.type,
       date: form.date,
       weather: form.weather,
       workers: form.workers,
       work: form.work.trim(),
-      details: calendarEventId ? { ...details, calendarEventId } : details,
+      details: withEventId(details, oldEventId),
       photoIds: uploaded.photos.map((p) => p.fileId),
       files: uploaded.files.map((f) => ({ id: f.fileId, name: f.name })),
     }
+    let saved
     try {
-      if (editingId) {
-        await update(editingId, entry)
-      } else {
-        await insert(entry)
-      }
-      resetForm()
-      if (calendarProblem) {
-        setError(`Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${calendarProblem}`)
-      }
+      saved = editingId ? await update(editingId, entry) : await insert(entry)
     } catch (err) {
       setError(err.message)
-    } finally {
       setBusy('')
+      return
+    }
+    resetForm()
+    if (calendarConnected) {
+      try {
+        const eventId = await syncEntryEvent(calendarEntry, oldEventId)
+        if (eventId !== (oldEventId ?? null)) {
+          await update(saved.id, { ...saved, details: withEventId(saved.details, eventId) })
+        }
+      } catch (err) {
+        calendarProblem = err.message
+      }
+    }
+    setBusy('')
+    if (calendarProblem) {
+      setError(`Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${calendarProblem}`)
     }
   }
 
@@ -251,25 +263,38 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact }) {
   async function toggleDone(entry) {
     const { field, done } = entryType(entry.type).progress
     const details = { ...entry.details, [field]: isOpen(entry) ? done : 'open' }
-    // The calendar event shows "✓" once done.
+    // The calendar event shows "✓" once done. Connect first, while the
+    // click still counts as user action; change the event once saved.
+    const oldEventId = details.calendarEventId
     let calendarProblem = ''
-    if (entryHasEvent({ ...entry, details }) || details.calendarEventId) {
+    let calendarConnected = false
+    if (entryHasEvent({ ...entry, details }) || oldEventId) {
       try {
         await connectCalendar(user.email)
-        const eventId = await syncEntryEvent({ ...entry, details }, details.calendarEventId)
-        if (eventId) details.calendarEventId = eventId
-        else delete details.calendarEventId
+        calendarConnected = true
       } catch (err) {
         calendarProblem = err.message
       }
     }
+    let saved
     try {
-      await update(entry.id, { ...entry, details })
-      if (calendarProblem) {
-        await dialogs.alert(`Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${calendarProblem}`)
-      }
+      saved = await update(entry.id, { ...entry, details })
     } catch (err) {
       await dialogs.alert(err.message)
+      return
+    }
+    if (calendarConnected) {
+      try {
+        const eventId = await syncEntryEvent(saved, oldEventId)
+        if (eventId !== (oldEventId ?? null)) {
+          await update(saved.id, { ...saved, details: withEventId(saved.details, eventId) })
+        }
+      } catch (err) {
+        calendarProblem = err.message
+      }
+    }
+    if (calendarProblem) {
+      await dialogs.alert(`Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${calendarProblem}`)
     }
   }
 

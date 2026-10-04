@@ -76,7 +76,9 @@ export function useCollection(table, { fromRow, toRow }) {
       .select()
       .single()
     if (insertError) throw new Error(friendlyError(insertError))
-    setRows((current) => [...current, fromRow(data)])
+    const saved = fromRow(data)
+    setRows((current) => [...current, saved])
+    return saved
   }
 
   async function update(id, item) {
@@ -87,7 +89,9 @@ export function useCollection(table, { fromRow, toRow }) {
       .select()
       .single()
     if (updateError) throw new Error(friendlyError(updateError))
-    setRows((current) => current.map((row) => (row.id === id ? fromRow(data) : row)))
+    const saved = fromRow(data)
+    setRows((current) => current.map((row) => (row.id === id ? saved : row)))
+    return saved
   }
 
   async function remove(id) {
