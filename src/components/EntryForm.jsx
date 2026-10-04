@@ -31,7 +31,19 @@ function DetailField({ field, value, options, lists, onChange }) {
 
 // The form for a new or edited diary entry. The parent keeps the form's
 // state (see diaryForm.js) and saves it in onSubmit.
-function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, onSubmit, onCancel }) {
+// onFold folds a new entry's form away, keeping what was typed.
+function EntryForm({
+  form,
+  setForm,
+  editing,
+  busy,
+  error,
+  onClearError,
+  lists,
+  onSubmit,
+  onCancel,
+  onFold,
+}) {
   const errorRef = useRef(null)
   const fileInput = useRef(null)
   const cameraInput = useRef(null)
@@ -295,9 +307,13 @@ function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, o
         <button type="submit" disabled={Boolean(busy)}>
           {busy || (editing ? 'Änderungen speichern' : 'Eintrag hinzufügen')}
         </button>
-        {editing && (
+        {editing ? (
           <button type="button" className="secondary" onClick={onCancel} disabled={Boolean(busy)}>
             Abbrechen
+          </button>
+        ) : (
+          <button type="button" className="secondary" onClick={onFold} disabled={Boolean(busy)}>
+            Einklappen
           </button>
         )}
       </div>

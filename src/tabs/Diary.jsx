@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { today, usePersistentState } from '../storage.js'
 import { ENTRY_TYPES, TYPE_KEYS, entryType, isOpen, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
@@ -54,7 +54,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
     { fromRow, toRow },
   )
   // The draft lives in Home, so it survives switching tabs.
-  const { form, setForm, editingId, setEditingId } = diaryDraft
+  const { form, setForm, editingId, setEditingId, open: formOpen, setOpen: setFormOpen } = diaryDraft
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [uploadProgress, setUploadProgress] = useState(null)
@@ -258,13 +258,33 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
     setForm(emptyForm(form.type))
     setEditingId(null)
     setError('')
+    setFormOpen(false)
+  }
+
+  // The round "+" (phones) only shows once the big button is scrolled away.
+  const newEntryButton = useRef(null)
+  const [buttonInView, setButtonInView] = useState(true)
+  useEffect(() => {
+    const button = newEntryButton.current
+    if (!button || !window.IntersectionObserver) return
+    const observer = new IntersectionObserver(([item]) => setButtonInView(item.isIntersecting))
+    observer.observe(button)
+    return () => observer.disconnect()
+  }, [formOpen])
+
+  // Something typed or picked in the folded form.
+  const hasDraft = Boolean(form.work.trim()) || form.photos.length > 0 || form.files.length > 0
+
+  function openForm() {
+    setFormOpen(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   function startEdit(entry) {
     setForm(formFromEntry(entry))
     setEditingId(entry.id)
     setError('')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    openForm()
   }
 
   async function toggleDone(entry) {
@@ -348,17 +368,30 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
   return (
     <section className="tab-content">
       {busy && <BusyOverlay message={busy} progress={uploadProgress} />}
-      <EntryForm
-        form={form}
-        setForm={setForm}
-        editing={Boolean(editingId)}
-        busy={busy}
-        error={error}
-        onClearError={() => setError('')}
-        lists={lists}
-        onSubmit={handleSubmit}
-        onCancel={resetForm}
-      />
+      {formOpen ? (
+        <EntryForm
+          form={form}
+          setForm={setForm}
+          editing={Boolean(editingId)}
+          busy={busy}
+          error={error}
+          onClearError={() => setError('')}
+          lists={lists}
+          onSubmit={handleSubmit}
+          onCancel={resetForm}
+          onFold={() => setFormOpen(false)}
+        />
+      ) : (
+        <button ref={newEntryButton} type="button" className="new-entry" onClick={openForm}>
+          {hasDraft ? '+ Entwurf fortsetzen' : '+ Neuer Eintrag'}
+        </button>
+      )}
+      {/* On phones, also at hand further down the list. */}
+      {!formOpen && !buttonInView && (
+        <button type="button" className="new-entry-fab" aria-label="Neuer Eintrag" onClick={openForm}>
+          +
+        </button>
+      )}
 
       {status === 'loading' && <p className="empty">Tagebuch wird geladen…</p>}
       {status === 'error' && (

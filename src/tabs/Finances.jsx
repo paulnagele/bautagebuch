@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { formatDate, today } from '../storage.js'
+import { formatDate, today, usePersistentState } from '../storage.js'
 import { friendlyError, useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
 import { supabase } from '../supabase.js'
@@ -242,6 +242,11 @@ function Finances({ user, onOpenDiary }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  // The funding form stays folded behind a button until needed; it opens
+  // by itself to edit a booking.
+  const [formOpen, setFormOpen] = useState(false)
+  // Remembered on this device, like the budget plan and payment schedule.
+  const [bookingsOpen, setBookingsOpen] = usePersistentState('bookings.open', true)
   const formRef = useRef(null)
   const dialogs = useDialogs()
 
@@ -472,6 +477,7 @@ function Finances({ user, onOpenDiary }) {
     setForm(emptyForm())
     setEditingId(null)
     setError('')
+    setFormOpen(false)
   }
 
   function startEdit(item) {
@@ -484,7 +490,9 @@ function Finances({ user, onOpenDiary }) {
     })
     setEditingId(item.id)
     setError('')
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setFormOpen(true)
+    // Once the opened form is on the page.
+    requestAnimationFrame(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
   async function handleDelete(id) {
@@ -609,74 +617,79 @@ function Finances({ user, onOpenDiary }) {
         />
       )}
 
-      <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
-        <h2>
-          {!editingId
-            ? 'Neue Finanzierung'
-            : form.type === 'funding'
-              ? 'Finanzierung bearbeiten'
-              : 'Ausgabe bearbeiten'}
-        </h2>
-        {!editingId && (
-          <p className="muted full form-hint">
-            Ausgaben trägst du im Tagebuch ein (Eintragsart „Ausgabe“).
-          </p>
-        )}
-        <label>
-          Datum
-          <input type="date" value={form.date} onChange={setField('date')} />
-        </label>
-        <label>
-          {form.type === 'funding' ? 'Quelle' : 'Kategorie'}
-          <select value={formCategory} onChange={setField('category')}>
-            {categories.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Betrag (€)
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.amount}
-            onChange={setField('amount')}
-          />
-        </label>
-        <label className="full">
-          Beschreibung
-          <input
-            type="text"
-            placeholder={form.type === 'funding' ? 'z. B. Kredit, 1. Tranche' : 'z. B. Beton für Fundament'}
-            value={form.description}
-            onChange={setField('description')}
-          />
-        </label>
+      {!formOpen && (
+        <button type="button" className="secondary add-funding" onClick={() => setFormOpen(true)}>
+          + Finanzierung hinzufügen
+        </button>
+      )}
+      {formOpen && (
+        <form ref={formRef} className="card form-grid" onSubmit={handleSubmit} noValidate>
+          <h2>
+            {!editingId
+              ? 'Neue Finanzierung'
+              : form.type === 'funding'
+                ? 'Finanzierung bearbeiten'
+                : 'Ausgabe bearbeiten'}
+          </h2>
+          {!editingId && (
+            <p className="muted full form-hint">
+              Ausgaben trägst du im Tagebuch ein (Eintragsart „Ausgabe“).
+            </p>
+          )}
+          <label>
+            Datum
+            <input type="date" value={form.date} onChange={setField('date')} />
+          </label>
+          <label>
+            {form.type === 'funding' ? 'Quelle' : 'Kategorie'}
+            <select value={formCategory} onChange={setField('category')}>
+              {categories.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Betrag (€)
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.amount}
+              onChange={setField('amount')}
+            />
+          </label>
+          <label className="full">
+            Beschreibung
+            <input
+              type="text"
+              placeholder={form.type === 'funding' ? 'z. B. Kredit, 1. Tranche' : 'z. B. Beton für Fundament'}
+              value={form.description}
+              onChange={setField('description')}
+            />
+          </label>
 
-        {error && (
-          <p className="error full" role="alert">
-            {error}
-          </p>
-        )}
+          {error && (
+            <p className="error full" role="alert">
+              {error}
+            </p>
+          )}
 
-        <div className="form-actions full">
-          <button type="submit" disabled={saving}>
-            {saving
-              ? 'Wird gespeichert…'
-              : editingId
-                ? 'Änderungen speichern'
-                : form.type === 'funding'
-                  ? 'Finanzierung hinzufügen'
-                  : 'Ausgabe hinzufügen'}
-          </button>
-          {editingId && (
+          <div className="form-actions full">
+            <button type="submit" disabled={saving}>
+              {saving
+                ? 'Wird gespeichert…'
+                : editingId
+                  ? 'Änderungen speichern'
+                  : form.type === 'funding'
+                    ? 'Finanzierung hinzufügen'
+                    : 'Ausgabe hinzufügen'}
+            </button>
             <button type="button" className="secondary" onClick={resetForm} disabled={saving}>
               Abbrechen
             </button>
-          )}
-        </div>
-      </form>
+          </div>
+        </form>
+      )}
 
       <CategoryManager
         expense={expenseCategories}
@@ -700,68 +713,87 @@ function Finances({ user, onOpenDiary }) {
       {status === 'ready' && sorted.length === 0 ? (
         <p className="empty">Noch keine Buchungen.</p>
       ) : sorted.length === 0 ? null : (
-        <div className="card table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Datum</th>
-                <th>Beschreibung</th>
-                <th>Quelle / Kategorie</th>
-                <th className="num">Betrag</th>
-                <th aria-label="Aktionen"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((item) => (
-                <tr key={item.id} className={item.id === editingId ? 'editing' : undefined}>
-                  <td className="date">{formatDate(item.date)}</td>
-                  <td>
-                    {item.description}
-                    {(!item.paid || item.hasReceipt) && (
-                      <span className="tx-tags">
-                        {!item.paid && <span className="state-pill state-open">Offen</span>}
-                        {item.hasReceipt && (
-                          <span className="state-pill" title="Beleg im Tagebucheintrag">
-                            🧾 Beleg
+        <div className="card bookings">
+          <div className="budget-head">
+            <h2>
+              <button
+                type="button"
+                className="budget-toggle"
+                aria-expanded={bookingsOpen}
+                onClick={() => setBookingsOpen(!bookingsOpen)}
+              >
+                <span className="budget-chevron" aria-hidden="true">
+                  {bookingsOpen ? '▾' : '▸'}
+                </span>
+                Buchungen <span className="chip-count">{sorted.length}</span>
+              </button>
+            </h2>
+          </div>
+          {bookingsOpen && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Datum</th>
+                    <th>Beschreibung</th>
+                    <th>Quelle / Kategorie</th>
+                    <th className="num">Betrag</th>
+                    <th aria-label="Aktionen"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((item) => (
+                    <tr key={item.id} className={item.id === editingId ? 'editing' : undefined}>
+                      <td className="date">{formatDate(item.date)}</td>
+                      <td>
+                        {item.description}
+                        {(!item.paid || item.hasReceipt) && (
+                          <span className="tx-tags">
+                            {!item.paid && <span className="state-pill state-open">Offen</span>}
+                            {item.hasReceipt && (
+                              <span className="state-pill" title="Beleg im Tagebucheintrag">
+                                🧾 Beleg
+                              </span>
+                            )}
                           </span>
                         )}
-                      </span>
-                    )}
-                  </td>
-                  <td>{item.category}</td>
-                  <td className="num">
-                    {item.type === 'funding' ? '+' : '−'}
-                    {currency.format(item.amount)}
-                  </td>
-                  <td className="num row-actions">
-                    {item.diaryEntryId ? (
-                      <button
-                        type="button"
-                        className="link"
-                        title="Im Tagebuch ansehen, bearbeiten oder löschen"
-                        onClick={() => onOpenDiary({ entry: { id: item.diaryEntryId, type: 'expense' } })}
-                      >
-                        im Tagebuch
-                      </button>
-                    ) : (
-                      <>
-                        <button type="button" className="link" onClick={() => startEdit(item)}>
-                          Bearbeiten
-                        </button>
-                        <button
-                          type="button"
-                          className="link danger"
-                          onClick={() => handleDelete(item.id)}
-                        >
-                          Löschen
-                        </button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      </td>
+                      <td>{item.category}</td>
+                      <td className="num">
+                        {item.type === 'funding' ? '+' : '−'}
+                        {currency.format(item.amount)}
+                      </td>
+                      <td className="num row-actions">
+                        {item.diaryEntryId ? (
+                          <button
+                            type="button"
+                            className="link"
+                            title="Im Tagebuch ansehen, bearbeiten oder löschen"
+                            onClick={() => onOpenDiary({ entry: { id: item.diaryEntryId, type: 'expense' } })}
+                          >
+                            im Tagebuch
+                          </button>
+                        ) : (
+                          <>
+                            <button type="button" className="link" onClick={() => startEdit(item)}>
+                              Bearbeiten
+                            </button>
+                            <button
+                              type="button"
+                              className="link danger"
+                              onClick={() => handleDelete(item.id)}
+                            >
+                              Löschen
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </section>
