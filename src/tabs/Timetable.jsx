@@ -9,6 +9,7 @@ import {
 import { formatDate, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
+import GanttChart from '../components/GanttChart.jsx'
 
 function fromRow(row) {
   return {
@@ -62,11 +63,8 @@ function calendarWarning(problem) {
   return `Gespeichert, aber der Google Kalender wurde nicht aktualisiert: ${problem}`
 }
 
-function Milestones({ user, onCalendarChange }) {
-  const { rows, status, error: loadError, insert, update, remove } = useCollection('milestones', {
-    fromRow,
-    toRow,
-  })
+function Milestones({ user, store, onCalendarChange }) {
+  const { rows, status, error: loadError, insert, update, remove } = store
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
   const [error, setError] = useState('')
@@ -252,6 +250,7 @@ function Timetable({ user }) {
   const [error, setError] = useState('')
   // Changing the key reloads the embedded calendar after a change.
   const [frameKey, setFrameKey] = useState(0)
+  const milestoneStore = useCollection('milestones', { fromRow, toRow })
 
   useEffect(() => {
     getCalendarId().then(setCalendarId, (err) => setError(err.message))
@@ -260,7 +259,12 @@ function Timetable({ user }) {
   const embedUrl = calendarId && calendarEmbedUrl(calendarId)
   return (
     <section className="tab-content">
-      <Milestones user={user} onCalendarChange={() => setFrameKey((k) => k + 1)} />
+      <GanttChart milestones={milestoneStore.rows} />
+      <Milestones
+        user={user}
+        store={milestoneStore}
+        onCalendarChange={() => setFrameKey((k) => k + 1)}
+      />
       {error && <p className="card error">{error}</p>}
       {calendarId && (
         <div className="card calendar-card">
