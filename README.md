@@ -156,7 +156,7 @@ on conflict (key) do update set value = excluded.value;
 ```
 
 Optional: the building site's location, so new Status entries get the
-day's weather and temperature filled in (from Open-Meteo). A place name or
+day's weather filled in (from Open-Meteo). A place name or
 coordinates both work; without it, the phone's own location is used.
 
 ```sql
