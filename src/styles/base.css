@@ -1,0 +1,319 @@
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --text: #1f2328;
+  --muted: #6b7280;
+  --border: #d0d7de;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --error: #b91c1c;
+  --success: #15803d;
+  /* Chart colours (validated categorical palette, light surface) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+  --track: #e5e7eb;
+
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --border: #30363d;
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --error: #f87171;
+    --success: #4ade80;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --track: #262c36;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+button {
+  font: inherit;
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+button.secondary:hover {
+  background: var(--border);
+}
+
+/* Shared building blocks */
+.tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.form-grid h2,
+.form-grid .full {
+  grid-column: 1 / -1;
+}
+
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid textarea,
+td select {
+  font: inherit;
+  font-weight: normal;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  width: 100%;
+}
+
+.form-grid textarea {
+  resize: vertical;
+}
+
+.form-grid .error {
+  margin: 0;
+  color: var(--error);
+  font-size: 0.9rem;
+}
+
+.form-grid .form-hint {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+button.link {
+  background: transparent;
+  color: var(--accent);
+  padding: 0.25rem 0.4rem;
+}
+
+button.link:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+
+button.link.danger {
+  color: var(--error);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.positive {
+  color: var(--success);
+}
+
+.negative {
+  color: var(--error);
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+/* Tables */
+.table-wrap {
+  padding: 0;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+th {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+td.num,
+th.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+td select {
+  width: auto;
+}
+
+td.date {
+  white-space: nowrap;
+}
+
+/* Loading screen, Drive hint */
+.loading-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.drive-link {
+  margin: 0;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.drive-link a,
+.login-card a {
+  color: var(--accent);
+}
+
+.login-card .notice ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+p.error {
+  color: var(--error);
+}
+
+/* Row currently loaded into the edit form */
+tr.editing td {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.form-grid {
+  scroll-margin-top: 1rem;
+}
+
+.entry.editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* In-app confirm and alert (components/DialogProvider.jsx) */
+.app-dialog {
+  width: min(400px, calc(100% - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.app-dialog::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.app-dialog p {
+  margin: 0 0 1rem;
+  white-space: pre-line;
+}
+
+.app-dialog .form-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+button.danger-button {
+  background: var(--error);
+}
+
+button.danger-button:hover:not(:disabled) {
+  background: var(--error);
+  filter: brightness(0.9);
+}
+
+/* Small note under a form field, e.g. where the weather came from */
+.form-grid .field-hint {
+  font-size: 0.8rem;
+  font-weight: normal;
+}

@@ -1,0 +1,109 @@
+/* Dokumente: all files in Drive, sorted by type */
+.documents-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.document-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.document {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.15rem 0.75rem;
+}
+
+.document-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.document-name:hover {
+  color: var(--accent);
+}
+
+.document-meta {
+  grid-column: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.document-meta button.link {
+  padding: 0;
+  font-size: inherit;
+  text-align: left;
+}
+
+.document-type {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  max-width: 10rem;
+}
+
+@media (max-width: 480px) {
+  .document {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-type {
+    grid-column: 1;
+    grid-row: auto;
+    max-width: none;
+    margin-top: 0.35rem;
+  }
+}
+
+/* Files that are pictures get a small preview */
+.document.with-thumb {
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+}
+
+.document-thumb {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 64px;
+}
+
+.document.with-thumb .document-name,
+.document.with-thumb .document-meta {
+  grid-column: 2;
+}
+
+.document.with-thumb .document-type {
+  grid-column: 3;
+}
+
+@media (max-width: 480px) {
+  .document.with-thumb {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .document-thumb {
+    grid-row: 1 / span 3;
+  }
+
+  .document.with-thumb .document-type {
+    grid-column: 2;
+  }
+}

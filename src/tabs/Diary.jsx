@@ -5,6 +5,8 @@ import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
 import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 import { fromRow, toRow } from '../diaryEntries.js'
+import { categoryFromRow, categoryToRow, expenseCategories } from '../categories.js'
+import { contactFromRow, contactToRow } from '../contacts.js'
 import { checkDetails, emptyForm, formFromEntry } from '../diaryForm.js'
 import { diarySections } from '../diarySections.js'
 import { entryFolderPath, uploadPending } from '../diaryUploads.js'
@@ -23,29 +25,6 @@ import EntryForm from '../components/EntryForm.jsx'
 import EntryCard from '../components/EntryCard.jsx'
 import BusyOverlay from '../components/BusyOverlay.jsx'
 import Lightbox from '../components/Lightbox.jsx'
-
-// Expense categories as kept on the Finanzen tab.
-function categoryFromRow(row) {
-  return { id: row.id, type: row.type, name: row.name, sortOrder: row.sort_order }
-}
-
-function categoryToRow(category) {
-  return { type: category.type, name: category.name, sort_order: category.sortOrder }
-}
-
-function contactFromRow(row) {
-  return {
-    id: row.id,
-    name: row.name,
-    role: row.role ?? '',
-    company: row.company ?? '',
-    pinned: row.pinned ?? false,
-  }
-}
-
-function contactToRow(contact) {
-  return { name: contact.name, role: contact.role, company: contact.company, pinned: contact.pinned }
-}
 
 // An entry's details with its calendar event's ID set, or removed (null).
 function withEventId(details, eventId) {
@@ -92,9 +71,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
   const [to, setTo] = useState('')
 
   const todayDate = today()
-  const expenseCategoryRows = categoryStore.rows
-    .filter((c) => c.type === 'expense')
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'de'))
+  const expenseCategoryRows = expenseCategories(categoryStore.rows)
   const lists = {
     expenseCategories: expenseCategoryRows.map((c) => c.name),
     // Budget items by category name (empty until the table exists).
