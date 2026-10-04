@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useCollection } from '../useCollection.js'
 import { usePersistentState, formatDate } from '../storage.js'
 import { fromRow, toRow } from '../diaryEntries.js'
@@ -20,6 +20,8 @@ import {
 // Dropdown value that takes a marked photo out of the documents again.
 const NOT_A_DOCUMENT = 'none'
 import DocumentTypeManager from '../components/DocumentTypeManager.jsx'
+import DrivePhoto from '../components/DrivePhoto.jsx'
+import Lightbox from '../components/Lightbox.jsx'
 
 function matches(document, query) {
   const q = query.trim().toLowerCase()
@@ -45,6 +47,8 @@ function Documents({ onOpenDiary, onOpenTab }) {
   const [query, setQuery] = useState('')
   const [saving, setSaving] = useState(null) // file ID being changed
   const [error, setError] = useState('')
+  const [lightbox, setLightbox] = useState(null)
+  const closeLightbox = useCallback(() => setLightbox(null), [])
 
   const types = [...typeStore.rows].sort((a, b) => a.name.localeCompare(b.name, 'de'))
   const assignments = new Map(assignmentStore.rows.map((a) => [a.fileId, a.typeId]))
@@ -184,16 +188,27 @@ function Documents({ onOpenDiary, onOpenTab }) {
               ) : (
                 <ul className="document-list">
                   {group.documents.map((document) => (
-                    <li key={document.fileId} className="card document">
+                    <li
+                      key={document.fileId}
+                      className={document.image ? 'card document with-thumb' : 'card document'}
+                    >
+                      {document.image && (
+                        <div className="thumb document-thumb">
+                          <DrivePhoto
+                            fileId={document.fileId}
+                            alt={document.name}
+                            className="thumb-img"
+                            onOpen={(src) => setLightbox({ src, alt: document.name })}
+                          />
+                        </div>
+                      )}
                       <a
                         className="document-name"
                         href={driveFileUrl(document.fileId)}
                         target="_blank"
                         rel="noreferrer"
                       >
-                        <span aria-hidden="true">
-                          {document.photo ? (document.optional ? '🖼️' : '🧾') : '📄'}
-                        </span>
+                        {!document.image && <span aria-hidden="true">📄</span>}
                         <span className="file-name">{document.name}</span>
                       </a>
                       <span className="muted document-meta">
@@ -237,6 +252,8 @@ function Documents({ onOpenDiary, onOpenTab }) {
           await assignmentStore.reload()
         }}
       />
+
+      {lightbox && <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />}
     </section>
   )
 }

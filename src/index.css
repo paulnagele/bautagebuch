@@ -2138,3 +2138,42 @@ button.thumb-document.marked:hover:not(:disabled) {
   background: var(--accent);
   opacity: 1;
 }
+
+/* Files that are pictures: shown a bit smaller than the entry's photos */
+.entry-file-images {
+  margin-top: 0.75rem;
+  grid-template-columns: repeat(auto-fill, 88px);
+}
+
+.document.with-thumb {
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+}
+
+.document-thumb {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 64px;
+}
+
+.document.with-thumb .document-name,
+.document.with-thumb .document-meta {
+  grid-column: 2;
+}
+
+.document.with-thumb .document-type {
+  grid-column: 3;
+}
+
+@media (max-width: 480px) {
+  .document.with-thumb {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .document-thumb {
+    grid-row: 1 / span 3;
+  }
+
+  .document.with-thumb .document-type {
+    grid-column: 2;
+  }
+}

@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { WEATHER_LABELS, fieldOptions } from '../diaryForm.js'
 import { driveFileUrl } from '../drive.js'
-import { canMarkPhotos } from '../documents.js'
+import { canMarkPhotos, isImageFile } from '../documents.js'
 import { formatDate } from '../storage.js'
 import PeopleLinks from './PeopleLinks.jsx'
 import DrivePhoto from './DrivePhoto.jsx'
@@ -45,6 +45,9 @@ function EntryCard({
   // small text.
   const due = type.dueHeadline ? entry.details[type.progress.due] : ''
   const overdue = isOverdue(entry, todayDate)
+  // Files that are pictures show as (smaller) pictures, the others by name.
+  const imageFiles = entry.files.filter((file) => isImageFile(file.name))
+  const otherFiles = entry.files.filter((file) => !isImageFile(file.name))
   const meta = [
     due && `eingetragen am ${formatDate(entry.date)}`,
     ...(type.siteInfo
@@ -120,9 +123,23 @@ function EntryCard({
           })}
         </ul>
       )}
-      {entry.files.length > 0 && (
+      {imageFiles.length > 0 && (
+        <ul className="thumb-grid entry-file-images">
+          {imageFiles.map((file) => (
+            <li key={file.id} className="thumb">
+              <DrivePhoto
+                fileId={file.id}
+                alt={file.name}
+                className="thumb-img"
+                onOpen={(src) => onOpenPhoto({ src, alt: file.name })}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+      {otherFiles.length > 0 && (
         <ul className="file-list entry-files">
-          {entry.files.map((file) => (
+          {otherFiles.map((file) => (
             <li key={file.id}>
               <a className="file-chip" href={driveFileUrl(file.id)} target="_blank" rel="noreferrer">
                 <span aria-hidden="true">📄</span>

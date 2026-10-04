@@ -28,7 +28,7 @@ export function assignmentToRow(assignment) {
 // they always count; photos of status entries only once marked as a
 // document (they then have a row in `assignments`, a Map of file ID to
 // type ID); other photos are pictures of the build.
-// A document: { fileId, name, photo, optional, date, lands, source },
+// A document: { fileId, name, photo, image, optional, date, lands, source },
 // where `optional` means it can be unmarked again, `lands`
 // is 'receipts' or 'quotes' for documents with a type of their own, and
 // source is { kind: 'entry', entry, label } or { kind: 'quote', label }.
@@ -66,7 +66,13 @@ export function collectDocuments(entries, quotes, budgetItems, assignments) {
       })
     }
   }
+  for (const document of documents) document.image = document.photo || isImageFile(document.name)
   return documents.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name, 'de'))
+}
+
+// Whether a file is a picture (by its name), so it can be shown as one.
+export function isImageFile(name) {
+  return /\.(jpe?g|png|gif|webp|heic|heif|avif|bmp)$/i.test(name ?? '')
 }
 
 // Whether an entry's photos can be marked as documents (status entries).
