@@ -4,7 +4,19 @@ import { useDialogs } from '../dialogs.js'
 // Add, rename and delete the categories of one type (expense or funding).
 // `usage` maps a category name to the number of transactions using it,
 // `itemCounts` a category ID to its number of budget items (Posten).
-function CategoryList({ title, categories, usage, itemCounts, readOnly, onAdd, onRename, onDelete }) {
+// `checkDelete(category)`, if given, resolves to { blocked } with why the
+// category cannot be deleted, or { note } with what else is deleted.
+function CategoryList({
+  title,
+  categories,
+  usage,
+  itemCounts,
+  readOnly,
+  checkDelete,
+  onAdd,
+  onRename,
+  onDelete,
+}) {
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState(null) // { id, name }
   const [message, setMessage] = useState('')
@@ -52,11 +64,16 @@ function CategoryList({ title, categories, usage, itemCounts, readOnly, onAdd, o
       )
       return
     }
+    const check = checkDelete ? await checkDelete(category) : {}
+    if (check.blocked) {
+      setMessage(check.blocked)
+      return
+    }
     // Its Posten go with it (on delete cascade), planned amounts included.
     const items = itemCounts?.get(category.id) ?? 0
     const itemNote =
       items > 0 ? ` ${items === 1 ? 'Ihr Posten wird' : `Ihre ${items} Posten werden`} mitgelöscht.` : ''
-    const question = `Die Kategorie „${category.name}“ löschen?${itemNote}`
+    const question = `Die Kategorie „${category.name}“ löschen?${itemNote}${check.note ?? ''}`
     if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     await run(() => onDelete(category.id))
   }
@@ -154,6 +171,7 @@ function CategoryManager({
   itemCounts,
   readOnly,
   notice,
+  checkDelete,
   onAdd,
   onRename,
   onDelete,
@@ -177,6 +195,7 @@ function CategoryManager({
           usage={usage.expense}
           itemCounts={itemCounts}
           readOnly={readOnly}
+          checkDelete={checkDelete}
           onAdd={(name) => onAdd('expense', name)}
           onRename={onRename}
           onDelete={onDelete}

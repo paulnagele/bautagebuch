@@ -282,6 +282,10 @@ function Finances({ user, onOpenDiary }) {
     'budgetItemId',
   )
   const unpaidByCategory = sumBy(unpaid, 'category')
+  const itemQuotes = new Map()
+  for (const quote of quoteStore.rows) {
+    itemQuotes.set(quote.budgetItemId, (itemQuotes.get(quote.budgetItemId) ?? 0) + 1)
+  }
   // What the plans still expect to be spent, beyond what already was.
   const spentByCategory = sumBy(expenses, 'category')
   const plannedOpen = plannedCategories.reduce(
@@ -330,7 +334,7 @@ function Finances({ user, onOpenDiary }) {
       new_name: name,
     })
     if (renameError) throw new Error(friendlyError(renameError))
-    await Promise.all([categoryStore.reload(), reloadItems()])
+    await Promise.all([categoryStore.reload(), reloadItems(), paymentStore.reload()])
   }
 
   async function setPlannedAmount(id, plannedAmount) {
@@ -393,6 +397,32 @@ function Finances({ user, onOpenDiary }) {
 
   function openDiaryEntry(id) {
     onOpenDiary({ entry: { id, type: 'expense' } })
+  }
+
+  // Planned payments store the category by name, so they would be left
+  // without one; quotes (via the Posten) and the category's time slots in
+  // the Bauablauf (Zeitplan) are deleted with it.
+  async function checkCategoryDelete(category) {
+    const payments = paymentStore.rows.filter((p) => p.category === category.name).length
+    if (payments > 0) {
+      return {
+        blocked:
+          `„${category.name}“ hat ${payments === 1 ? 'eine geplante Zahlung' : `${payments} geplante Zahlungen`} ` +
+          'im Zahlungsplan. Ändere oder lösche sie zuerst.',
+      }
+    }
+    const itemIds = new Set(budgetItems.filter((i) => i.categoryId === category.id).map((i) => i.id))
+    const quotes = quoteStore.rows.filter((q) => itemIds.has(q.budgetItemId)).length
+    // Not loaded on this tab, so counted here; unknown if that fails.
+    const { count: slots } = await supabase
+      .from('schedule_slots')
+      .select('id', { count: 'exact', head: true })
+      .eq('category_id', category.id)
+    const lost = [
+      quotes > 0 && (quotes === 1 ? 'ein Angebot' : `${quotes} Angebote`),
+      slots > 0 && (slots === 1 ? 'ein Zeitfenster im Bauablauf' : `${slots} Zeitfenster im Bauablauf`),
+    ].filter(Boolean)
+    return { note: lost.length > 0 ? ` Außerdem werden ${lost.join(' und ')} gelöscht.` : '' }
   }
 
   async function deleteCategory(id) {
@@ -535,6 +565,7 @@ function Finances({ user, onOpenDiary }) {
         itemSpent={itemSpent}
         unpaid={unpaidByCategory}
         itemUnpaid={itemUnpaid}
+        itemQuotes={itemQuotes}
         itemsReadOnly={itemsMissing}
         funding={totalFunding}
         readOnly={categoriesMissing}
@@ -654,6 +685,7 @@ function Finances({ user, onOpenDiary }) {
         itemCounts={itemCounts}
         readOnly={categoriesMissing}
         notice={categoriesMissing ? categoryStore.error : ''}
+        checkDelete={checkCategoryDelete}
         onAdd={addCategory}
         onRename={renameCategory}
         onDelete={deleteCategory}

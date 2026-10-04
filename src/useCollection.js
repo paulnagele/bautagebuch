@@ -11,20 +11,35 @@ import { supabase } from './supabase.js'
 // Each hook instance gets its own channel, even for the same table.
 let channelCount = 0
 
+// Rows per request; Supabase returns at most 1000.
+const PAGE_SIZE = 1000
+
+// The primary key, for a stable order across pages ('id' unless named here).
+const KEY_COLUMNS = { document_assignments: 'file_id' }
+
 export function useCollection(table, { fromRow, toRow }) {
   const [rows, setRows] = useState([])
   const [status, setStatus] = useState('loading')
   const [error, setError] = useState('')
 
   const reload = useCallback(async () => {
-    const { data, error: loadError } = await supabase
-      .from(table)
-      .select('*')
-      .order('created_at', { ascending: true })
-    if (loadError) {
-      setError(friendlyError(loadError))
-      setStatus('error')
-      return
+    // Supabase returns at most 1000 rows per request, so larger tables are
+    // loaded page by page; otherwise the newest rows would be missing.
+    const data = []
+    for (;;) {
+      const { data: page, error: loadError } = await supabase
+        .from(table)
+        .select('*')
+        .order('created_at', { ascending: true })
+        .order(KEY_COLUMNS[table] ?? 'id', { ascending: true })
+        .range(data.length, data.length + PAGE_SIZE - 1)
+      if (loadError) {
+        setError(friendlyError(loadError))
+        setStatus('error')
+        return
+      }
+      data.push(...page)
+      if (page.length < PAGE_SIZE) break
     }
     setRows(data.map(fromRow))
     setError('')

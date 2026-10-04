@@ -14,6 +14,7 @@ import { useDialogs } from '../dialogs.js'
 // `itemSpent` maps an item id to what was spent on it (diary expenses
 // assigned to that item). `unpaid` and `itemUnpaid` hold the part of
 // that which is still unpaid invoices, by category name and item id.
+// `itemQuotes` maps an item id to its number of quotes.
 // `itemExtra(item)` renders more under an item (its quotes).
 
 function parseAmount(text) {
@@ -70,6 +71,7 @@ function BudgetPlan({
   itemSpent = new Map(),
   unpaid = new Map(),
   itemUnpaid = new Map(),
+  itemQuotes = new Map(),
   itemsReadOnly,
   funding,
   readOnly,
@@ -167,7 +169,11 @@ function BudgetPlan({
   async function handleDeleteItem(item) {
     const used = itemSpent.get(item.id) ?? 0
     const note = used > 0 ? ` Die zugeordneten Ausgaben (${format(used)}) bleiben in der Kategorie.` : ''
-    const question = `Den Posten „${item.name}“ löschen?${note}`
+    // Its quotes are deleted with it (on delete cascade).
+    const quotes = itemQuotes.get(item.id) ?? 0
+    const quoteNote =
+      quotes > 0 ? ` ${quotes === 1 ? 'Sein Angebot wird' : `Seine ${quotes} Angebote werden`} mitgelöscht.` : ''
+    const question = `Den Posten „${item.name}“ löschen?${note}${quoteNote}`
     if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     await run(() => onDeleteItem(item.id))
   }
