@@ -1,14 +1,28 @@
+import { useState } from 'react'
 import { today } from '../storage.js'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
 import { paymentFromRow, paymentState, paymentToRow } from '../planning.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 import { fromRow, toRow } from '../diaryEntries.js'
+import { itemFromRow, itemToRow } from '../budgetItems.js'
+import { quoteFromRow, quoteToRow } from '../planning.js'
+import { driveFileUrl, publicPhotoUrl } from '../drive.js'
+import {
+  UNSORTED,
+  assignmentFromRow,
+  assignmentToRow,
+  collectDocuments,
+  documentTypeId,
+  typeFromRow,
+  typeToRow,
+} from '../documents.js'
 
 const MAX_APPOINTMENTS = 5
 const MAX_TASKS = 8
 const MAX_PHOTOS = 12
 const MAX_INVOICES = 5
+const MAX_DOCUMENTS = 6
 
 const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
 
@@ -40,12 +54,43 @@ function dueDate(entry) {
   return entry.details[entryType(entry.type).progress?.due] || ''
 }
 
+// A small preview of a picture document, from its public link. Pictures
+// not shared by link (attached image files) fall back to the file icon;
+// no Drive sign-in on the start page.
+function DocumentIcon({ document }) {
+  const [failed, setFailed] = useState(false)
+  if (!document.image || failed) {
+    return (
+      <span className="overview-doc-icon" aria-hidden="true">
+        📄
+      </span>
+    )
+  }
+  return (
+    <img
+      className="overview-doc-thumb"
+      src={publicPhotoUrl(document.fileId)}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 // The start page: what comes next, what is still open, and the newest
 // photos. Everything opens in the diary; data is the diary's own and stays
 // live through the same Realtime subscription.
 function Overview({ onOpenDiary, onOpenTab }) {
   const { rows: entries, status, error } = useCollection('diary_entries', { fromRow, toRow })
   const paymentStore = useCollection('payment_plan', { fromRow: paymentFromRow, toRow: paymentToRow })
+  const quoteStore = useCollection('quotes', { fromRow: quoteFromRow, toRow: quoteToRow })
+  const itemStore = useCollection('budget_items', { fromRow: itemFromRow, toRow: itemToRow })
+  const typeStore = useCollection('document_types', { fromRow: typeFromRow, toRow: typeToRow })
+  const assignmentStore = useCollection('document_assignments', {
+    fromRow: assignmentFromRow,
+    toRow: assignmentToRow,
+  })
   const todayDate = today()
 
   const appointments = entries
@@ -78,6 +123,16 @@ function Overview({ onOpenDiary, onOpenTab }) {
     .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
     .flatMap((entry) => entry.photoIds.map((fileId) => ({ fileId, entry })))
     .slice(0, MAX_PHOTOS)
+
+  // Newest documents first (by the date of their entry or quote).
+  const assignments = new Map(assignmentStore.rows.map((a) => [a.fileId, a.typeId]))
+  const typeNames = new Map(typeStore.rows.map((t) => [t.id, t.name]))
+  const documents = collectDocuments(entries, quoteStore.rows, itemStore.rows, assignments)
+    .slice(0, MAX_DOCUMENTS)
+    .map((document) => {
+      const typeId = documentTypeId(document, assignments, typeStore.rows)
+      return { ...document, typeName: typeId === UNSORTED ? 'Unsortiert' : typeNames.get(typeId) }
+    })
 
   if (status === 'loading') return <p className="empty">Wird geladen…</p>
   if (status === 'error') {
@@ -290,6 +345,45 @@ function Overview({ onOpenDiary, onOpenTab }) {
           )}
         </div>
       )}
+
+      <div className="card overview-card">
+        <div className="overview-head">
+          <h2>Neueste Dokumente</h2>
+          <button type="button" className="link" onClick={() => onOpenTab('documents')}>
+            Alle Dokumente
+          </button>
+        </div>
+        {documents.length === 0 ? (
+          <p className="muted overview-empty">Noch keine Dokumente.</p>
+        ) : (
+          <ul className="overview-list">
+            {documents.map((document) => (
+              <li key={document.fileId}>
+                <a
+                  className="overview-item overview-document"
+                  href={driveFileUrl(document.fileId)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <DocumentIcon document={document} />
+                  <span className="overview-what">
+                    <span className="overview-title">{document.name}</span>
+                    <span className="overview-meta">
+                      <span className={document.typeName === 'Unsortiert' ? 'muted' : undefined}>
+                        {document.typeName}
+                      </span>
+                      {document.date && (
+                        <span className="muted">{shortDate(document.date, todayDate, false)}</span>
+                      )}
+                      <span className="muted">{document.source.label}</span>
+                    </span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="card overview-card overview-photos">
         <div className="overview-head">
