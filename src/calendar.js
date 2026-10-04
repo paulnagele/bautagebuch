@@ -139,7 +139,8 @@ function milestoneEvent({ name, date, reached }) {
 
 // Creates, updates or deletes the event to match `body` (null: no event)
 // and returns its ID (null when there is none). An event deleted in
-// Google Calendar meanwhile is created again.
+// Google Calendar meanwhile comes back: Google keeps deleted events as
+// "cancelled" and a change alone leaves them so, hence the status.
 async function syncEvent(body, eventId) {
   if (!body) {
     if (eventId) await deleteEvent(eventId)
@@ -150,7 +151,7 @@ async function syncEvent(body, eventId) {
       await calendar.fetch(await eventsUrl(`/${encodeURIComponent(eventId)}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, status: 'confirmed' }),
       })
       return eventId
     } catch (err) {
