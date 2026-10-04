@@ -10,6 +10,7 @@ import Timetable from '../tabs/Timetable.jsx'
 import Contacts from '../tabs/Contacts.jsx'
 import Documents from '../tabs/Documents.jsx'
 import InstallHint from '../components/InstallHint.jsx'
+import UpdateHint from '../components/UpdateHint.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
 
 const TABS = [
@@ -34,11 +35,15 @@ function Home({ user, onLogout }) {
   // still there after switching tabs, e.g. by an accidental swipe.
   const [diaryForm, setDiaryForm] = useState(emptyDiaryForm)
   const [diaryEditingId, setDiaryEditingId] = useState(null)
+  // Whether the form is unfolded (it is folded behind "+ Neuer Eintrag").
+  const [diaryFormOpen, setDiaryFormOpen] = useState(false)
   const diaryDraft = {
     form: diaryForm,
     setForm: setDiaryForm,
     editingId: diaryEditingId,
     setEditingId: setDiaryEditingId,
+    open: diaryFormOpen,
+    setOpen: setDiaryFormOpen,
   }
 
   // Opens the diary with a filter, or scrolled to one entry (shown among
@@ -101,6 +106,7 @@ function Home({ user, onLogout }) {
           </div>
         </header>
 
+        <UpdateHint />
         <InstallHint />
 
         <nav className="tabs" role="tablist">

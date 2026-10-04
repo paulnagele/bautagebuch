@@ -7,6 +7,7 @@ import { supabase } from './supabase.js'
 import { disconnectDrive } from './drive.js'
 import { disconnectCalendar } from './calendar.js'
 import { forgetSettings } from './settings.js'
+import { forgetCollections } from './useCollection.js'
 
 function userFromSession(session) {
   const { id, email, user_metadata: meta = {} } = session.user
@@ -37,7 +38,11 @@ function AuthGate() {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, next) => setSession(next))
+    } = supabase.auth.onAuthStateChange((_event, next) => {
+      // Signed out, also when the session ran out: drop the loaded data.
+      if (!next) forgetCollections()
+      setSession(next)
+    })
     return () => subscription.unsubscribe()
   }, [])
 

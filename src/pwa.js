@@ -64,3 +64,55 @@ export function isIos() {
     (/Macintosh/.test(ua) && window.navigator.maxTouchPoints > 1)
   )
 }
+
+// ---- new versions ---------------------------------------------------------
+//
+// An installed app can stay open in the background for days and keep
+// running the old code after a new version was published. When the app
+// comes back to the foreground, check (at most every few minutes) whether
+// the published page still loads this very script file; its name changes
+// with every build. If not, a newer version is out.
+
+const UPDATE_CHECK_GAP_MS = 5 * 60 * 1000
+
+async function newerVersionOut() {
+  const script = new URL(import.meta.url).pathname
+  const name = script.slice(script.lastIndexOf('/') + 1)
+  // The query keeps the service worker from answering with its stored copy.
+  const response = await fetch(`${import.meta.env.BASE_URL}?version-check=${Date.now()}`, {
+    cache: 'no-store',
+  })
+  if (!response.ok) return false
+  const html = await response.text()
+  return html.includes('/assets/') && !html.includes(name)
+}
+
+// Calls onUpdate() once a newer version is out; returns a function that
+// stops watching. Only in the built app.
+export function watchForUpdates(onUpdate) {
+  if (!import.meta.env.PROD) return () => {}
+  let lastCheck = Date.now()
+  let found = false
+  const check = () => {
+    if (found || document.visibilityState !== 'visible') return
+    if (Date.now() - lastCheck < UPDATE_CHECK_GAP_MS) return
+    lastCheck = Date.now()
+    newerVersionOut().then(
+      (newer) => {
+        if (newer) {
+          found = true
+          onUpdate()
+        }
+      },
+      () => {}, // Offline: try again next time.
+    )
+  }
+  document.addEventListener('visibilitychange', check)
+  window.addEventListener('focus', check)
+  const timer = setInterval(check, UPDATE_CHECK_GAP_MS)
+  return () => {
+    document.removeEventListener('visibilitychange', check)
+    window.removeEventListener('focus', check)
+    clearInterval(timer)
+  }
+}
