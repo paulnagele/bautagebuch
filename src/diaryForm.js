@@ -29,6 +29,8 @@ export function emptyForm(type = 'status') {
     type,
     date: today(),
     weather: 'Sunny',
+    // Weather and temperature are filled in automatically until changed.
+    weatherAuto: true,
     workers: '',
     work: '',
     details: defaultDetails(type),
@@ -44,6 +46,7 @@ export function formFromEntry(entry) {
     type: typeKey(entry.type),
     date: entry.date,
     weather: entry.weather || 'Sunny',
+    weatherAuto: false,
     workers: String(entry.workers),
     work: entry.work,
     details: defaultDetails(entry.type, entry.details),

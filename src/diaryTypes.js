@@ -32,8 +32,11 @@ export const ENTRY_TYPES = {
     dateLabel: 'Datum',
     textLabel: 'Ausgeführte Arbeiten',
     // Weather and workers on site (own database columns, older than types).
+    // New entries get the day's weather and temperature filled in (weather.js).
     siteInfo: true,
-    fields: [],
+    fields: [
+      { key: 'temperature', label: 'Temperatur', kind: 'text', placeholder: 'z. B. 3–12 °C' },
+    ],
   },
   defect: {
     label: 'Mangel',

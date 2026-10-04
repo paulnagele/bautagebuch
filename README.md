@@ -155,6 +155,16 @@ values ('drive_folder_id', '<folder ID from step 2>'),
 on conflict (key) do update set value = excluded.value;
 ```
 
+Optional: the building site's location, so new Status entries get the
+day's weather and temperature filled in (from Open-Meteo). A place name or
+coordinates both work; without it, the phone's own location is used.
+
+```sql
+insert into public.app_settings (key, value)
+values ('site_location', '48.27, 14.25')
+on conflict (key) do update set value = excluded.value;
+```
+
 Commit to `main`; the GitHub Actions workflow deploys the site. (Repository
 variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`
 override these values if set.) If anything is missing,

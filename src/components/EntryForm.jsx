@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ENTRY_TYPES, TYPE_KEYS, defaultDetails, entryType } from '../diaryTypes.js'
 import { CALENDAR_HINTS, WEATHER_LABELS, WEATHER_OPTIONS, fieldOptions } from '../diaryForm.js'
 import { newId } from '../storage.js'
+import { siteWeather } from '../weather.js'
 import PeopleInput from './PeopleInput.jsx'
 import DrivePhoto from './DrivePhoto.jsx'
 
@@ -25,7 +26,7 @@ function DetailField({ field, value, options, lists, onChange }) {
       </select>
     )
   }
-  return <input type={field.kind} value={value} onChange={onChange} />
+  return <input type={field.kind} value={value} placeholder={field.placeholder} onChange={onChange} />
 }
 
 // The form for a new or edited diary entry. The parent keeps the form's
@@ -36,6 +37,47 @@ function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, o
   const cameraInput = useRef(null)
   const attachInput = useRef(null)
   const formType = entryType(form.type)
+  // 'loading' | 'done' | 'failed' | null, for the hint under "Wetter".
+  const [weatherState, setWeatherState] = useState(null)
+  const autoWeather = formType.siteInfo && form.weatherAuto && Boolean(form.date)
+  // weatherFor: the date the weather was last filled in for.
+  const needsWeather = autoWeather && form.weatherFor !== form.date
+
+  // New status entries get the site's weather for their date, until the
+  // weather or temperature is changed by hand.
+  useEffect(() => {
+    if (!needsWeather) return
+    let cancelled = false
+    const date = form.date
+    // Only shows "loading" if the answer is not already cached.
+    const pending = setTimeout(() => setWeatherState('loading'), 150)
+    siteWeather(date).then(
+      (found) => {
+        clearTimeout(pending)
+        if (cancelled) return
+        setWeatherState(found ? 'done' : null)
+        if (!found) return
+        setForm((f) =>
+          f.date === date && f.weatherAuto
+            ? {
+                ...f,
+                weather: found.weather,
+                weatherFor: date,
+                details: { ...f.details, temperature: found.temperature },
+              }
+            : f,
+        )
+      },
+      () => {
+        clearTimeout(pending)
+        if (!cancelled) setWeatherState('failed')
+      },
+    )
+    return () => {
+      cancelled = true
+      clearTimeout(pending)
+    }
+  }, [needsWeather, form.date, setForm])
 
   // Bring a failed upload's message into view once the overlay closes.
   useEffect(() => {
@@ -51,7 +93,8 @@ function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, o
       const details = { ...form.details, [key]: e.target.value }
       // A choice that depends on this field no longer fits.
       for (const field of formType.fields) if (field.within === key) details[field.key] = ''
-      setForm({ ...form, details })
+      // A temperature typed in by hand is kept.
+      setForm({ ...form, details, weatherAuto: form.weatherAuto && key !== 'temperature' })
     }
   }
 
@@ -121,13 +164,25 @@ function EntryForm({ form, setForm, editing, busy, error, onClearError, lists, o
         <>
           <label>
             Wetter
-            <select value={form.weather} onChange={setField('weather')}>
+            <select
+              value={form.weather}
+              onChange={(e) => setForm({ ...form, weather: e.target.value, weatherAuto: false })}
+            >
               {WEATHER_OPTIONS.map((w) => (
                 <option key={w} value={w}>
                   {WEATHER_LABELS[w]}
                 </option>
               ))}
             </select>
+            {autoWeather && weatherState && (
+              <span className="field-hint muted">
+                {weatherState === 'loading'
+                  ? 'Wetter wird geladen…'
+                  : weatherState === 'done'
+                    ? 'Automatisch für den Ort der Baustelle'
+                    : 'Wetter nicht verfügbar, bitte selbst wählen'}
+              </span>
+            )}
           </label>
           <label>
             Arbeiter vor Ort

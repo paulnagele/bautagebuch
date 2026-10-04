@@ -1900,3 +1900,9 @@ button.danger-button:hover:not(:disabled) {
 .section-chevron {
   width: 1em;
 }
+
+/* Small note under a form field, e.g. where the weather came from */
+.form-grid .field-hint {
+  font-size: 0.8rem;
+  font-weight: normal;
+}
