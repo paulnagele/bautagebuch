@@ -11,6 +11,9 @@
 //   given file name never changes.
 
 const CACHE = 'bautagebuch-app-v1'
+// Photos and files shared to the app (see the manifest's share_target),
+// kept until the app picks them up (src/share.js).
+const SHARE_CACHE = 'bautagebuch-share'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -49,8 +52,12 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event
-  if (request.method !== 'GET') return
   const url = new URL(request.url)
+  if (request.method === 'POST' && url.href === new URL('share-target', self.registration.scope).href) {
+    event.respondWith(receiveShare(request))
+    return
+  }
+  if (request.method !== 'GET') return
   if (url.origin !== self.location.origin) return
   if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return
 
@@ -102,4 +109,38 @@ async function pruneAssets(cache, html) {
       cache.delete(request)
     }
   }
+}
+
+// "Teilen → Bautagebuch" on the phone: keep what was shared and open the
+// app, which puts it into a new diary entry.
+async function receiveShare(request) {
+  try {
+    const form = await request.formData()
+    const cache = await caches.open(SHARE_CACHE)
+    for (const key of await cache.keys()) await cache.delete(key)
+    const files = form.getAll('files').filter((file) => file instanceof File && file.size > 0)
+    await Promise.all(
+      files.map((file, i) =>
+        cache.put(
+          `shared/file-${i}`,
+          new Response(file, {
+            headers: {
+              'Content-Type': file.type || 'application/octet-stream',
+              'X-File-Name': encodeURIComponent(file.name || `Datei ${i + 1}`),
+            },
+          }),
+        ),
+      ),
+    )
+    // Apps often send the same words as title and text; keep them once.
+    const parts = ['title', 'text', 'url']
+      .map((name) => form.get(name))
+      .filter((value) => typeof value === 'string' && value.trim())
+      .map((value) => value.trim())
+    const text = [...new Set(parts)].join('\n')
+    await cache.put('shared/info', Response.json({ text, files: files.length, at: Date.now() }))
+  } catch {
+    // Nothing kept: the app just opens.
+  }
+  return Response.redirect(new URL('./?shared=1', self.registration.scope).href, 303)
 }
