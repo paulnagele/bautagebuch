@@ -1,6 +1,5 @@
-import { useState } from 'react'
-import { supabase } from '../supabase.js'
-import { friendlyError, useCollection } from '../useCollection.js'
+import { useCallback, useState } from 'react'
+import { useCollection } from '../useCollection.js'
 import { usePersistentState, formatDate } from '../storage.js'
 import { fromRow, toRow } from '../diaryEntries.js'
 import { itemFromRow, itemToRow } from '../budgetItems.js'
@@ -8,14 +7,21 @@ import { quoteFromRow, quoteToRow } from '../planning.js'
 import { driveFileUrl } from '../drive.js'
 import {
   UNSORTED,
+  assignDocument,
   assignmentFromRow,
   assignmentToRow,
   collectDocuments,
   documentTypeId,
   typeFromRow,
   typeToRow,
+  unmarkDocument,
 } from '../documents.js'
+
+// Dropdown value that takes a marked photo out of the documents again.
+const NOT_A_DOCUMENT = 'none'
 import DocumentTypeManager from '../components/DocumentTypeManager.jsx'
+import DrivePhoto from '../components/DrivePhoto.jsx'
+import Lightbox from '../components/Lightbox.jsx'
 
 function matches(document, query) {
   const q = query.trim().toLowerCase()
@@ -36,15 +42,22 @@ function Documents({ onOpenDiary, onOpenTab }) {
     toRow: assignmentToRow,
   })
   const [filter, setFilter] = usePersistentState('documents.filter', 'all')
+  // IDs of the groups (Unsortiert or a type) folded away, per device.
+  const [collapsed, setCollapsed] = usePersistentState('documents.collapsed', [])
   const [query, setQuery] = useState('')
   const [saving, setSaving] = useState(null) // file ID being changed
   const [error, setError] = useState('')
+  const [lightbox, setLightbox] = useState(null)
+  const closeLightbox = useCallback(() => setLightbox(null), [])
 
   const types = [...typeStore.rows].sort((a, b) => a.name.localeCompare(b.name, 'de'))
   const assignments = new Map(assignmentStore.rows.map((a) => [a.fileId, a.typeId]))
-  const documents = collectDocuments(entryStore.rows, quoteStore.rows, itemStore.rows).map(
-    (document) => ({ ...document, typeId: documentTypeId(document, assignments, types) }),
-  )
+  const documents = collectDocuments(
+    entryStore.rows,
+    quoteStore.rows,
+    itemStore.rows,
+    assignments,
+  ).map((document) => ({ ...document, typeId: documentTypeId(document, assignments, types) }))
   const found = documents.filter((document) => matches(document, query))
   const groups = [
     { id: UNSORTED, name: 'Unsortiert' },
@@ -61,18 +74,27 @@ function Documents({ onOpenDiary, onOpenTab }) {
   const loadError = [entryStore, quoteStore, itemStore, typeStore, assignmentStore].find(
     (store) => store.status === 'error',
   )?.error
-  const loading = [entryStore, typeStore, assignmentStore].some((store) => store.status === 'loading')
+  const loading = [entryStore, typeStore, assignmentStore].some(
+    (store) => store.status === 'loading',
+  )
+
+  // A group shown on its own (filtered by type) cannot be folded away.
+  const isCollapsed = (id) => activeFilter === 'all' && collapsed.includes(id)
+
+  function toggleGroup(id) {
+    setCollapsed((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]))
+  }
 
   async function assign(document, typeId) {
     setSaving(document.fileId)
     setError('')
-    const { error: saveError } = await supabase.from('document_assignments').upsert({
-      file_id: document.fileId,
-      type_id: typeId === UNSORTED ? null : typeId,
-      updated_at: new Date().toISOString(),
-    })
-    if (saveError) setError(friendlyError(saveError))
-    else await assignmentStore.reload()
+    try {
+      if (typeId === NOT_A_DOCUMENT) await unmarkDocument(document.fileId)
+      else await assignDocument(document.fileId, typeId === UNSORTED ? null : typeId)
+      await assignmentStore.reload()
+    } catch (err) {
+      setError(err.message)
+    }
     setSaving(null)
   }
 
@@ -137,54 +159,88 @@ function Documents({ onOpenDiary, onOpenTab }) {
       )}
 
       {!loading &&
-        shown.map((group) => (
-          <section key={group.id} className="entry-section">
-            <h2 className="entry-section-title documents-group-title">
-              {group.name} <span className="chip-count">{group.documents.length}</span>
-            </h2>
-            {group.documents.length === 0 ? (
-              <p className="empty">
-                {group.id === UNSORTED ? 'Alles einsortiert.' : 'Keine Dokumente dieses Typs.'}
-              </p>
-            ) : (
-              <ul className="document-list">
-                {group.documents.map((document) => (
-                  <li key={document.fileId} className="card document">
-                    <a
-                      className="document-name"
-                      href={driveFileUrl(document.fileId)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <span aria-hidden="true">{document.photo ? '🧾' : '📄'}</span>
-                      <span className="file-name">{document.name}</span>
-                    </a>
-                    <span className="muted document-meta">
-                      {document.date && `${formatDate(document.date)} · `}
-                      <button type="button" className="link" onClick={() => openSource(document)}>
-                        {document.source.label}
-                      </button>
+        shown.map((group) => {
+          const folded = isCollapsed(group.id)
+          return (
+            <section key={group.id} className="entry-section">
+              <h2 className="entry-section-title documents-group-title">
+                {activeFilter === 'all' ? (
+                  <button
+                    type="button"
+                    aria-expanded={!folded}
+                    onClick={() => toggleGroup(group.id)}
+                  >
+                    <span className="section-chevron" aria-hidden="true">
+                      {folded ? '▸' : '▾'}
                     </span>
-                    <select
-                      className="document-type"
-                      aria-label={`Typ von ${document.name}`}
-                      value={document.typeId}
-                      disabled={saving === document.fileId}
-                      onChange={(e) => assign(document, e.target.value)}
+                    {group.name} <span className="chip-count">{group.documents.length}</span>
+                  </button>
+                ) : (
+                  <>
+                    {group.name} <span className="chip-count">{group.documents.length}</span>
+                  </>
+                )}
+              </h2>
+              {folded ? null : group.documents.length === 0 ? (
+                <p className="empty">
+                  {group.id === UNSORTED ? 'Alles einsortiert.' : 'Keine Dokumente dieses Typs.'}
+                </p>
+              ) : (
+                <ul className="document-list">
+                  {group.documents.map((document) => (
+                    <li
+                      key={document.fileId}
+                      className={document.image ? 'card document with-thumb' : 'card document'}
                     >
-                      <option value={UNSORTED}>Unsortiert</option>
-                      {types.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.name}
-                        </option>
-                      ))}
-                    </select>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        ))}
+                      {document.image && (
+                        <div className="thumb document-thumb">
+                          <DrivePhoto
+                            fileId={document.fileId}
+                            alt={document.name}
+                            className="thumb-img"
+                            onOpen={(src) => setLightbox({ src, alt: document.name })}
+                          />
+                        </div>
+                      )}
+                      <a
+                        className="document-name"
+                        href={driveFileUrl(document.fileId)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {!document.image && <span aria-hidden="true">📄</span>}
+                        <span className="file-name">{document.name}</span>
+                      </a>
+                      <span className="muted document-meta">
+                        {document.date && `${formatDate(document.date)} · `}
+                        <button type="button" className="link" onClick={() => openSource(document)}>
+                          {document.source.label}
+                        </button>
+                      </span>
+                      <select
+                        className="document-type"
+                        aria-label={`Typ von ${document.name}`}
+                        value={document.typeId}
+                        disabled={saving === document.fileId}
+                        onChange={(e) => assign(document, e.target.value)}
+                      >
+                        <option value={UNSORTED}>Unsortiert</option>
+                        {types.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.name}
+                          </option>
+                        ))}
+                        {document.optional && (
+                          <option value={NOT_A_DOCUMENT}>Kein Dokument (nur Foto)</option>
+                        )}
+                      </select>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )
+        })}
 
       <DocumentTypeManager
         types={types}
@@ -196,6 +252,8 @@ function Documents({ onOpenDiary, onOpenTab }) {
           await assignmentStore.reload()
         }}
       />
+
+      {lightbox && <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />}
     </section>
   )
 }
