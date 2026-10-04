@@ -11,6 +11,7 @@ export function quoteFromRow(row) {
     note: row.note ?? '',
     files: row.files ?? [],
     chosen: row.chosen,
+    createdAt: row.created_at,
   }
 }
 

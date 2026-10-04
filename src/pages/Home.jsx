@@ -8,6 +8,7 @@ import Diary from '../tabs/Diary.jsx'
 import Finances from '../tabs/Finances.jsx'
 import Timetable from '../tabs/Timetable.jsx'
 import Contacts from '../tabs/Contacts.jsx'
+import Documents from '../tabs/Documents.jsx'
 import InstallHint from '../components/InstallHint.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
 
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'finances', label: 'Finanzen', component: Finances },
   { id: 'timetable', label: 'Zeitplan', component: Timetable },
   { id: 'contacts', label: 'Kontakte', component: Contacts },
+  { id: 'documents', label: 'Dokumente', component: Documents },
 ]
 
 function Home({ user, onLogout }) {
