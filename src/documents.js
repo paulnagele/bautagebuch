@@ -7,7 +7,7 @@ import { entryType, typeKey } from './diaryTypes.js'
 export const UNSORTED = 'unsorted'
 
 export function typeFromRow(row) {
-  return { id: row.id, name: row.name, receipts: row.receipts, createdAt: row.created_at }
+  return { id: row.id, name: row.name, holds: row.holds ?? null, createdAt: row.created_at }
 }
 
 export function typeToRow(type) {
@@ -24,23 +24,25 @@ export function assignmentToRow(assignment) {
 
 // All documents, newest first. Photos only count for expenses, where
 // they are the receipt; other photos are pictures of the build.
-// A document: { fileId, name, photo, date, receipt, source }, where
+// A document: { fileId, name, photo, date, lands, source }, where `lands`
+// is 'receipts' or 'quotes' for documents with a type of their own, and
 // source is { kind: 'entry', entry, label } or { kind: 'quote', label }.
 export function collectDocuments(entries, quotes, budgetItems) {
   const documents = []
   for (const entry of entries) {
     const receipt = typeKey(entry.type) === 'expense'
+    const lands = receipt ? 'receipts' : null
     const label = [entryType(entry.type).label, entry.work.split('\n')[0].trim()]
       .filter(Boolean)
       .join(': ')
     const source = { kind: 'entry', entry, label }
     for (const file of entry.files) {
-      documents.push({ fileId: file.id, name: file.name, photo: false, date: entry.date, receipt, source })
+      documents.push({ fileId: file.id, name: file.name, photo: false, date: entry.date, lands, source })
     }
     if (receipt) {
       entry.photoIds.forEach((fileId, i) => {
         const name = entry.photoIds.length > 1 ? `Foto ${i + 1}` : 'Foto'
-        documents.push({ fileId, name, photo: true, date: entry.date, receipt, source })
+        documents.push({ fileId, name, photo: true, date: entry.date, lands, source })
       })
     }
   }
@@ -54,7 +56,7 @@ export function collectDocuments(entries, quotes, budgetItems) {
         name: file.name,
         photo: false,
         date: quote.createdAt?.slice(0, 10) ?? '',
-        receipt: false,
+        lands: 'quotes',
         source: { kind: 'quote', label },
       })
     }
@@ -63,12 +65,13 @@ export function collectDocuments(entries, quotes, budgetItems) {
 }
 
 // The type ID of a document, or UNSORTED. Sorted by hand wins; otherwise
-// receipts of expenses go to the receipts type (Rechnungen).
+// receipts of expenses go to the receipts type (Rechnungen) and quote
+// PDFs to the quotes type (Angebote).
 export function documentTypeId(document, assignments, types) {
   if (assignments.has(document.fileId)) {
     const typeId = assignments.get(document.fileId)
     return typeId && types.some((t) => t.id === typeId) ? typeId : UNSORTED
   }
-  if (document.receipt) return types.find((t) => t.receipts)?.id ?? UNSORTED
+  if (document.lands) return types.find((t) => t.holds === document.lands)?.id ?? UNSORTED
   return UNSORTED
 }

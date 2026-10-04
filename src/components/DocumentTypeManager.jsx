@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useDialogs } from '../dialogs.js'
 
+// What lands in a type by itself, without being sorted.
+const HOLDS = { receipts: 'Belege von Ausgaben', quotes: 'Angebote aus den Finanzen' }
+
 // Add, rename and delete document types. `counts` maps a type ID to its
 // number of documents.
 function DocumentTypeManager({ types, counts, onAdd, onRename, onDelete }) {
@@ -57,8 +60,8 @@ function DocumentTypeManager({ types, counts, onAdd, onRename, onDelete }) {
     <details className="card category-manager">
       <summary>Typen verwalten</summary>
       <p className="muted category-hint">
-        Die Zahl neben einem Typ zeigt, wie viele Dokumente ihn haben. Belege von Ausgaben landen
-        von selbst im markierten Typ, alle anderen Dokumente unter Unsortiert.
+        Die Zahl neben einem Typ zeigt, wie viele Dokumente ihn haben. Belege von Ausgaben und
+        Angebote landen von selbst im markierten Typ, alle anderen Dokumente unter Unsortiert.
       </p>
       <div className="category-list">
         <ul>
@@ -94,7 +97,7 @@ function DocumentTypeManager({ types, counts, onAdd, onRename, onDelete }) {
               <li key={type.id} className="category-row">
                 <span className="category-name">
                   {type.name}
-                  {type.receipts && <span className="muted"> · Belege von Ausgaben</span>}
+                  {HOLDS[type.holds] && <span className="muted"> · {HOLDS[type.holds]}</span>}
                 </span>
                 <span className="muted category-count">{count > 0 ? count : ''}</span>
                 <button

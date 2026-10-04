@@ -4,9 +4,10 @@
 -- receipts of expenses and quote PDFs, all in Google Drive. Only which
 -- type a document has is stored here, by its Drive file ID.
 --
--- document_types: the list of types, kept by the members in the app. The
--- one marked `receipts` (seeded as "Rechnungen") is where receipts of
--- diary expenses (Ausgaben) land without being sorted. Every other
+-- document_types: the list of types, kept by the members in the app.
+-- `holds` marks the type documents land in without being sorted:
+-- 'receipts' (seeded as "Rechnungen") for receipts of diary expenses
+-- (Ausgaben), 'quotes' (seeded as "Angebote") for quote PDFs. Every other
 -- document without an assignment counts as unsorted (Unsortiert).
 --
 -- document_assignments: one row per document sorted by hand; type_id
@@ -16,13 +17,10 @@
 create table if not exists public.document_types (
   id uuid primary key default gen_random_uuid(),
   name text not null unique check (length(trim(name)) > 0 and name = trim(name)),
-  receipts boolean not null default false,
+  holds text unique check (holds in ('receipts', 'quotes')),
   created_by uuid default auth.uid(),
   created_at timestamptz not null default now()
 );
-
-create unique index if not exists document_types_one_receipts
-  on public.document_types (receipts) where receipts;
 
 create table if not exists public.document_assignments (
   file_id text primary key check (length(file_id) > 0),
@@ -70,7 +68,7 @@ $$;
 
 -- A first list of types, only while there are none yet, so types the
 -- members deleted do not come back.
-insert into public.document_types (name, receipts)
-select name, name = 'Rechnungen'
+insert into public.document_types (name, holds)
+select name, case name when 'Rechnungen' then 'receipts' when 'Angebote' then 'quotes' end
   from unnest(array['Rechnungen', 'Angebote', 'Verträge', 'Pläne', 'Genehmigungen']) as name
   where not exists (select 1 from public.document_types);

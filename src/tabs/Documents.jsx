@@ -23,7 +23,8 @@ function matches(document, query) {
 }
 
 // All documents in Google Drive, sorted by type (Rechnungen, Pläne, …).
-// Receipts of expenses are Rechnungen by themselves; everything else is
+// Receipts of expenses are Rechnungen and quote PDFs Angebote by
+// themselves; everything else is
 // Unsortiert until someone picks its type.
 function Documents({ onOpenDiary, onOpenTab }) {
   const entryStore = useCollection('diary_entries', { fromRow, toRow })
