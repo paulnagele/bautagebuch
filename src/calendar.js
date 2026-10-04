@@ -22,6 +22,9 @@ const calendar = createGoogleAccess({
   clientId: config.googleClientId,
 })
 
+// For connecting the calendar together with Drive (connectTogether).
+export const calendarAccess = calendar
+
 export function getCalendarId() {
   return getSetting('calendar_id', 'der Google Kalender')
 }

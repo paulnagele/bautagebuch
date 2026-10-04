@@ -58,7 +58,13 @@ function QuoteList({ item, quotes, companies, format, readOnly, onAdd, onChoose,
   }
 
   async function handleDelete(quote) {
-    const question = `Das Angebot von „${quote.company}“ löschen?`
+    // The item keeps the chosen quote's amount as its plan (and its PDF
+    // stays in Google Drive); say so, so the plan is not a surprise later.
+    const planNote = quote.chosen
+      ? ` Es ist ausgewählt; der Plan für „${item.name}“ bleibt bei ${format(item.plannedAmount)}` +
+        ' und lässt sich unter „Bearbeiten“ ändern.'
+      : ''
+    const question = `Das Angebot von „${quote.company}“ löschen?${planNote}`
     if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     await run(() => onDelete(quote))
   }
