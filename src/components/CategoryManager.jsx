@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useDialogs } from '../dialogs.js'
 
 // Add, rename and delete the categories of one type (expense or funding).
-// `usage` maps a category name to the number of transactions using it.
-function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onDelete }) {
+// `usage` maps a category name to the number of transactions using it,
+// `itemCounts` a category ID to its number of budget items (Posten).
+function CategoryList({ title, categories, usage, itemCounts, readOnly, onAdd, onRename, onDelete }) {
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState(null) // { id, name }
   const [message, setMessage] = useState('')
@@ -51,7 +52,11 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
       )
       return
     }
-    const question = `Die Kategorie „${category.name}“ löschen?`
+    // Its Posten go with it (on delete cascade), planned amounts included.
+    const items = itemCounts?.get(category.id) ?? 0
+    const itemNote =
+      items > 0 ? ` ${items === 1 ? 'Ihr Posten wird' : `Ihre ${items} Posten werden`} mitgelöscht.` : ''
+    const question = `Die Kategorie „${category.name}“ löschen?${itemNote}`
     if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     await run(() => onDelete(category.id))
   }
@@ -142,7 +147,17 @@ function CategoryList({ title, categories, usage, readOnly, onAdd, onRename, onD
   )
 }
 
-function CategoryManager({ expense, funding, usage, readOnly, notice, onAdd, onRename, onDelete }) {
+function CategoryManager({
+  expense,
+  funding,
+  usage,
+  itemCounts,
+  readOnly,
+  notice,
+  onAdd,
+  onRename,
+  onDelete,
+}) {
   return (
     <details className="card category-manager">
       <summary>Kategorien verwalten</summary>
@@ -160,6 +175,7 @@ function CategoryManager({ expense, funding, usage, readOnly, notice, onAdd, onR
           title="Ausgabenkategorien"
           categories={expense}
           usage={usage.expense}
+          itemCounts={itemCounts}
           readOnly={readOnly}
           onAdd={(name) => onAdd('expense', name)}
           onRename={onRename}
