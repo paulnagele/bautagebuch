@@ -313,6 +313,11 @@ function Finances({ user, onOpenDiary }) {
     counts?.set(item.category, (counts.get(item.category) ?? 0) + 1)
   }
 
+  const itemCounts = new Map()
+  for (const item of budgetItems) {
+    itemCounts.set(item.categoryId, (itemCounts.get(item.categoryId) ?? 0) + 1)
+  }
+
   async function addCategory(type, name) {
     const siblings = type === 'funding' ? fundingCategories : expenseCategories
     const sortOrder = Math.max(0, ...siblings.map((c) => c.sortOrder)) + 1
@@ -646,6 +651,7 @@ function Finances({ user, onOpenDiary }) {
         expense={expenseCategories}
         funding={fundingCategories}
         usage={usage}
+        itemCounts={itemCounts}
         readOnly={categoriesMissing}
         notice={categoriesMissing ? categoryStore.error : ''}
         onAdd={addCategory}

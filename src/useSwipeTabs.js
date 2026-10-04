@@ -10,7 +10,7 @@ const MAX_DURATION = 700
 const EDGE = 24
 
 // Places where a sideways drag already means something else.
-const IGNORE = 'input, textarea, select, [contenteditable], dialog, [role="dialog"], [data-no-swipe]'
+const IGNORE = 'input, textarea, select, [contenteditable], dialog, [role="dialog"], [role="alertdialog"], [data-no-swipe]'
 
 // True if the touch started inside something that scrolls sideways itself,
 // such as a wide table, so the swipe belongs to it.

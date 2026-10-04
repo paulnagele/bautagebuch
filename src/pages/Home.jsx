@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { saveJSON } from '../storage.js'
 import { useSwipeTabs } from '../useSwipeTabs.js'
 import { loadGoogleScript } from '../google.js'
+import { emptyForm as emptyDiaryForm } from '../diaryForm.js'
 import Overview from '../tabs/Overview.jsx'
 import Diary from '../tabs/Diary.jsx'
 import Finances from '../tabs/Finances.jsx'
@@ -27,6 +28,16 @@ function Home({ user, onLogout }) {
   const [slide, setSlide] = useState(null)
   const current = TABS.find((tab) => tab.id === activeTab) ?? TABS[0]
   const ActiveComponent = current.component
+  // The diary form's draft (new or edited entry) is kept here, so it is
+  // still there after switching tabs, e.g. by an accidental swipe.
+  const [diaryForm, setDiaryForm] = useState(emptyDiaryForm)
+  const [diaryEditingId, setDiaryEditingId] = useState(null)
+  const diaryDraft = {
+    form: diaryForm,
+    setForm: setDiaryForm,
+    editingId: diaryEditingId,
+    setEditingId: setDiaryEditingId,
+  }
 
   // Opens the diary with a filter, or scrolled to one entry (shown among
   // the entries of its kind). The diary reads its filter from storage
@@ -121,6 +132,7 @@ function Home({ user, onLogout }) {
             onOpenTab={chooseTab}
             focusEntryId={focusEntryId}
             focusContactId={focusContactId}
+            diaryDraft={diaryDraft}
             onFocused={() => {
               setFocusEntryId(null)
               setFocusContactId(null)
