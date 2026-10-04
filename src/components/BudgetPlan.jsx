@@ -14,6 +14,7 @@ import { useDialogs } from '../dialogs.js'
 // `itemSpent` maps an item id to what was spent on it (diary expenses
 // assigned to that item). `unpaid` and `itemUnpaid` hold the part of
 // that which is still unpaid invoices, by category name and item id.
+// `itemExtra(item)` renders more under an item (its quotes).
 
 function parseAmount(text) {
   const trimmed = text.trim()
@@ -77,6 +78,7 @@ function BudgetPlan({
   onAddItem,
   onUpdateItem,
   onDeleteItem,
+  itemExtra,
 }) {
   // { kind: 'plan', id, value } | { kind: 'item', id, name, value }
   // | { kind: 'new-item', categoryId, name, value }
@@ -370,6 +372,7 @@ function BudgetPlan({
                               format={format}
                               small
                             />
+                            {itemExtra?.(item)}
                           </>
                         )}
                       </li>

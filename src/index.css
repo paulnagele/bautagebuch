@@ -1906,3 +1906,134 @@ button.danger-button:hover:not(:disabled) {
   font-size: 0.8rem;
   font-weight: normal;
 }
+
+/* Finances: quotes (Angebote) per budget item */
+.quotes {
+  margin-top: 0.25rem;
+}
+
+button.link.quote-toggle {
+  padding: 0.15rem 0;
+  font-size: 0.85rem;
+}
+
+.quote-list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.quote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.quote.chosen {
+  border-color: var(--success);
+}
+
+.quote-company {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 10rem;
+  font-weight: 600;
+}
+
+.quote-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.quote-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.quote-actions a.link {
+  padding: 0.25rem 0.4rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.quote-form {
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+}
+
+.quote-file {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Finances: payment schedule (Zahlungsplan) */
+.payment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.payment {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.payment:first-child {
+  border-top: none;
+}
+
+.payment-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.payment-amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.payment-form {
+  margin-top: 0.75rem;
+}
+
+button.link.payment-add {
+  padding: 0.25rem 0;
+  margin-top: 0.25rem;
+}
+
+.payment-plan .budget-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.payment .budget-line {
+  justify-content: space-between;
+}
+
+.payment-name {
+  flex: 1 1 auto;
+}
