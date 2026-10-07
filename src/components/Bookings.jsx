@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { formatDate, today, usePersistentState } from '../storage.js'
 import { useDialogs } from '../dialogs.js'
+import DateInput from './DateInput.jsx'
 
 const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
 
@@ -143,7 +144,7 @@ function Bookings({
           )}
           <label>
             Datum
-            <input type="date" value={form.date} onChange={setField('date')} />
+            <DateInput value={form.date} onChange={setField('date')} />
           </label>
           <label>
             {form.type === 'funding' ? 'Quelle' : 'Kategorie'}
