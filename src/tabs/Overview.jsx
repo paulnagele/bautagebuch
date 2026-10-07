@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { today } from '../storage.js'
+import { formatDate, today } from '../storage.js'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
@@ -25,16 +25,11 @@ const MAX_DOCUMENTS = 6
 
 const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
 
-// "Fr., 3. Okt." (or "3. Okt." without weekday), plus the year if it is
-// not this year's.
-function shortDate(isoDate, todayDate, weekday = true) {
-  const [y, m, d] = isoDate.split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString('de-DE', {
-    weekday: weekday ? 'short' : undefined,
-    day: 'numeric',
-    month: 'short',
-    year: isoDate.slice(0, 4) === todayDate.slice(0, 4) ? undefined : 'numeric',
-  })
+const WEEKDAYS = ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.']
+
+// "Fr." for a date.
+function weekday(isoDate) {
+  return WEEKDAYS[new Date(`${isoDate}T12:00:00Z`).getUTCDay()]
 }
 
 function relativeDay(isoDate, todayDate) {
@@ -163,8 +158,12 @@ function Overview({ onOpenDiary, onOpenTab }) {
                     onClick={() => onOpenDiary({ entry })}
                   >
                     <span className="overview-when">
-                      <strong>{soon ?? shortDate(entry.date, todayDate)}</strong>
-                      {entry.details.time && <span>{entry.details.time} Uhr</span>}
+                      <strong>{soon ?? formatDate(entry.date)}</strong>
+                      <span>
+                        {[!soon && weekday(entry.date), entry.details.time && `${entry.details.time} Uhr`]
+                          .filter(Boolean)
+                          .join(' ')}
+                      </span>
                     </span>
                     <span className="overview-what">
                       <span className="overview-title">{firstLine(entry.work)}</span>
@@ -230,7 +229,7 @@ function Overview({ onOpenDiary, onOpenTab }) {
                         <span className={`type-badge type-${key}`}>{entryType(key).label}</span>
                         {due ? (
                           <span className={overdue ? 'overdue-date' : undefined}>
-                            bis {relativeDay(due, todayDate) ?? shortDate(due, todayDate, false)}
+                            bis {relativeDay(due, todayDate) ?? formatDate(due)}
                           </span>
                         ) : (
                           <span className="muted">ohne Frist</span>
@@ -281,7 +280,7 @@ function Overview({ onOpenDiary, onOpenTab }) {
                         <strong>{currency.format(Number(entry.details.amount) || 0)}</strong>
                         {due ? (
                           <span className={overdue ? 'overdue-date' : undefined}>
-                            zahlbar bis {relativeDay(due, todayDate) ?? shortDate(due, todayDate, false)}
+                            zahlbar bis {relativeDay(due, todayDate) ?? formatDate(due)}
                           </span>
                         ) : (
                           <span className="muted">ohne Frist</span>
@@ -327,7 +326,7 @@ function Overview({ onOpenDiary, onOpenTab }) {
                         {document.typeName}
                       </span>
                       {document.date && (
-                        <span className="muted">{shortDate(document.date, todayDate, false)}</span>
+                        <span className="muted">{formatDate(document.date)}</span>
                       )}
                       <span className="muted">{document.source.label}</span>
                     </span>
@@ -354,7 +353,7 @@ function Overview({ onOpenDiary, onOpenTab }) {
               <li key={`${entry.id}-${fileId}`} className="thumb">
                 <DrivePhoto
                   fileId={fileId}
-                  alt={`Foto: ${entryType(entry.type).label} vom ${shortDate(entry.date, todayDate)}`}
+                  alt={`Foto: ${entryType(entry.type).label} vom ${weekday(entry.date)} ${formatDate(entry.date)}`}
                   className="thumb-img"
                   onOpen={() => onOpenDiary({ entry })}
                 />

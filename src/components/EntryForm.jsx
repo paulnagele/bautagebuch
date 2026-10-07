@@ -5,6 +5,7 @@ import { newId } from '../storage.js'
 import { siteWeather } from '../weather.js'
 import PeopleInput from './PeopleInput.jsx'
 import DrivePhoto from './DrivePhoto.jsx'
+import DateInput from './DateInput.jsx'
 
 function DetailField({ field, value, options, lists, onChange }) {
   if (field.suggestFrom) {
@@ -26,6 +27,7 @@ function DetailField({ field, value, options, lists, onChange }) {
       </select>
     )
   }
+  if (field.kind === 'date') return <DateInput value={value} onChange={onChange} />
   return <input type={field.kind} value={value} placeholder={field.placeholder} onChange={onChange} />
 }
 
@@ -164,7 +166,7 @@ function EntryForm({
 
       <label>
         {formType.dateLabel}
-        <input type="date" value={form.date} onChange={setField('date')} />
+        <DateInput value={form.date} onChange={setField('date')} />
       </label>
       {formType.siteInfo && (
         <>

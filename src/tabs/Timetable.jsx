@@ -10,6 +10,7 @@ import { formatDate, today } from '../storage.js'
 import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
 import GanttChart from '../components/GanttChart.jsx'
+import DateInput from '../components/DateInput.jsx'
 
 function fromRow(row) {
   return {
@@ -222,7 +223,7 @@ function Milestones({ user, store, onCalendarChange }) {
         </label>
         <label>
           Datum
-          <input type="date" value={form.date} onChange={setField('date')} />
+          <DateInput value={form.date} onChange={setField('date')} />
         </label>
         {error && (
           <p className="error full" role="alert">
