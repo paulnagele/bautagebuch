@@ -289,6 +289,8 @@ function Finances({ user, onOpenDiary }) {
         onAddItem={addBudgetItem}
         onUpdateItem={updateBudgetItem}
         onDeleteItem={deleteBudgetItem}
+        expenses={expenses}
+        onOpenDiary={onOpenDiary}
         itemExtra={
           quoteStore.status === 'error'
             ? undefined
