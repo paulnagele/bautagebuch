@@ -46,12 +46,9 @@ export function today() {
   return new Date(d.getTime() - offset).toISOString().slice(0, 10)
 }
 
+// "2026-10-07" → "07.10.2026", the one date format shown in the app.
 export function formatDate(isoDate) {
   if (!isoDate) return ''
-  const [y, m, d] = isoDate.split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString('de-DE', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
+  const [y, m, d] = isoDate.slice(0, 10).split('-')
+  return `${d}.${m}.${y}`
 }
