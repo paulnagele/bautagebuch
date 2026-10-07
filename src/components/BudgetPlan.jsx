@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { usePersistentState } from '../storage.js'
 import { useDialogs } from '../dialogs.js'
+import ExpenseList from './ExpenseList.jsx'
 
 // Planned budget per expense category next to what was actually spent.
 // `categories` are the expense categories (with `plannedAmount`, null when
@@ -16,6 +17,9 @@ import { useDialogs } from '../dialogs.js'
 // that which is still unpaid invoices, by category name and item id.
 // `itemQuotes` maps an item id to its number of quotes.
 // `itemExtra(item)` renders more under an item (its quotes).
+// `expenses` are the expense bookings; a category, a Posten and a
+// category's expenses without Posten can unfold the ones behind their
+// figures (`onOpenDiary` opens a diary expense).
 
 function parseAmount(text) {
   const trimmed = text.trim()
@@ -81,6 +85,8 @@ function BudgetPlan({
   onUpdateItem,
   onDeleteItem,
   itemExtra,
+  expenses = [],
+  onOpenDiary,
 }) {
   // { kind: 'plan', id, value } | { kind: 'item', id, name, value }
   // | { kind: 'new-item', categoryId, name, value }
@@ -93,10 +99,42 @@ function BudgetPlan({
   const [open, setOpen] = usePersistentState('budget.open', true)
   const [openCategories, setOpenCategories] = usePersistentState('budget.openCategories', [])
 
+  // Which expense lists are unfolded: 'category:<id>', 'item:<id>' or
+  // 'unassigned:<category id>'. Folded again on the next visit.
+  const [openExpenses, setOpenExpenses] = useState([])
+
   function toggleCategory(id) {
     setOpenCategories((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]))
   }
 
+  function toggleExpenses(key) {
+    setOpenExpenses((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]))
+  }
+
+  // "▸ 3 Ausgaben" under a figure; nothing when no expense is behind it.
+  function expensesToggle(key, list) {
+    if (list.length === 0) return null
+    const shown = openExpenses.includes(key)
+    return (
+      <button
+        type="button"
+        className="link budget-items-toggle"
+        aria-expanded={shown}
+        onClick={() => toggleExpenses(key)}
+      >
+        <span aria-hidden="true">{shown ? '▾' : '▸'}</span> {list.length}{' '}
+        {list.length === 1 ? 'Ausgabe' : 'Ausgaben'}
+        {shown ? ' ausblenden' : ' anzeigen'}
+      </button>
+    )
+  }
+
+  function expensesShown(key, list, itemName) {
+    if (list.length === 0 || !openExpenses.includes(key)) return null
+    return <ExpenseList expenses={list} format={format} itemName={itemName} onOpenDiary={onOpenDiary} />
+  }
+
+  const itemExpenses = (item) => expenses.filter((e) => e.budgetItemId === item.id)
   const itemsOf = (categoryId) => items.filter((item) => item.categoryId === categoryId)
   const names = new Set(categories.map((c) => c.name))
   const rows = [
@@ -259,6 +297,12 @@ function BudgetPlan({
             const editingPlan = editing?.kind === 'plan' && editing.id === row.id
             const addingItem = editing?.kind === 'new-item' && editing.categoryId === row.id
             const itemsOpen = hasItems && openCategories.includes(row.id)
+            const itemIds = new Set(row.items.map((item) => item.id))
+            const rowExpenses = expenses.filter((e) => e.category === row.name)
+            const unassignedExpenses = rowExpenses.filter((e) => !itemIds.has(e.budgetItemId))
+            const itemName = hasItems
+              ? (e) => row.items.find((item) => item.id === e.budgetItemId)?.name
+              : undefined
             return (
               <li key={row.id} className="budget-row">
                 <div className="budget-line">
@@ -322,17 +366,23 @@ function BudgetPlan({
                   planned={row.planned}
                   format={format}
                 />
-                {hasItems && (
-                  <button
-                    type="button"
-                    className="link budget-items-toggle"
-                    aria-expanded={itemsOpen}
-                    onClick={() => toggleCategory(row.id)}
-                  >
-                    <span aria-hidden="true">{itemsOpen ? '▾' : '▸'}</span> {row.items.length}{' '}
-                    Posten{itemsOpen ? ' ausblenden' : ' anzeigen'}
-                  </button>
+                {(hasItems || rowExpenses.length > 0) && (
+                  <div className="budget-toggles">
+                    {hasItems && (
+                      <button
+                        type="button"
+                        className="link budget-items-toggle"
+                        aria-expanded={itemsOpen}
+                        onClick={() => toggleCategory(row.id)}
+                      >
+                        <span aria-hidden="true">{itemsOpen ? '▾' : '▸'}</span> {row.items.length}{' '}
+                        Posten{itemsOpen ? ' ausblenden' : ' anzeigen'}
+                      </button>
+                    )}
+                    {expensesToggle(`category:${row.id}`, rowExpenses)}
+                  </div>
                 )}
+                {expensesShown(`category:${row.id}`, rowExpenses, itemName)}
                 {(itemsOpen || addingItem) && (
                   <ul className="budget-items">
                     {(itemsOpen ? row.items : []).map((item) => (
@@ -378,6 +428,8 @@ function BudgetPlan({
                               format={format}
                               small
                             />
+                            {expensesToggle(`item:${item.id}`, itemExpenses(item))}
+                            {expensesShown(`item:${item.id}`, itemExpenses(item))}
                             {itemExtra?.(item)}
                           </>
                         )}
@@ -389,6 +441,8 @@ function BudgetPlan({
                           <span className="muted">Ohne Posten</span>
                           <span className="budget-amounts">{format(unassigned)}</span>
                         </div>
+                        {expensesToggle(`unassigned:${row.id}`, unassignedExpenses)}
+                        {expensesShown(`unassigned:${row.id}`, unassignedExpenses)}
                       </li>
                     )}
                     {addingItem && (
