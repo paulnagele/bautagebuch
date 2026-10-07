@@ -76,8 +76,9 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 0.15rem;
-  flex: 0 0 5.75rem;
+  flex: 0 0 6.25rem;
   font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .overdue-date {
