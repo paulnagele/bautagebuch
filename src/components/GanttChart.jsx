@@ -6,6 +6,7 @@ import { fromRow as entryFromRow, toRow as entryToRow } from '../diaryEntries.js
 import { shownDate } from '../diarySections.js'
 import { categoryFromRow, categoryToRow, expenseCategories } from '../categories.js'
 import { entryType, isOpen, typeKey } from '../diaryTypes.js'
+import DateInput from './DateInput.jsx'
 
 // Gantt chart for the Zeitplan tab: one row per expense category from
 // Finanzen, each with any number of time slots (schedule_slots table),
@@ -453,11 +454,11 @@ function GanttChart({ milestones, onOpenDiary }) {
           </label>
           <label>
             Beginn
-            <input type="date" value={form.start} onChange={setField('start')} />
+            <DateInput value={form.start} onChange={setField('start')} />
           </label>
           <label>
             Ende
-            <input type="date" value={form.end} min={form.start} onChange={setField('end')} />
+            <DateInput value={form.end} min={form.start} onChange={setField('end')} />
           </label>
           {error && (
             <p className="error full" role="alert">

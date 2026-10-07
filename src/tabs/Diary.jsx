@@ -25,6 +25,7 @@ import EntryForm from '../components/EntryForm.jsx'
 import EntryCard from '../components/EntryCard.jsx'
 import BusyOverlay from '../components/BusyOverlay.jsx'
 import Lightbox from '../components/Lightbox.jsx'
+import DateInput from '../components/DateInput.jsx'
 
 // An entry's details with its calendar event's ID set, or removed (null).
 function withEventId(details, eventId) {
@@ -392,11 +393,11 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
           <div className="search-range">
             <label>
               von
-              <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+              <DateInput value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
             </label>
             <label>
               bis
-              <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+              <DateInput value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
             </label>
             {searching && (
               <button type="button" className="link" onClick={clearSearch}>
