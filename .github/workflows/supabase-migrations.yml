@@ -1,9 +1,10 @@
 name: Apply Supabase migrations
 
+# Runs before every deployment (deploy-pages.yml), so a new version of the
+# app only goes live once its database changes are in place. Can also be
+# started by hand.
 on:
-  push:
-    branches: [main]
-    paths: [supabase/migrations/**]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -34,7 +35,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Fixed, so a new CLI release cannot break the migrations unnoticed.
+          version: 2.118.0
       - run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
       # Runs only the migrations the database has not seen yet.
       - run: supabase db push

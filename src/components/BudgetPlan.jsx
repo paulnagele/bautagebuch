@@ -76,9 +76,7 @@ function BudgetPlan({
   unpaid = new Map(),
   itemUnpaid = new Map(),
   itemQuotes = new Map(),
-  itemsReadOnly,
   funding,
-  readOnly,
   format,
   onSetPlan,
   onAddItem,
@@ -145,7 +143,7 @@ function BudgetPlan({
       spent: spent.get(c.name) ?? 0,
       unpaid: unpaid.get(c.name) ?? 0,
       items: itemsOf(c.id),
-      editable: !readOnly,
+      editable: true,
     })),
     ...[...spent.entries()]
       .filter(([name, value]) => !names.has(name) && value > 0)
@@ -161,7 +159,6 @@ function BudgetPlan({
   const totalPlanned = rows.reduce((s, r) => s + (r.planned ?? 0), 0)
   const totalSpent = rows.reduce((s, r) => s + r.spent, 0)
   const anyPlan = rows.some((r) => r.planned !== null)
-  const canEditItems = !readOnly && !itemsReadOnly
 
   async function run(action) {
     setBusy(true)
@@ -283,9 +280,8 @@ function BudgetPlan({
       )}
       {open && !anyPlan && (
         <p className="muted budget-hint">
-          {readOnly
-            ? 'Geplante Beträge können festgelegt werden, sobald die Datenbank aktuell ist.'
-            : 'Lege pro Kategorie einen geplanten Betrag fest oder teile sie in Posten auf (z. B. Dachdecker, Spengler), um den Plan mit den Ausgaben zu vergleichen.'}
+          Lege pro Kategorie einen geplanten Betrag fest oder teile sie in Posten auf (z. B.
+          Dachdecker, Spengler), um den Plan mit den Ausgaben zu vergleichen.
         </p>
       )}
       {open && (
@@ -344,17 +340,15 @@ function BudgetPlan({
                             {row.planned === null ? 'Plan festlegen' : 'Plan bearbeiten'}
                           </button>
                         )}
-                        {canEditItems && (
-                          <button
-                            type="button"
-                            className="link"
-                            onClick={() =>
-                              start({ kind: 'new-item', categoryId: row.id, name: '', value: '' })
-                            }
-                          >
-                            + Posten
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          className="link"
+                          onClick={() =>
+                            start({ kind: 'new-item', categoryId: row.id, name: '', value: '' })
+                          }
+                        >
+                          + Posten
+                        </button>
                       </span>
                     )
                   )}
@@ -393,32 +387,30 @@ function BudgetPlan({
                           <>
                             <div className="budget-line">
                               <span className="budget-name">{item.name}</span>
-                              {canEditItems && (
-                                <span className="budget-actions">
-                                  <button
-                                    type="button"
-                                    className="link"
-                                    onClick={() =>
-                                      start({
-                                        kind: 'item',
-                                        id: item.id,
-                                        name: item.name,
-                                        value: String(item.plannedAmount),
-                                      })
-                                    }
-                                  >
-                                    Bearbeiten
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="link danger"
-                                    onClick={() => handleDeleteItem(item)}
-                                    disabled={busy}
-                                  >
-                                    Löschen
-                                  </button>
-                                </span>
-                              )}
+                              <span className="budget-actions">
+                                <button
+                                  type="button"
+                                  className="link"
+                                  onClick={() =>
+                                    start({
+                                      kind: 'item',
+                                      id: item.id,
+                                      name: item.name,
+                                      value: String(item.plannedAmount),
+                                    })
+                                  }
+                                >
+                                  Bearbeiten
+                                </button>
+                                <button
+                                  type="button"
+                                  className="link danger"
+                                  onClick={() => handleDeleteItem(item)}
+                                  disabled={busy}
+                                >
+                                  Löschen
+                                </button>
+                              </span>
                             </div>
                             <Progress
                               label={item.name}

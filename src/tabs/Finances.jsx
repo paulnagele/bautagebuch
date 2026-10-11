@@ -14,30 +14,6 @@ import { fromRow, toRow } from '../transactions.js'
 import { flowSources, flowTargets, sumBy } from '../moneyFlow.js'
 import { connectDrive, getEntryFolderId, uploadFile } from '../drive.js'
 
-// Used only until the finance_categories table exists (migrations not yet
-// applied); the migrations start the table with the same lists.
-const DEFAULT_FUNDING_SOURCES = [
-  'Eigenmittel',
-  'Bankkredit',
-  'Wohnbauförderung',
-  'Familien- / Privatdarlehen',
-  'Sonstige Finanzierung',
-]
-
-const DEFAULT_EXPENSE_CATEGORIES = [
-  'Grundstück & Kaufnebenkosten',
-  'Planung & Genehmigungen',
-  'Rohbau',
-  'Dach',
-  'Fenster & Türen',
-  'Haustechnik',
-  'Innenausbau',
-  'Küche & Einrichtung',
-  'Außenanlagen & Garten',
-  'Gebühren & Versicherungen',
-  'Sonstiges',
-]
-
 const currency = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' })
 // Whole euros for the overview; the transaction table keeps cents.
 const euros = new Intl.NumberFormat('de-DE', {
@@ -46,10 +22,6 @@ const euros = new Intl.NumberFormat('de-DE', {
   maximumFractionDigits: 0,
 })
 const percent = new Intl.NumberFormat('de-DE', { style: 'percent', maximumFractionDigits: 1 })
-
-function defaultCategories(type, names) {
-  return names.map((name, i) => ({ id: `default-${type}-${i}`, type, name, sortOrder: i }))
-}
 
 function Finances({ user, onOpenDiary }) {
   const {
@@ -77,18 +49,9 @@ function Finances({ user, onOpenDiary }) {
   const totalUnpaid = unpaid.reduce((s, i) => s + i.amount, 0)
   const remaining = totalFunding - totalSpent
   const usedShare = totalFunding > 0 ? totalSpent / totalFunding : 0
-  // Until the categories table exists, fall back to the built-in lists.
-  const categoriesMissing = categoryStore.status === 'error'
-  const categoryRows = categoriesMissing
-    ? [
-        ...defaultCategories('expense', DEFAULT_EXPENSE_CATEGORIES),
-        ...defaultCategories('funding', DEFAULT_FUNDING_SOURCES),
-      ]
-    : categoryStore.rows
+  const categoryRows = categoryStore.rows
   const expenseCategories = categoryRows.filter((c) => c.type === 'expense').sort(byOrder)
-  // Until the budget items table exists, categories have no items.
-  const itemsMissing = itemStore.status === 'error'
-  const budgetItems = itemsMissing ? [] : [...itemStore.rows].sort(itemOrder)
+  const budgetItems = [...itemStore.rows].sort(itemOrder)
   // A category split into items is planned as the sum of its items.
   const plannedCategories = expenseCategories.map((c) => {
     const own = budgetItems.filter((item) => item.categoryId === c.id)
@@ -192,24 +155,43 @@ function Finances({ user, onOpenDiary }) {
   }
 
   // Quotes (via the Posten) and the category's time slots in the
-  // Bauablauf (Zeitplan) are deleted with it.
+  // Bauablauf (Zeitplan) are deleted with it; diary entries that name it
+  // as their Bauablauf category lose it.
   async function checkCategoryDelete(category) {
     const itemIds = new Set(budgetItems.filter((i) => i.categoryId === category.id).map((i) => i.id))
     const quotes = quoteStore.rows.filter((q) => itemIds.has(q.budgetItemId)).length
     // Not loaded on this tab, so counted here; unknown if that fails.
-    const { count: slots } = await supabase
-      .from('schedule_slots')
-      .select('id', { count: 'exact', head: true })
-      .eq('category_id', category.id)
+    const [{ count: slots }, { count: entries }] = await Promise.all([
+      supabase
+        .from('schedule_slots')
+        .select('id', { count: 'exact', head: true })
+        .eq('category_id', category.id),
+      supabase
+        .from('diary_entries')
+        .select('id', { count: 'exact', head: true })
+        .eq('details->>category', category.name)
+        .neq('entry_type', 'expense'),
+    ])
     const lost = [
       quotes > 0 && (quotes === 1 ? 'ein Angebot' : `${quotes} Angebote`),
       slots > 0 && (slots === 1 ? 'ein Zeitfenster im Bauablauf' : `${slots} Zeitfenster im Bauablauf`),
     ].filter(Boolean)
-    return { note: lost.length > 0 ? ` Außerdem werden ${lost.join(' und ')} gelöscht.` : '' }
+    const notes = [
+      lost.length > 0 && ` Außerdem werden ${lost.join(' und ')} gelöscht.`,
+      entries > 0 &&
+        (entries === 1
+          ? ' Ein Tagebucheintrag verliert seine Kategorie (Bauablauf).'
+          : ` ${entries} Tagebucheinträge verlieren ihre Kategorie (Bauablauf).`),
+    ]
+    return { note: notes.filter(Boolean).join('') }
   }
 
+  // In the database, so the diary entries naming the category lose it in
+  // the same step (see migration 20261011120000).
   async function deleteCategory(id) {
-    await categoryStore.remove(id)
+    const { error: deleteError } = await supabase.rpc('delete_finance_category', { category_id: id })
+    if (deleteError) throw new Error(friendlyError(deleteError))
+    await categoryStore.reload()
   }
 
   return (
@@ -281,9 +263,7 @@ function Finances({ user, onOpenDiary }) {
         unpaid={unpaidByCategory}
         itemUnpaid={itemUnpaid}
         itemQuotes={itemQuotes}
-        itemsReadOnly={itemsMissing}
         funding={totalFunding}
-        readOnly={categoriesMissing}
         format={(value) => euros.format(value)}
         onSetPlan={setPlannedAmount}
         onAddItem={addBudgetItem}
@@ -291,22 +271,17 @@ function Finances({ user, onOpenDiary }) {
         onDeleteItem={deleteBudgetItem}
         expenses={expenses}
         onOpenDiary={onOpenDiary}
-        itemExtra={
-          quoteStore.status === 'error'
-            ? undefined
-            : (item) => (
-                <QuoteList
-                  item={item}
-                  quotes={quoteStore.rows.filter((q) => q.budgetItemId === item.id)}
-                  companies={companyNames}
-                  format={(value) => currency.format(value)}
-                  readOnly={categoriesMissing}
-                  onAdd={addQuote}
-                  onChoose={chooseQuote}
-                  onDelete={(quote) => quoteStore.remove(quote.id)}
-                />
-              )
-        }
+        itemExtra={(item) => (
+          <QuoteList
+            item={item}
+            quotes={quoteStore.rows.filter((q) => q.budgetItemId === item.id)}
+            companies={companyNames}
+            format={(value) => currency.format(value)}
+            onAdd={addQuote}
+            onChoose={chooseQuote}
+            onDelete={(quote) => quoteStore.remove(quote.id)}
+          />
+        )}
       />
 
       <Bookings
@@ -325,8 +300,7 @@ function Finances({ user, onOpenDiary }) {
           funding={fundingCategories}
           usage={usage}
           itemCounts={itemCounts}
-          readOnly={categoriesMissing}
-          notice={categoriesMissing ? categoryStore.error : ''}
+          notice={categoryStore.status === 'error' ? categoryStore.error : ''}
           checkDelete={checkCategoryDelete}
           onAdd={addCategory}
           onRename={renameCategory}

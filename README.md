@@ -190,8 +190,10 @@ alter table public.diary_entries
   add column if not exists location text not null default '';
 ```
 
-Pushing it to `main` runs the **Apply Supabase migrations** workflow, which
-applies every migration the database has not seen yet (`supabase db push`).
+Every push to `main` first runs the **Apply Supabase migrations** workflow,
+which applies every migration the database has not seen yet (`supabase db
+push`), and only then publishes the new version of the app; if a migration
+fails, the app is not updated.
 Supabase records which ones ran in `supabase_migrations.schema_migrations`.
 
 The existing migrations only create what is missing, so they are also safe

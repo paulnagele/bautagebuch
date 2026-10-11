@@ -75,7 +75,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
   const expenseCategoryRows = expenseCategories(categoryStore.rows)
   const lists = {
     expenseCategories: expenseCategoryRows.map((c) => c.name),
-    // Budget items by category name (empty until the table exists).
+    // Budget items by category name.
     budgetItems: new Map(
       expenseCategoryRows.map((c) => [
         c.name,
