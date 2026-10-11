@@ -11,7 +11,6 @@ function CategoryList({
   categories,
   usage,
   itemCounts,
-  readOnly,
   checkDelete,
   onAdd,
   onRename,
@@ -114,47 +113,41 @@ function CategoryList({
             <li key={category.id} className="category-row">
               <span className="category-name">{category.name}</span>
               <span className="muted category-count">{used > 0 ? used : ''}</span>
-              {!readOnly && (
-                <>
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() => {
-                      setMessage('')
-                      setEditing({ id: category.id, name: category.name })
-                    }}
-                    disabled={busy}
-                  >
-                    Umbenennen
-                  </button>
-                  <button
-                    type="button"
-                    className="link danger"
-                    onClick={() => handleDelete(category)}
-                    disabled={busy}
-                  >
-                    Löschen
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  setMessage('')
+                  setEditing({ id: category.id, name: category.name })
+                }}
+                disabled={busy}
+              >
+                Umbenennen
+              </button>
+              <button
+                type="button"
+                className="link danger"
+                onClick={() => handleDelete(category)}
+                disabled={busy}
+              >
+                Löschen
+              </button>
             </li>
           )
         })}
       </ul>
-      {!readOnly && (
-        <form className="category-row category-add" onSubmit={handleAdd}>
-          <input
-            aria-label={`${title}: neuer Eintrag`}
-            placeholder="Neuer Name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            disabled={busy}
-          />
-          <button type="submit" className="secondary" disabled={busy || !newName.trim()}>
-            Hinzufügen
-          </button>
-        </form>
-      )}
+      <form className="category-row category-add" onSubmit={handleAdd}>
+        <input
+          aria-label={`${title}: neuer Eintrag`}
+          placeholder="Neuer Name"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          disabled={busy}
+        />
+        <button type="submit" className="secondary" disabled={busy || !newName.trim()}>
+          Hinzufügen
+        </button>
+      </form>
       {message && (
         <p className="error" role="alert">
           {message}
@@ -169,7 +162,6 @@ function CategoryManager({
   funding,
   usage,
   itemCounts,
-  readOnly,
   notice,
   checkDelete,
   onAdd,
@@ -194,7 +186,6 @@ function CategoryManager({
           categories={expense}
           usage={usage.expense}
           itemCounts={itemCounts}
-          readOnly={readOnly}
           checkDelete={checkDelete}
           onAdd={(name) => onAdd('expense', name)}
           onRename={onRename}
@@ -204,7 +195,6 @@ function CategoryManager({
           title="Finanzierungsquellen"
           categories={funding}
           usage={usage.funding}
-          readOnly={readOnly}
           onAdd={(name) => onAdd('funding', name)}
           onRename={onRename}
           onDelete={onDelete}

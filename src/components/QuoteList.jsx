@@ -10,7 +10,7 @@ function parseAmount(text) {
 // The quotes (Angebote) for one budget item, to compare and choose one.
 // Choosing a quote makes its amount the item's plan (choose_quote in the
 // database). `companies` are suggested while typing (contact names).
-function QuoteList({ item, quotes, companies, format, readOnly, onAdd, onChoose, onDelete }) {
+function QuoteList({ item, quotes, companies, format, onAdd, onChoose, onDelete }) {
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(null) // { company, amount, file }
   const [busy, setBusy] = useState(false)
@@ -76,7 +76,7 @@ function QuoteList({ item, quotes, companies, format, readOnly, onAdd, onChoose,
   }
 
   if (quotes.length === 0 && !adding) {
-    return readOnly ? null : (
+    return (
       <div className="quotes">
         <button type="button" className="link quote-toggle" onClick={startAdding}>
           + Angebot
@@ -121,22 +121,18 @@ function QuoteList({ item, quotes, companies, format, readOnly, onAdd, onChoose,
                     📄 {file.name}
                   </a>
                 ))}
-                {!readOnly && (
-                  <>
-                    <button type="button" className="link" onClick={() => handleChoose(quote)} disabled={busy}>
-                      {quote.chosen ? 'Auswahl zurücknehmen' : 'Auswählen'}
-                    </button>
-                    <button type="button" className="link danger" onClick={() => handleDelete(quote)} disabled={busy}>
-                      Löschen
-                    </button>
-                  </>
-                )}
+                <button type="button" className="link" onClick={() => handleChoose(quote)} disabled={busy}>
+                  {quote.chosen ? 'Auswahl zurücknehmen' : 'Auswählen'}
+                </button>
+                <button type="button" className="link danger" onClick={() => handleDelete(quote)} disabled={busy}>
+                  Löschen
+                </button>
               </span>
             </li>
           ))}
         </ul>
       )}
-      {open && !readOnly && !adding && (
+      {open && !adding && (
         <button type="button" className="link quote-toggle" onClick={startAdding}>
           + Angebot
         </button>

@@ -15,7 +15,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Database first: if a migration fails, the new version is not published
+  # and the app keeps running the version that matches the database.
+  migrate:
+    uses: ./.github/workflows/supabase-migrations.yml
+    secrets: inherit
+
   build:
+    needs: migrate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

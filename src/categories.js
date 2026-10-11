@@ -13,11 +13,13 @@ export function categoryFromRow(row) {
 }
 
 export function categoryToRow(category) {
-  const row = { type: category.type, name: category.name, sort_order: category.sortOrder }
-  // Only sent when set, so adding categories keeps working before the
-  // planned-budget migration has been applied.
-  if (category.plannedAmount !== undefined) row.planned_amount = category.plannedAmount
-  return row
+  return {
+    type: category.type,
+    name: category.name,
+    sort_order: category.sortOrder,
+    // Left out (undefined) when adding a category: it starts without a plan.
+    planned_amount: category.plannedAmount,
+  }
 }
 
 // List order as set on the Finanzen tab, then by name.

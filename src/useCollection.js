@@ -29,6 +29,11 @@ const stores = new Map()
 function createStore(table) {
   let snapshot = { rows: [], status: 'loading', error: '' }
   let lastLoad = 0
+  // Counts loads and saved changes. A load only shows its rows if nothing
+  // newer started or was saved meanwhile; otherwise a slow load could put
+  // back rows older than what is already on screen.
+  let generation = 0
+  let loading = 0 // loads under way
   let timer
   const listeners = new Set()
 
@@ -39,25 +44,32 @@ function createStore(table) {
 
   async function reload() {
     lastLoad = Date.now()
-    // Supabase returns at most 1000 rows per request, so larger tables are
-    // loaded page by page; otherwise the newest rows would be missing.
-    const data = []
-    for (;;) {
-      const { data: page, error } = await supabase
-        .from(table)
-        .select('*')
-        .order('created_at', { ascending: true })
-        .order(KEY_COLUMNS[table] ?? 'id', { ascending: true })
-        .range(data.length, data.length + PAGE_SIZE - 1)
-      if (error) {
-        // Rows loaded before stay visible; the error says why they may be old.
-        set({ error: friendlyError(error), status: 'error' })
-        return
+    const current = ++generation
+    loading += 1
+    try {
+      // Supabase returns at most 1000 rows per request, so larger tables are
+      // loaded page by page; otherwise the newest rows would be missing.
+      const data = []
+      for (;;) {
+        const { data: page, error } = await supabase
+          .from(table)
+          .select('*')
+          .order('created_at', { ascending: true })
+          .order(KEY_COLUMNS[table] ?? 'id', { ascending: true })
+          .range(data.length, data.length + PAGE_SIZE - 1)
+        if (current !== generation) return
+        if (error) {
+          // Rows loaded before stay visible; the error says why they may be old.
+          set({ error: friendlyError(error), status: 'error' })
+          return
+        }
+        data.push(...page)
+        if (page.length < PAGE_SIZE) break
       }
-      data.push(...page)
-      if (page.length < PAGE_SIZE) break
+      set({ rows: data, error: '', status: 'ready' })
+    } finally {
+      loading -= 1
     }
-    set({ rows: data, error: '', status: 'ready' })
   }
 
   // Several changes often arrive together (e.g. a category rename that
@@ -95,9 +107,15 @@ function createStore(table) {
       return () => listeners.delete(listener)
     },
     reload,
-    // Shows a saved change right away, before Realtime reports it.
+    // Shows a saved change right away, before Realtime reports it. A load
+    // under way may not have the change yet, so it is dropped and the table
+    // loaded again.
     change(apply) {
       set({ rows: apply(snapshot.rows) })
+      if (loading > 0) {
+        generation += 1
+        scheduleReload()
+      }
     },
     close() {
       clearTimeout(timer)
