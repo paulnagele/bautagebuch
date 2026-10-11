@@ -1,9 +1,10 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { newId, saveJSON } from '../storage.js'
 import { useSwipeTabs } from '../useSwipeTabs.js'
 import { loadGoogleScript } from '../google.js'
 import { clearShareParam, doneWithShared, takeShared } from '../share.js'
 import { emptyForm as emptyDiaryForm } from '../diaryForm.js'
+import { loadDraft, saveDraft } from '../diaryDraft.js'
 import Overview from '../tabs/Overview.jsx'
 import Diary from '../tabs/Diary.jsx'
 import Contacts from '../tabs/Contacts.jsx'
@@ -114,15 +115,30 @@ function Home({ user, onLogout }) {
     loadGoogleScript().catch(() => {})
   }, [])
 
+  // The draft is also kept on the device (diaryDraft.js), so it is still
+  // there when the phone ended the app in the background, e.g. while the
+  // camera was open. It is restored first, then anything shared added.
+  const [draftRestored, setDraftRestored] = useState(false)
+
   // Shared from another app ("Teilen → Bautagebuch"): open a new diary
   // entry with the pictures as photos, the other files attached and any
   // shared text as its text. It starts as a Status entry; the kind can be
-  // changed in the form (e.g. Ausgabe for an invoice).
+  // changed in the form (e.g. Ausgabe for an invoice). A draft restored
+  // from before keeps what it had and gets the shared things added.
   useEffect(() => {
     let cancelled = false
-    takeShared().then((shared) => {
+    ;(async () => {
+      const draft = await loadDraft()
+      const shared = await takeShared()
       clearShareParam()
-      if (cancelled || !shared) return
+      if (cancelled) return
+      if (draft) {
+        setDiaryForm(draft.form)
+        setDiaryEditingId(draft.editingId)
+        setDiaryFormOpen(draft.open)
+      }
+      setDraftRestored(true)
+      if (!shared) return
       const photos = []
       const files = []
       for (const file of shared.files) {
@@ -130,8 +146,6 @@ function Home({ user, onLogout }) {
         else files.push({ key: newId(), blob: file, name: file.name })
       }
       doneWithShared()
-      // Added to the draft of a new entry (nothing is being edited yet, as
-      // the app has just opened).
       setDiaryForm((form) => ({
         ...form,
         work: [form.work.trim(), shared.text].filter(Boolean).join('\n\n'),
@@ -142,11 +156,37 @@ function Home({ user, onLogout }) {
       setFocusEntryId(null)
       setSlide(null)
       setActiveTab('diary')
-    })
+    })()
     return () => {
       cancelled = true
     }
   }, [])
+
+  // Save the draft shortly after each change, and right away when the app
+  // goes to the background (it may not come back). Not before the saved
+  // draft was restored, or an empty form would replace it.
+  const latestDraft = useRef(null)
+  useEffect(() => {
+    if (!draftRestored) return
+    const draft = { form: diaryForm, editingId: diaryEditingId, open: diaryFormOpen }
+    latestDraft.current = draft
+    const timer = setTimeout(() => saveDraft(draft), 500)
+    return () => clearTimeout(timer)
+  }, [draftRestored, diaryForm, diaryEditingId, diaryFormOpen])
+  useEffect(() => {
+    if (!draftRestored) return
+    const saveNow = () => {
+      if (document.visibilityState === 'hidden' && latestDraft.current) {
+        saveDraft(latestDraft.current)
+      }
+    }
+    document.addEventListener('visibilitychange', saveNow)
+    window.addEventListener('pagehide', saveNow)
+    return () => {
+      document.removeEventListener('visibilitychange', saveNow)
+      window.removeEventListener('pagehide', saveNow)
+    }
+  }, [draftRestored])
 
   return (
     <DialogProvider>

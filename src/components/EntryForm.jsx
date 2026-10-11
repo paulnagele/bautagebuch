@@ -33,7 +33,8 @@ function DetailField({ field, value, options, lists, onChange }) {
 
 // The form for a new or edited diary entry. The parent keeps the form's
 // state (see diaryForm.js) and saves it in onSubmit.
-// onFold folds a new entry's form away, keeping what was typed.
+// onFold folds a new entry's form away, keeping what was typed;
+// onDiscard throws a new entry's draft away.
 function EntryForm({
   form,
   setForm,
@@ -45,12 +46,15 @@ function EntryForm({
   onSubmit,
   onCancel,
   onFold,
+  onDiscard,
 }) {
   const errorRef = useRef(null)
   const fileInput = useRef(null)
   const cameraInput = useRef(null)
   const attachInput = useRef(null)
   const formType = entryType(form.type)
+  // Something typed or picked that "Verwerfen" would throw away.
+  const hasDraft = Boolean(form.work.trim()) || form.photos.length > 0 || form.files.length > 0
   // 'loading' | 'done' | 'failed' | null, for the hint under "Wetter".
   const [weatherState, setWeatherState] = useState(null)
   const autoWeather = formType.siteInfo && form.weatherAuto && Boolean(form.date)
@@ -314,9 +318,16 @@ function EntryForm({
             Abbrechen
           </button>
         ) : (
-          <button type="button" className="secondary" onClick={onFold} disabled={Boolean(busy)}>
-            Einklappen
-          </button>
+          <>
+            <button type="button" className="secondary" onClick={onFold} disabled={Boolean(busy)}>
+              Einklappen
+            </button>
+            {hasDraft && (
+              <button type="button" className="link danger" onClick={onDiscard} disabled={Boolean(busy)}>
+                Verwerfen
+              </button>
+            )}
+          </>
         )}
       </div>
     </form>
