@@ -8,6 +8,7 @@ import { disconnectDrive } from './drive.js'
 import { disconnectCalendar } from './calendar.js'
 import { forgetSettings } from './settings.js'
 import { forgetCollections } from './useCollection.js'
+import { clearDraft } from './diaryDraft.js'
 
 function userFromSession(session) {
   const { id, email, user_metadata: meta = {} } = session.user
@@ -73,6 +74,8 @@ function AuthGate() {
     disconnectDrive()
     disconnectCalendar()
     forgetSettings()
+    // The next person on this device starts without this draft.
+    await clearDraft()
     await supabase.auth.signOut()
   }
 

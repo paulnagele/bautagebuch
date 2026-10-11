@@ -256,6 +256,13 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
   // Something typed or picked in the folded form.
   const hasDraft = Boolean(form.work.trim()) || form.photos.length > 0 || form.files.length > 0
 
+  // The draft is kept on the device until saved, so a new entry can also
+  // be thrown away on purpose.
+  async function discardDraft() {
+    const question = 'Diesen Entwurf verwerfen? Text, Fotos und Dateien, die noch nicht gespeichert sind, gehen verloren.'
+    if (await dialogs.confirm(question, { confirmLabel: 'Verwerfen', danger: true })) resetForm()
+  }
+
   function openForm() {
     setFormOpen(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -361,6 +368,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
           onSubmit={handleSubmit}
           onCancel={resetForm}
           onFold={() => setFormOpen(false)}
+          onDiscard={discardDraft}
         />
       ) : (
         <button ref={newEntryButton} type="button" className="new-entry" onClick={openForm}>
