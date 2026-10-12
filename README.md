@@ -22,6 +22,13 @@ there are four tabs:
   can be kept; each is also an all-day event "Meilenstein: …" in the
   calendar, with "✓" once reached. The calendar must be public to be visible to
   everyone using the app.
+- **Haus** – the 3D model of the house (three.js, `src/haus/viewer.js`):
+  floors, section cuts, the site around it, walking through at eye
+  height, and versions of the model (Bestand, variants). The model and
+  the site data are stored in Supabase (`house_versions`,
+  `house_context`), not in this repository, since they contain the
+  address and the floor plans. When the tables are empty, the tab offers
+  a one-time import of the Haus3D export file.
 - **Contacts** – the people involved in the build (contractors, trades,
   architect, authorities) with role, company, phone, email and notes.
   Phone numbers and emails open the phone or mail app; the list can be

@@ -1,0 +1,216 @@
+/* Haus tab: the 3D model of the house (src/haus/viewer.js). Full-bleed 3D
+   stage with one floating panel (left on wide screens, a bottom sheet on
+   phones). Everything is scoped to .haus3d; the viewer's own colours are
+   --h-* variables that follow the app's palette. */
+.haus3d {
+  --h-scene: #e2e6e0;
+  --h-ink: var(--text);
+  --h-muted: var(--muted);
+  --h-line: var(--border);
+  --h-panel: color-mix(in srgb, var(--surface) 94%, transparent);
+  --h-accent: var(--accent);
+  --h-accent-ink: #ffffff;
+  --h-edge: #27302b;
+  --h-warn: var(--error);
+  --h-f-display: inherit;
+  --h-f-mono: ui-monospace, Menlo, Consolas, monospace;
+
+  position: relative;
+  height: calc(100dvh - 9rem);
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--h-scene);
+  color: var(--h-ink);
+  font-size: 14px;
+  line-height: normal;
+}
+
+@media (prefers-color-scheme: dark) {
+  .haus3d {
+    --h-scene: #1a1f1c;
+    --h-accent-ink: #0d1117;
+    --h-edge: #0c0f0d;
+  }
+}
+
+/* Vollbild: the model covers the whole screen. */
+.haus3d.full {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  height: auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+html.haus-full {
+  overflow: hidden;
+}
+.haus3d.full .compass,
+.haus3d.full .walkhud {
+  top: calc(12px + env(safe-area-inset-top, 0px));
+}
+.haus3d.full .corner {
+  top: calc(24px + env(safe-area-inset-top, 0px));
+}
+
+.haus3d .stage { position: absolute; inset: 0; }
+.haus3d .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+.haus3d .panel {
+  position: absolute; left: 12px; top: 12px; z-index: 2;
+  width: 320px; max-height: calc(100% - 24px);
+  overflow-y: auto; background: var(--h-panel); border: 1px solid var(--h-line); border-radius: 6px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: flex; flex-direction: column;
+}
+.haus3d .panel > section { padding: 14px 16px; border-top: 1px solid var(--h-line); display: grid; gap: 10px; min-width: 0; }
+.haus3d .panel > section[hidden] { display: none; }
+.haus3d .panel > header { padding: 16px 16px 14px; display: grid; gap: 4px; }
+.haus3d h2 { margin: 0; font-family: var(--h-f-display); font-weight: 600; font-size: 20px; line-height: 1.15; text-wrap: balance; }
+.haus3d .addr { color: var(--h-muted); font-size: 13px; }
+.haus3d .state { font-family: var(--h-f-mono); font-size: 11px; color: var(--h-accent); letter-spacing: .06em; text-transform: uppercase; }
+.haus3d .label { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--h-muted); font-weight: 600; }
+
+.haus3d .seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--h-line); border-radius: 4px; overflow: hidden; }
+.haus3d .seg button { font: inherit; font-weight: 600; padding: 8px 0; border: 0; border-radius: 0; background: transparent; color: var(--h-ink); cursor: pointer; border-left: 1px solid var(--h-line); }
+.haus3d .seg button:first-child { border-left: 0; }
+.haus3d .seg button[aria-pressed="true"],
+.haus3d .seg button[aria-pressed="true"]:hover { background: var(--h-accent); color: var(--h-accent-ink); }
+.haus3d .seg button:focus-visible, .haus3d .btn:focus-visible, .haus3d .chip:focus-visible, .haus3d select:focus-visible, .haus3d input:focus-visible, .haus3d textarea:focus-visible { outline: 2px solid var(--h-accent); outline-offset: 2px; }
+.haus3d .levelname { font-family: var(--h-f-display); letter-spacing: .38em; text-transform: uppercase; font-size: 13px; color: var(--h-ink); }
+.haus3d .levelmeta { font-family: var(--h-f-mono); font-size: 11.5px; color: var(--h-muted); }
+.haus3d .levelmeta[hidden] { display: none; }
+
+.haus3d .row { display: flex; flex-wrap: wrap; gap: 6px; }
+.haus3d .chip { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--h-line); background: transparent; color: var(--h-ink); cursor: pointer; }
+.haus3d .chip[aria-pressed="true"] { border-color: var(--h-accent); color: var(--h-accent); font-weight: 600; }
+.haus3d .chip[hidden] { display: none; }
+.haus3d .btn { font: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--h-line); background: transparent; color: var(--h-ink); cursor: pointer; }
+.haus3d .btn[hidden] { display: none; }
+.haus3d .btn.primary, .haus3d .btn.primary:hover,
+.haus3d #walkbtn[aria-pressed="true"], .haus3d #walkbtn[aria-pressed="true"]:hover { background: var(--h-accent); border-color: var(--h-accent); color: var(--h-accent-ink); }
+/* The app colours every button on hover; the viewer's buttons keep their look. */
+.haus3d .chip:hover, .haus3d .btn:hover, .haus3d .seg button:hover, .haus3d .vitem:hover,
+.haus3d .sheetbtn:hover, .haus3d .sheetx:hover { background: transparent; }
+
+.haus3d .cut { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
+.haus3d select { font: inherit; font-size: 13px; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 4px; padding: 4px 6px; }
+.haus3d select option { color: initial; }
+.haus3d input[type="range"] { width: 100%; accent-color: var(--h-accent); }
+.haus3d .mono { font-family: var(--h-f-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.haus3d .info { font-size: 13px; line-height: 1.45; min-width: 0; }
+.haus3d .info .empty { color: var(--h-muted); text-align: left; padding: 0; }
+.haus3d .info h3 { margin: 0 0 4px; font-family: var(--h-f-display); font-weight: 600; font-size: 16px; }
+.haus3d .info dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
+.haus3d .info dt { color: var(--h-muted); }
+.haus3d .info dd { margin: 0; font-family: var(--h-f-mono); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.haus3d .info ul { margin: 6px 0 0; padding-left: 16px; font-family: var(--h-f-mono); font-size: 12px; }
+
+.haus3d details summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+.haus3d details summary::-webkit-details-marker { display: none; }
+.haus3d details summary::after { content: "+"; font-family: var(--h-f-mono); color: var(--h-muted); }
+.haus3d details[open] summary::after { content: "–"; }
+.haus3d details[hidden] { display: none; }
+.haus3d details > div { display: grid; gap: 8px; margin-top: 10px; }
+.haus3d textarea { width: 100%; box-sizing: border-box; height: 240px; font-family: var(--h-f-mono); font-size: 11.5px; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 4px; padding: 8px; resize: vertical; }
+.haus3d .note { font-size: 12.5px; color: var(--h-muted); line-height: 1.45; margin: 0; }
+.haus3d .msg { font-size: 12.5px; margin: 0; }
+.haus3d .msg:empty { display: none; }
+.haus3d .msg.err { color: var(--h-warn); }
+.haus3d .vlist { display: grid; gap: 4px; max-height: 220px; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.haus3d .vitem { width: 100%; text-align: left; font: inherit; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 4px; padding: 7px 10px; cursor: pointer; display: grid; gap: 2px; }
+.haus3d .vitem:hover { border-color: var(--h-muted); }
+.haus3d .vitem[aria-current="true"] { border-color: var(--h-accent); box-shadow: inset 3px 0 0 var(--h-accent); }
+.haus3d .vitem:focus-visible { outline: 2px solid var(--h-accent); outline-offset: 2px; }
+.haus3d .vhead { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; min-width: 0; }
+.haus3d .vname { font-weight: 600; overflow-wrap: anywhere; }
+.haus3d .vdate { font-family: var(--h-f-mono); font-size: 11px; color: var(--h-muted); white-space: nowrap; }
+.haus3d .vnote { font-size: 12.5px; color: var(--h-muted); overflow-wrap: anywhere; }
+.haus3d .vtag { font-size: 11px; font-weight: 600; color: var(--h-accent); }
+.haus3d .vform { display: grid; gap: 6px; }
+.haus3d .vform input { font: inherit; font-size: 13px; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 4px; padding: 6px 8px; min-width: 0; }
+.haus3d .dirty { font-family: var(--h-f-mono); font-size: 11px; color: var(--h-warn); }
+.haus3d .dirty[hidden] { display: none; }
+
+.haus3d .compass { position: absolute; right: 12px; top: 12px; width: 64px; height: 64px; pointer-events: none; }
+.haus3d .compass svg { width: 100%; height: 100%; overflow: visible; }
+.haus3d .compass circle { fill: var(--h-panel); stroke: var(--h-line); }
+.haus3d .compass path { fill: var(--h-ink); }
+.haus3d .compass text { fill: var(--h-ink); font-family: var(--h-f-display); font-size: 13px; }
+.haus3d .corner { position: absolute; right: 88px; top: 24px; display: flex; gap: 8px; }
+.haus3d .earth, .haus3d .fullbtn { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px 0 10px; border-radius: 999px; background: var(--h-panel); border: 1px solid var(--h-line); color: var(--h-ink); font: inherit; font-size: 13px; text-decoration: none; cursor: pointer; }
+.haus3d .earth:hover, .haus3d .fullbtn:hover { border-color: var(--h-accent); color: var(--h-accent); background: var(--h-panel); }
+.haus3d .earth svg, .haus3d .fullbtn svg { width: 18px; height: 18px; }
+.haus3d .earth[hidden] { display: none; }
+.haus3d.walking .corner { display: none; }
+
+/* walk mode: first person HUD + touch joystick */
+.haus3d .walkhud { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; z-index: 5; display: flex; align-items: center; gap: 12px;
+  max-width: calc(100% - 32px); padding: 6px 6px 6px 16px; border-radius: 999px; background: var(--h-panel); border: 1px solid var(--h-line); color: var(--h-ink); font-size: 13px; line-height: 1.3; box-shadow: 0 2px 12px rgb(0 0 0 / 0.12); }
+.haus3d .walkhud[hidden], .haus3d .joy[hidden] { display: none; }
+.haus3d .walkhud button { flex: none; height: 34px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--h-accent); color: var(--h-accent-ink); font: inherit; font-weight: 600; cursor: pointer; }
+.haus3d .joy { position: absolute; left: 24px; bottom: 28px; z-index: 5; width: 124px; height: 124px; border-radius: 50%; touch-action: none;
+  background: color-mix(in srgb, var(--h-panel) 55%, transparent); border: 2px solid color-mix(in srgb, var(--h-ink) 25%, transparent); }
+.haus3d .joy i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: var(--h-panel); border: 1px solid var(--h-line); box-shadow: 0 1px 6px rgb(0 0 0 / 0.2); }
+.haus3d .headrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.haus3d .sheetbtn, .haus3d .sheetx { display: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--h-accent); background: transparent; border: 1px solid var(--h-line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.haus3d .sheetx { font-size: 18px; line-height: 1; padding: 6px 12px; color: var(--h-muted); }
+.haus3d button, .haus3d .chip, .haus3d .btn, .haus3d select { touch-action: manipulation; }
+.haus3d .scalebar { position: absolute; right: 12px; bottom: 12px; font-family: var(--h-f-mono); font-size: 11px; color: var(--h-muted); text-align: right; pointer-events: none; }
+.haus3d .loading { position: absolute; inset: 0; display: grid; place-items: center; letter-spacing: .3em; color: var(--h-muted); pointer-events: none; }
+.haus3d .loading[hidden] { display: none; }
+.haus3d .fail { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--h-scene); padding: 24px; }
+.haus3d .fail[hidden] { display: none; }
+.haus3d .fail .box { max-width: 360px; text-align: center; font-size: 15px; line-height: 1.45; color: var(--h-ink); }
+.haus3d .fail .box small { display: block; margin-top: 8px; color: var(--h-muted); font-size: 12px; word-break: break-word; }
+.haus3d .fail button { margin-top: 14px; font-weight: 600; padding: 10px 22px; border-radius: 999px; }
+
+@media (max-width: 700px) {
+  .haus3d { height: calc(100dvh - 8rem); }
+  /* bottom sheet: compact bar by default (version, floor, views, selection), "Mehr" opens everything */
+  .haus3d .panel { left: 0; right: 0; width: auto; top: auto; bottom: 0; max-height: 72%; border-radius: 14px 14px 0 0; border-left: 0; border-right: 0; border-bottom: 0;
+    box-shadow: 0 -4px 18px rgb(0 0 0 / 0.12); overscroll-behavior: contain; }
+  .haus3d.full .panel { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .haus3d .panel::before { content: ""; width: 38px; height: 4px; border-radius: 2px; background: var(--h-line); margin: 8px auto 0; flex: none; }
+  .haus3d .panel > header { padding: 6px 14px 8px; gap: 2px; }
+  .haus3d .panel > section { padding: 10px 14px; gap: 8px; }
+  .haus3d h2 { font-size: 18px; }
+  .haus3d .sheetbtn { display: inline-block; min-height: 36px; }
+  .haus3d .sheetx:not([hidden]) { display: inline-block; }
+  .haus3d .seg button { padding: 11px 0; font-size: 15px; }
+  .haus3d .btn { padding: 10px 14px; font-size: 14px; }
+  .haus3d .chip { padding: 8px 14px; font-size: 14px; }
+  .haus3d .vitem { padding: 10px 12px; }
+  .haus3d select { padding: 8px; font-size: 15px; }
+  .haus3d input[type="range"] { height: 32px; }
+  .haus3d .info { font-size: 14px; }
+  .haus3d .info dd { font-size: 13px; }
+  .haus3d .panel.mini > header h2, .haus3d .panel.mini > header .addr { display: none; }
+  .haus3d .panel.mini > header { padding-bottom: 2px; }
+  .haus3d .panel.mini > section { border-top: 0; padding-top: 6px; padding-bottom: 6px; }
+  .haus3d .panel.mini .vsec, .haus3d .panel.mini .cutsec, .haus3d .panel.mini .ctxsec, .haus3d .panel.mini .editsec { display: none; }
+  .haus3d .panel.mini .lvsec > :not(.seg), .haus3d .panel.mini .viewsec > .label { display: none; }
+  .haus3d .panel.mini .viewsec > .row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 0 14px 2px; }
+  .haus3d .panel.mini .viewsec > .row::-webkit-scrollbar { display: none; }
+  .haus3d .panel.mini .viewsec .btn { flex: none; }
+  .haus3d .panel.mini:not(.has-sel) .infosec { display: none; }
+  .haus3d .panel.mini .infosec { max-height: 32vh; overflow-y: auto; border-top: 1px solid var(--h-line); padding-top: 10px; }
+  .haus3d .panel.mini { padding-bottom: 6px; }
+  .haus3d .compass { width: 48px; height: 48px; }
+  .haus3d .corner { right: 68px; top: 16px; }
+  .haus3d .walkhud { left: 12px; right: 124px; transform: none; max-width: none; font-size: 12px; padding-left: 12px; }
+  .haus3d.walking .panel { display: none; }
+  .haus3d .earth, .haus3d .fullbtn { height: 40px; width: 40px; padding: 0; justify-content: center; }
+  .haus3d .earth .txt, .haus3d .fullbtn .txt { display: none; }
+  .haus3d .earth svg, .haus3d .fullbtn svg { width: 20px; height: 20px; }
+  .haus3d .scalebar { display: none; }
+}
+
+/* Haus tab without a model yet: import from the Haus3D export file. */
+.haus-import p {
+  margin: 0;
+}
