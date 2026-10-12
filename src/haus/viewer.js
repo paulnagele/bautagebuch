@@ -1581,7 +1581,7 @@ export async function mountViewer(host, opts) {
     const [de, dn] = en(d.x, d.z);
     const heading = ((Math.atan2(de, dn) * 180 / Math.PI) + 360) % 360;
     const tilt = Math.min(89, Math.acos(Math.max(-1, Math.min(1, -d.y))) * 180 / Math.PI);
-    const alt = t.y + (GEO.egFloorAbsoluteM ?? 524.9);
+    const alt = t.y + (GEO.egFloorAbsoluteM ?? 0);
     return `https://earth.google.com/web/@${lat.toFixed(7)},${lon.toFixed(7)},${alt.toFixed(1)}a,${dist.toFixed(1)}d,${camera.fov.toFixed(0)}y,${heading.toFixed(1)}h,${tilt.toFixed(1)}t,0r`;
   }
   if (GEO) {
