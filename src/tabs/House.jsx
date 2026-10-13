@@ -9,7 +9,7 @@ import {
   saveVersion,
   setCurrentVersion,
 } from '../haus/houseStore.js'
-import { mountViewer } from '../haus/viewer.js'
+import { mountViewer, showFailure } from '../haus/viewer.js'
 
 const store = {
   load: loadModel,
@@ -66,25 +66,48 @@ async function fetchHouse() {
   }
 }
 
+// Remembered on this device once the GPU dropped the full view.
+const LITE_KEY = 'haus3d-lite'
+
+function readLite() {
+  try {
+    return localStorage.getItem(LITE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 function HouseViewer({ view }) {
   const hostRef = useRef(null)
+  const [lite, setLite] = useState(readLite)
 
   useEffect(() => {
     const host = hostRef.current
     let dispose = null
     let left = false
-    mountViewer(host, { ...view, store })
+    function onLost() {
+      try {
+        localStorage.setItem(LITE_KEY, '1')
+      } catch {
+        // Not remembered; light mode still applies until the app is reloaded.
+      }
+      setLite(true)
+    }
+    mountViewer(host, { ...view, store, lite, onLost })
       .then((done) => {
         if (left) done?.()
         else dispose = done
       })
-      // The viewer shows its own message (e.g. no WebGL on this device).
-      .catch((error) => console.error(error))
+      .catch((error) => {
+        console.error(error)
+        // Instead of the loading text for ever: the reason, on screen.
+        if (!left) showFailure(host, error)
+      })
     return () => {
       left = true
       dispose?.()
     }
-  }, [view])
+  }, [view, lite])
 
   // data-no-swipe: dragging turns the model instead of switching tabs.
   return <div ref={hostRef} className="haus3d" data-no-swipe />
