@@ -9,7 +9,7 @@ import {
   saveVersion,
   setCurrentVersion,
 } from '../haus/houseStore.js'
-import { mountViewer } from '../haus/viewer.js'
+import { mountViewer, showFailure } from '../haus/viewer.js'
 
 const store = {
   load: loadModel,
@@ -78,8 +78,11 @@ function HouseViewer({ view }) {
         if (left) done?.()
         else dispose = done
       })
-      // The viewer shows its own message (e.g. no WebGL on this device).
-      .catch((error) => console.error(error))
+      .catch((error) => {
+        console.error(error)
+        // Instead of the loading text for ever: the reason, on screen.
+        if (!left) showFailure(host, error)
+      })
     return () => {
       left = true
       dispose?.()

@@ -137,6 +137,16 @@ const VIEW_HTML = `
 <div class="scalebar">Ziehen: drehen · Rechts/zwei Finger: verschieben · Rad: zoomen</div>
 `
 
+// Shows the viewer's error box with the reason, for an error that ended
+// mountViewer before the model was drawn.
+export function showFailure(host, error) {
+  const $ = (id) => host.querySelector(`[data-h="${id}"]`)
+  if (!$('fail')) return
+  $('faildetail').textContent = error?.message ?? String(error)
+  $('fail').hidden = false
+  $('loading').hidden = true
+}
+
 export async function mountViewer(host, opts) {
   const { store } = opts
   const ORIGINAL = opts.model
@@ -185,11 +195,21 @@ export async function mountViewer(host, opts) {
   const PHONE = matchMedia('(max-width: 700px), (pointer: coarse)').matches;
   let renderer;
   try { renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: PHONE ? 'low-power' : 'default' }); }
-  catch (e) { fail('Dieses Gerät oder dieser Browser kann die 3D-Ansicht nicht anzeigen (WebGL nicht verfügbar).', e.message); throw e; }
+  catch {
+    // Some phone GPUs refuse a context with antialiasing: try once without.
+    try { renderer = new THREE.WebGLRenderer({ antialias: false }); }
+    catch (e) { fail('Dieses Gerät oder dieser Browser kann die 3D-Ansicht nicht anzeigen (WebGL nicht verfügbar).', e.message); throw e; }
+  }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, PHONE ? 1.5 : 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = PHONE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.localClippingEnabled = false;
+  // A shader the device's GPU driver rejects would otherwise only show a
+  // grey box: say so, with the driver's message.
+  renderer.debug.onShaderError = (gl, program, vertex, fragment) => {
+    const log = [gl.getProgramInfoLog(program), gl.getShaderInfoLog(vertex), gl.getShaderInfoLog(fragment)]
+    fail('Die Grafik dieses Geräts kann die 3D-Ansicht nicht zeichnen.', log.map((l) => l?.trim()).filter(Boolean).join(' ').slice(0, 300))
+  }
   stage.appendChild(renderer.domElement);
   // the GPU can drop the WebGL context (memory pressure on phones, app in background): wait for it to come back and rebuild,
   // otherwise offer a reload instead of leaving a blank canvas
@@ -1621,7 +1641,8 @@ export async function mountViewer(host, opts) {
   $('addr').textContent = DATA.meta.address;
   resize();
   fitTarget(); camera.position.set(...VIEWS.persp).multiplyScalar(viewScale()); controls.target.copy(target);
-  await (document.fonts?.ready ?? Promise.resolve());
+  // Labels are drawn with the app's font; don't wait for it for ever.
+  await Promise.race([document.fonts?.ready, new Promise((done) => setTimeout(done, 2000))]);
   if (disposed) return dispose;
   buildContext(); if (!CONTEXT) $('ctxsec').hidden = true;
   build(DATA); fillEditor(); setLevel('all');
