@@ -137,6 +137,20 @@ const VIEW_HTML = `
 <div class="scalebar">Ziehen: drehen · Rechts/zwei Finger: verschieben · Rad: zoomen</div>
 `
 
+// The GPU's name, e.g. "PowerVR D-Series DXT-48-1536", or '' if the
+// browser doesn't tell.
+function gpuName() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2')
+    const ext = gl?.getExtension('WEBGL_debug_renderer_info')
+    const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : ''
+    gl?.getExtension('WEBGL_lose_context')?.loseContext()
+    return String(name ?? '')
+  } catch {
+    return ''
+  }
+}
+
 // Shows the viewer's error box with the reason, for an error that ended
 // mountViewer before the model was drawn.
 export function showFailure(host, error) {
@@ -193,15 +207,19 @@ export async function mountViewer(host, opts) {
   // ---------- renderer / scene ----------
   const stage = $('stage');
   const PHONE = matchMedia('(max-width: 700px), (pointer: coarse)').matches;
+  // Light mode: no shadows, no antialiasing, fewer pixels. Used on GPUs
+  // that crash with the full view (the Pixel 10's PowerVR) and after the
+  // GPU dropped the view once on this device.
+  const LITE = Boolean(opts.lite) || /powervr/i.test(gpuName());
   let renderer;
-  try { renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: PHONE ? 'low-power' : 'default' }); }
+  try { renderer = new THREE.WebGLRenderer({ antialias: !LITE, powerPreference: PHONE ? 'low-power' : 'default' }); }
   catch {
     // Some phone GPUs refuse a context with antialiasing: try once without.
     try { renderer = new THREE.WebGLRenderer({ antialias: false }); }
     catch (e) { fail('Dieses Gerät oder dieser Browser kann die 3D-Ansicht nicht anzeigen (WebGL nicht verfügbar).', e.message); throw e; }
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, PHONE ? 1.5 : 2));
-  renderer.shadowMap.enabled = true;
+  renderer.setPixelRatio(LITE ? 1 : Math.min(window.devicePixelRatio, PHONE ? 1.5 : 2));
+  renderer.shadowMap.enabled = !LITE;
   renderer.shadowMap.type = PHONE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.localClippingEnabled = false;
   // A shader the device's GPU driver rejects would otherwise only show a
@@ -216,6 +234,9 @@ export async function mountViewer(host, opts) {
   let ctxLost = false, ctxLostTimer = 0;
   on(renderer.domElement, 'webglcontextlost', e => {
     e.preventDefault(); ctxLost = true; $('loading').hidden = false;
+    // Dropped while in view (not because the app went to the background):
+    // start again in light mode.
+    if (!LITE && !document.hidden && opts.onLost) { opts.onLost(); return; }
     clearTimeout(ctxLostTimer); ctxLostTimer = setTimeout(() => fail('Die Grafik wurde vom Gerät zurückgesetzt (zu wenig Speicher).', 'Neu laden zeigt das Modell wieder an.'), 8000);
   });
   on(renderer.domElement, 'webglcontextrestored', () => {

@@ -66,14 +66,34 @@ async function fetchHouse() {
   }
 }
 
+// Remembered on this device once the GPU dropped the full view.
+const LITE_KEY = 'haus3d-lite'
+
+function readLite() {
+  try {
+    return localStorage.getItem(LITE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 function HouseViewer({ view }) {
   const hostRef = useRef(null)
+  const [lite, setLite] = useState(readLite)
 
   useEffect(() => {
     const host = hostRef.current
     let dispose = null
     let left = false
-    mountViewer(host, { ...view, store })
+    function onLost() {
+      try {
+        localStorage.setItem(LITE_KEY, '1')
+      } catch {
+        // Not remembered; light mode still applies until the app is reloaded.
+      }
+      setLite(true)
+    }
+    mountViewer(host, { ...view, store, lite, onLost })
       .then((done) => {
         if (left) done?.()
         else dispose = done
@@ -87,7 +107,7 @@ function HouseViewer({ view }) {
       left = true
       dispose?.()
     }
-  }, [view])
+  }, [view, lite])
 
   // data-no-swipe: dragging turns the model instead of switching tabs.
   return <div ref={hostRef} className="haus3d" data-no-swipe />
