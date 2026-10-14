@@ -30,3 +30,6 @@ yarn-error.log*
 
 # Supabase CLI
 /supabase/.temp/
+
+# House model pulled by scripts/haus/house.mjs (never commit it)
+/.haus/

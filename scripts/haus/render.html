@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- Page that scripts/haus/house.mjs renders: the Haus tab's viewer with a
+     model and the site data served by the script (never from the repo). -->
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #fff; }
+      #host.haus3d { position: absolute; inset: 0; height: auto; min-height: 0; }
+      body.no-panel .haus3d .panel { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="host" class="haus3d"></div>
+    <script type="module">
+      import '/src/index.css'
+      import { mountViewer } from '/src/haus/viewer.js'
+
+      try {
+        const get = async (path) => {
+          const response = await fetch(path)
+          return response.status === 204 ? null : response.json()
+        }
+        const [model, context] = await Promise.all([get('/__haus/model'), get('/__haus/context')])
+        const version = { id: 'preview', name: model.meta?.name ?? 'Vorschau', note: '', locked: false }
+        await mountViewer(document.getElementById('host'), {
+          model,
+          context,
+          versions: [version],
+          currentId: version.id,
+          store: {},
+          lite: true,
+        })
+        window.__hausReady = true
+      } catch (error) {
+        window.__hausError = String(error?.stack ?? error)
+      }
+    </script>
+  </body>
+</html>
