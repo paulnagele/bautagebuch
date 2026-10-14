@@ -6,6 +6,7 @@ import {
   loadContext,
   loadModel,
   readImportFile,
+  renameVersion,
   saveVersion,
   setCurrentVersion,
 } from '../haus/houseStore.js'
@@ -14,6 +15,7 @@ import { mountViewer, showFailure } from '../haus/viewer.js'
 const store = {
   load: loadModel,
   save: saveVersion,
+  rename: renameVersion,
   remove: deleteVersion,
   setCurrent: setCurrentVersion,
 }

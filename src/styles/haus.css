@@ -132,6 +132,7 @@ html.haus-full {
 .haus3d .vnote { font-size: 12.5px; color: var(--h-muted); overflow-wrap: anywhere; }
 .haus3d .vtag { font-size: 11px; font-weight: 600; color: var(--h-accent); }
 .haus3d .vform { display: grid; gap: 6px; }
+.haus3d .vform[hidden] { display: none; }
 .haus3d .vform input { font: inherit; font-size: 13px; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 4px; padding: 6px 8px; min-width: 0; }
 .haus3d .dirty { font-family: var(--h-f-mono); font-size: 11px; color: var(--h-warn); }
 .haus3d .dirty[hidden] { display: none; }

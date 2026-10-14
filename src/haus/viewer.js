@@ -10,7 +10,7 @@
 //   opts.context    site data ({ terrain, neighborhood }) or null
 //   opts.versions   version list (houseStore.listVersions)
 //   opts.currentId  id of opts.model
-//   opts.store      { load, save, remove, setCurrent } (houseStore.js)
+//   opts.store      { load, save, rename, remove, setCurrent } (houseStore.js)
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 
@@ -31,7 +31,12 @@ const VIEW_HTML = `
   <section class="vsec" aria-label="Versionen">
     <div class="vhead"><span class="label">Versionen</span><span class="dirty" data-h="dirty" hidden>ungespeicherte Änderung</span></div>
     <ul class="vlist" data-h="vlist"></ul>
-    <div class="row"><button type="button" class="btn" data-h="vdefault" hidden>Als Standard festlegen</button><button type="button" class="btn" data-h="vdel" hidden>Version löschen</button></div>
+    <div class="row"><button type="button" class="btn" data-h="vdefault" hidden>Als Standard festlegen</button><button type="button" class="btn" data-h="vren" hidden>Umbenennen</button><button type="button" class="btn" data-h="vdel" hidden>Version löschen</button></div>
+    <div class="vform" data-h="vrenform" hidden>
+      <input data-h="vrenname" maxlength="80" aria-label="Neuer Name der Version">
+      <input data-h="vrennote" maxlength="300" placeholder="Was ist anders? (optional)" aria-label="Notiz zur Version">
+      <div class="row"><button type="button" class="btn primary" data-h="vrensave">Übernehmen</button><button type="button" class="btn" data-h="vrencancel">Abbrechen</button></div>
+    </div>
     <details>
       <summary><span class="label">Aktuellen Stand als Version speichern</span></summary>
       <div class="vform">
@@ -1386,6 +1391,7 @@ export async function mountViewer(host, opts) {
   const models = new Map([[currentId, structuredClone(ORIGINAL)]]);
   const vlistEl = $('vlist'), vmsg = $('vmsg');
   const vnameIn = $('vname'), vnoteIn = $('vnote'), vdelBtn = $('vdel'), vdefBtn = $('vdefault');
+  const vrenBtn = $('vren'), vrenForm = $('vrenform'), vrenName = $('vrenname'), vrenNote = $('vrennote');
   const fmtDate = iso => { try { return new Date(iso).toLocaleString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return iso; } };
   const setVmsg = (t, err) => { vmsg.textContent = t; vmsg.className = err ? 'msg err' : 'msg'; };
   function isDirty() { return JSON.stringify(DATA) !== currentJson; }
@@ -1409,9 +1415,11 @@ export async function mountViewer(host, opts) {
     $('dirty').hidden = !isDirty();
     vdelBtn.hidden = !cur || cur.is_current || cur.locked; vdelBtn.textContent = delArmed ? 'Wirklich löschen?' : 'Version löschen';
     vdefBtn.hidden = !cur || cur.is_current;
+    vrenBtn.hidden = !cur || !vrenForm.hidden;
   }
+  function closeRename() { vrenForm.hidden = true; }
   async function openVersion(id) {
-    delArmed = false;
+    delArmed = false; closeRename();
     if (isDirty() && id !== currentId) setVmsg('Die ungespeicherte Vorschau wurde verworfen.');
     let d = models.get(id);
     if (!d) {
@@ -1440,6 +1448,32 @@ export async function mountViewer(host, opts) {
     } catch (e) {
       setVmsg(e.message, true);
     } finally { btn.disabled = false; }
+  });
+  // Renaming changes only the name and the note, so locked versions can be renamed too.
+  vrenBtn.addEventListener('click', () => {
+    const cur = versions.find(v => v.id === currentId); if (!cur) return;
+    delArmed = false; vrenName.value = cur.name || ''; vrenNote.value = cur.note || '';
+    vrenForm.hidden = false; renderVersions(); vrenName.focus(); vrenName.select();
+  });
+  $('vrencancel').addEventListener('click', () => { closeRename(); renderVersions(); });
+  async function saveRename() {
+    const cur = versions.find(v => v.id === currentId); if (!cur) return;
+    const name = vrenName.value.trim(), note = vrenNote.value.trim();
+    if (!name) { setVmsg('Bitte einen Namen für die Version eingeben.', true); vrenName.focus(); return; }
+    if (name === cur.name && note === (cur.note || '')) { closeRename(); renderVersions(); return; }
+    const btn = $('vrensave'); btn.disabled = true; setVmsg('Wird gespeichert …');
+    try {
+      const row = await store.rename(cur.id, { name, note }); if (disposed) return;
+      versions = versions.map(v => v.id === row.id ? { ...v, name: row.name, note: row.note } : v);
+      closeRename(); setVmsg(`Umbenannt in „${row.name}“.`); renderVersions();
+    } catch (e) {
+      setVmsg(e.message, true);
+    } finally { btn.disabled = false; }
+  }
+  $('vrensave').addEventListener('click', saveRename);
+  for (const input of [vrenName, vrenNote]) input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveRename(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeRename(); renderVersions(); }
   });
   vdelBtn.addEventListener('click', async () => {
     const cur = versions.find(v => v.id === currentId);
