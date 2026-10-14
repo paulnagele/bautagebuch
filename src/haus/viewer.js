@@ -29,22 +29,48 @@ const VIEW_HTML = `
   </header>
 
   <section class="vsec" aria-label="Versionen">
-    <div class="vhead"><span class="label">Versionen</span><span class="dirty" data-h="dirty" hidden>ungespeicherte Änderung</span></div>
+    <div class="vhead"><span class="label">Versionen</span><button type="button" class="dirty" data-h="dirty" hidden>ungespeicherte Änderung</button></div>
     <ul class="vlist" data-h="vlist"></ul>
-    <div class="row"><button type="button" class="btn" data-h="vdefault" hidden>Als Standard festlegen</button><button type="button" class="btn" data-h="vren" hidden>Umbenennen</button><button type="button" class="btn" data-h="vdel" hidden>Version löschen</button></div>
-    <div class="vform" data-h="vrenform" hidden>
-      <input data-h="vrenname" maxlength="80" aria-label="Neuer Name der Version">
-      <input data-h="vrennote" maxlength="300" placeholder="Was ist anders? (optional)" aria-label="Notiz zur Version">
-      <div class="row"><button type="button" class="btn primary" data-h="vrensave">Übernehmen</button><button type="button" class="btn" data-h="vrencancel">Abbrechen</button></div>
-    </div>
-    <details>
-      <summary><span class="label">Aktuellen Stand als Version speichern</span></summary>
-      <div class="vform">
-        <input data-h="vname" maxlength="80" placeholder="Name, z. B. Variante A – offene Küche" aria-label="Name der Version">
-        <input data-h="vnote" maxlength="300" placeholder="Was ist anders? (optional)" aria-label="Notiz zur Version">
-        <div class="row"><button type="button" class="btn primary" data-h="vsavebtn">Speichern</button></div>
+    <div class="vsettings" data-h="vsettings" hidden>
+      <div class="row"><button type="button" class="btn" data-h="vren">Umbenennen</button><button type="button" class="btn" data-h="vdefault" hidden>Als Standard festlegen</button><button type="button" class="btn" data-h="vdel" hidden>Version löschen</button></div>
+      <div class="vform" data-h="vrenform" hidden>
+        <input data-h="vrenname" maxlength="80" aria-label="Neuer Name der Version">
+        <input data-h="vrennote" maxlength="300" placeholder="Was ist anders? (optional)" aria-label="Notiz zur Version">
+        <div class="row"><button type="button" class="btn primary" data-h="vrensave">Übernehmen</button><button type="button" class="btn" data-h="vrencancel">Abbrechen</button></div>
       </div>
-    </details>
+      <details data-h="vsavebox">
+        <summary><span class="label">Aktuellen Stand als Version speichern</span></summary>
+        <div class="vform">
+          <input data-h="vname" maxlength="80" placeholder="Name, z. B. Variante A – offene Küche" aria-label="Name der Version">
+          <input data-h="vnote" maxlength="300" placeholder="Was ist anders? (optional)" aria-label="Notiz zur Version">
+          <div class="row"><button type="button" class="btn primary" data-h="vsavebtn">Speichern</button></div>
+        </div>
+      </details>
+      <div class="vsub">
+        <span class="label">Anzeige</span>
+        <div class="row">
+          <button type="button" class="chip" data-h="t-roof" aria-pressed="true">Dach</button>
+          <button type="button" class="chip" data-h="t-terrain" aria-pressed="true">Gelände</button>
+          <button type="button" class="chip" data-h="t-labels" aria-pressed="true">Raumnamen</button>
+          <button type="button" class="chip" data-h="t-edges" aria-pressed="false">Kanten</button>
+          <button type="button" class="chip" data-h="t-furn" aria-pressed="true">Möbel</button>
+          <button type="button" class="chip" data-h="t-cutfill" aria-pressed="false" hidden>Auf-/Abtrag</button>
+          <button type="button" class="chip" data-h="t-contours" aria-pressed="false">Höhenlinien</button>
+        </div>
+        <div class="levelmeta" data-h="cutfillnote" hidden></div>
+      </div>
+      <div class="vsub" data-h="ctxsec">
+        <span class="label">Umgebung</span>
+        <div class="row">
+          <button type="button" class="chip" data-h="c-neighbors" aria-pressed="true">Nachbarhäuser</button>
+          <button type="button" class="chip" data-h="c-roads" aria-pressed="true">Wege &amp; Bäche</button>
+          <button type="button" class="chip" data-h="c-power" aria-pressed="true">Stromleitung</button>
+          <button type="button" class="chip" data-h="c-trees" aria-pressed="true">Bäume</button>
+          <button type="button" class="chip" data-h="c-addr" aria-pressed="false">Adressen</button>
+        </div>
+        <p class="note">Gelände aus Laserscan (BEV ALS 1 m bis ±64 m, 5 m bis ±300 m). Gebäudehöhen und Bäume aus dem Oberflächenmodell. Höhenlinien alle 1 m, alle 5 m kräftiger (m ü. A.).</p>
+      </div>
+    </div>
     <p class="msg" data-h="vmsg" role="status"></p>
   </section>
 
@@ -57,16 +83,6 @@ const VIEW_HTML = `
       <button type="button" data-h="lv-KG" aria-pressed="false">KG</button>
     </div>
     <div><div class="levelname" data-h="lvname">Gesamtes Haus</div><div class="levelmeta" data-h="lvmeta"></div></div>
-    <div class="row">
-      <button type="button" class="chip" data-h="t-roof" aria-pressed="true">Dach</button>
-      <button type="button" class="chip" data-h="t-terrain" aria-pressed="true">Gelände</button>
-      <button type="button" class="chip" data-h="t-labels" aria-pressed="true">Raumnamen</button>
-      <button type="button" class="chip" data-h="t-edges" aria-pressed="false">Kanten</button>
-      <button type="button" class="chip" data-h="t-furn" aria-pressed="true">Möbel</button>
-      <button type="button" class="chip" data-h="t-cutfill" aria-pressed="false" hidden>Auf-/Abtrag</button>
-      <button type="button" class="chip" data-h="t-contours" aria-pressed="false">Höhenlinien</button>
-    </div>
-    <div class="levelmeta" data-h="cutfillnote" hidden></div>
   </section>
 
   <section class="cutsec">
@@ -80,18 +96,6 @@ const VIEW_HTML = `
       <input type="range" data-h="cutpos" min="-11" max="9" step="0.05" value="0" aria-label="Schnittposition" disabled>
       <span class="mono" data-h="cutval">—</span>
     </div>
-  </section>
-
-  <section class="ctxsec" data-h="ctxsec">
-    <span class="label">Umgebung</span>
-    <div class="row">
-      <button type="button" class="chip" data-h="c-neighbors" aria-pressed="true">Nachbarhäuser</button>
-      <button type="button" class="chip" data-h="c-roads" aria-pressed="true">Wege &amp; Bäche</button>
-      <button type="button" class="chip" data-h="c-power" aria-pressed="true">Stromleitung</button>
-      <button type="button" class="chip" data-h="c-trees" aria-pressed="true">Bäume</button>
-      <button type="button" class="chip" data-h="c-addr" aria-pressed="false">Adressen</button>
-    </div>
-    <p class="note">Gelände aus Laserscan (BEV ALS 1 m bis ±64 m, 5 m bis ±300 m). Gebäudehöhen und Bäume aus dem Oberflächenmodell. Höhenlinien alle 1 m, alle 5 m kräftiger (m ü. A.).</p>
   </section>
 
   <section class="viewsec">
@@ -1392,6 +1396,14 @@ export async function mountViewer(host, opts) {
   const vlistEl = $('vlist'), vmsg = $('vmsg');
   const vnameIn = $('vname'), vnoteIn = $('vnote'), vdelBtn = $('vdel'), vdefBtn = $('vdefault');
   const vrenBtn = $('vren'), vrenForm = $('vrenform'), vrenName = $('vrenname'), vrenNote = $('vrennote');
+  // Everything about the open version (rename, save, default, delete) and the display
+  // options sit behind the gear on the open version; the panel stays open across versions.
+  const vsetEl = $('vsettings');
+  const GEAR = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>';
+  function toggleSettings(open = vsetEl.hidden) {
+    vsetEl.hidden = !open; if (!open) { closeRename(); delArmed = false; }
+    renderVersions();
+  }
   const fmtDate = iso => { try { return new Date(iso).toLocaleString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return iso; } };
   const setVmsg = (t, err) => { vmsg.textContent = t; vmsg.className = err ? 'msg err' : 'msg'; };
   function isDirty() { return JSON.stringify(DATA) !== currentJson; }
@@ -1406,7 +1418,15 @@ export async function mountViewer(host, opts) {
       if (v.is_current) { const t = document.createElement('span'); t.className = 'vtag'; t.textContent = 'Standard: öffnet sich zuerst'; b.append(t); }
       if (v.note) { const no = document.createElement('span'); no.className = 'vnote'; no.textContent = v.note; b.append(no); }
       b.addEventListener('click', () => openVersion(v.id));
-      li.append(b); return li;
+      li.append(b);
+      if (v.id === currentId) {
+        const g = document.createElement('button');
+        g.type = 'button'; g.className = 'vgear'; g.innerHTML = GEAR;
+        g.setAttribute('aria-label', 'Einstellungen'); g.title = 'Einstellungen'; g.setAttribute('aria-expanded', String(!vsetEl.hidden));
+        g.addEventListener('click', () => toggleSettings());
+        li.append(g);
+      }
+      return li;
     }));
     const curEl = vlistEl.querySelector('[aria-current="true"]');
     if (curEl) vlistEl.scrollTop = curEl.offsetTop - vlistEl.offsetTop - 4;
@@ -1416,6 +1436,7 @@ export async function mountViewer(host, opts) {
     vdelBtn.hidden = !cur || cur.is_current || cur.locked; vdelBtn.textContent = delArmed ? 'Wirklich löschen?' : 'Version löschen';
     vdefBtn.hidden = !cur || cur.is_current;
     vrenBtn.hidden = !cur || !vrenForm.hidden;
+    $('dirty').title = vsetEl.hidden ? 'Zum Speichern öffnen' : '';
   }
   function closeRename() { vrenForm.hidden = true; }
   async function openVersion(id) {
@@ -1455,6 +1476,7 @@ export async function mountViewer(host, opts) {
     delArmed = false; vrenName.value = cur.name || ''; vrenNote.value = cur.note || '';
     vrenForm.hidden = false; renderVersions(); vrenName.focus(); vrenName.select();
   });
+  $('dirty').addEventListener('click', () => { $('vsavebox').open = true; toggleSettings(true); vnameIn.focus(); });
   $('vrencancel').addEventListener('click', () => { closeRename(); renderVersions(); });
   async function saveRename() {
     const cur = versions.find(v => v.id === currentId); if (!cur) return;
