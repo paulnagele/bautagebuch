@@ -793,7 +793,7 @@ export async function mountViewer(host, opts) {
     // stairs
     for (const st of D.stairs) {
       const g = groups[st.level];
-      const sm = mats.stone;
+      const sm = mats[st.material] || mats.stone;   // st.material: e.g. "wood" for a timber stair
       const rise = (st.to - st.from) / st.steps;
       const addStep = (x0, x1, z0, z1, top) => {
         const h = Math.abs(rise) + 0.06;
