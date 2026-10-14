@@ -48,6 +48,19 @@ export async function saveVersion({ name, note, parentId, model }) {
   return data
 }
 
+// Changes a version's name and note. Locked versions can be renamed too;
+// only members may (house editors can't change versions).
+export async function renameVersion(id, { name, note }) {
+  const { data, error } = await supabase
+    .from('house_versions')
+    .update({ name, note })
+    .eq('id', id)
+    .select(LIST_COLUMNS)
+  if (error) throw failed(error)
+  if (data.length === 0) throw new Error('Diese Version kann nicht umbenannt werden.')
+  return data[0]
+}
+
 export async function deleteVersion(id) {
   const { data, error } = await supabase.from('house_versions').delete().eq('id', id).select('id')
   if (error) throw failed(error)
