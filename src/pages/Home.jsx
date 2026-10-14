@@ -12,12 +12,13 @@ import InstallHint from '../components/InstallHint.jsx'
 import UpdateHint from '../components/UpdateHint.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
 
-// Finanzen, Zeitplan, Haus and Dokumente are loaded when first opened, so
+// Finanzen, Zeitplan, Haus, Dokumente and Heizwärme are loaded when first opened, so
 // the app starts with less to download.
 const Finances = lazyTab(() => import('../tabs/Finances.jsx'))
 const Timetable = lazyTab(() => import('../tabs/Timetable.jsx'))
 const House = lazyTab(() => import('../tabs/House.jsx'))
 const Documents = lazyTab(() => import('../tabs/Documents.jsx'))
+const Energy = lazyTab(() => import('../tabs/Energy.jsx'))
 
 // A tab loaded on demand. If its file can't be fetched (offline, or the
 // app was updated meanwhile and the old file is gone), the tab says so.
@@ -49,6 +50,7 @@ const TABS = [
   { id: 'house', label: 'Haus', component: House },
   { id: 'contacts', label: 'Kontakte', component: Contacts },
   { id: 'documents', label: 'Dokumente', component: Documents },
+  { id: 'energy', label: 'Heizwärme', component: Energy },
 ]
 
 function Home({ user, onLogout }) {
