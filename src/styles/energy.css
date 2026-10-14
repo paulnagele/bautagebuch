@@ -1,0 +1,331 @@
+/* Heizwärme tab */
+.energy-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.energy-save {
+  font-size: 0.85rem;
+}
+
+.energy-stats strong small {
+  font-size: 0.8rem;
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.energy-class {
+  display: inline-block;
+  min-width: 2.2em;
+  padding: 0.05rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  text-align: center;
+  vertical-align: middle;
+  color: #fff;
+  background: var(--muted);
+}
+
+/* Colours of the Energieausweis scale, from dark green to red. */
+.energy-class.class-App,
+.energy-class.class-Ap,
+.energy-class.class-A {
+  background: #1a7f37;
+}
+.energy-class.class-B {
+  background: #4c9a2a;
+}
+.energy-class.class-C {
+  background: #9a8a00;
+}
+.energy-class.class-D {
+  background: #b86e00;
+}
+.energy-class.class-E,
+.energy-class.class-F,
+.energy-class.class-G {
+  background: #b42318;
+}
+
+.energy-sub {
+  margin: 1rem 0 0.5rem;
+  font-size: 1rem;
+}
+
+.form-grid .energy-sub {
+  margin: 0.5rem 0 0;
+}
+
+.energy-chart {
+  margin: 1rem 0 0;
+}
+
+.energy-chart figcaption {
+  font-size: 0.85rem;
+}
+
+.energy-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+}
+
+.energy-bar {
+  fill: var(--series-1);
+}
+
+.energy-axis {
+  stroke: var(--border);
+}
+
+.energy-tick,
+.energy-label {
+  font-size: 12px;
+  fill: var(--muted);
+}
+
+.energy-label {
+  fill: var(--text);
+}
+
+.energy-tooltip {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+
+.energy-table {
+  margin-top: 0.5rem;
+}
+
+.energy-table th,
+.energy-table td {
+  padding: 0.35rem 0.5rem;
+}
+
+.energy-total td {
+  font-weight: 600;
+}
+
+.energy-breakdown {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.energy-breakdown li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.energy-breakdown-track {
+  height: 10px;
+  border-radius: 4px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.energy-breakdown-bar {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--series-2);
+}
+
+.energy-breakdown-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .energy-breakdown li {
+    grid-template-columns: 1fr auto;
+  }
+  .energy-breakdown-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+.energy-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.energy-source p {
+  margin: 0;
+}
+
+.energy-levels {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.energy-levels legend {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.energy-check,
+.form-grid label.energy-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: normal;
+}
+
+.form-grid label.energy-check input {
+  width: auto;
+}
+
+.energy-parts h2 {
+  margin-bottom: 0.25rem;
+}
+
+.energy-parts .table-wrap {
+  margin: 0.5rem 0;
+}
+
+.energy-parts th,
+.energy-parts td,
+.energy-layers th,
+.energy-layers td {
+  padding: 0.3rem 0.35rem;
+}
+
+.energy input,
+.energy select {
+  font: inherit;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.energy input.energy-name {
+  width: 100%;
+  min-width: 11rem;
+}
+
+.energy input.energy-num {
+  width: 5.5rem;
+  text-align: right;
+}
+
+.energy-azimuth {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.energy-azimuth .muted {
+  min-width: 1.6rem;
+  text-align: left;
+}
+
+.energy details > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.energy details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.energy details > summary::after {
+  content: '+';
+  color: var(--muted);
+  font-size: 1.2rem;
+}
+
+.energy details[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
+.energy details[open] > summary::after {
+  content: '–';
+}
+
+.energy-type-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.energy-type-list > li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.energy-type-list > li:last-child {
+  border-bottom: none;
+}
+
+.energy-type-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.energy-type-name {
+  flex: 1 1 12rem;
+  font-weight: 600;
+}
+
+.energy-type-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.energy-u {
+  display: inline-block;
+  width: 5.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.energy-layers {
+  margin-top: 0.5rem;
+  overflow-x: auto;
+}
+
+.energy-layers table {
+  margin-bottom: 0.5rem;
+}
+
+.energy-note {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.energy .form-grid small {
+  font-weight: normal;
+}
+
+.energy-stats {
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+}

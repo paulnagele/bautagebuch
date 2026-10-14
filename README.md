@@ -29,6 +29,13 @@ there are four tabs:
   `house_context`), not in this repository, since they contain the
   address and the floor plans. When the tables are empty, the tab offers
   a one-time import of the Haus3D export file.
+- **Heizwärme** – an estimate of the heating demand (HWB, kWh/m²a) and
+  heating load (`src/tabs/Energy.jsx`, `src/energy/`): a simplified
+  monthly balance in the style of ÖNORM B 8110-6 / OIB-RL 6 from the
+  building parts (area, U-value, correction factor), ventilation,
+  internal and solar gains. The areas can be taken from a version of the
+  house model; U-values can be entered or worked out from layers. Saved
+  in Supabase (`heat_demand`, one JSON document).
 - **Contacts** – the people involved in the build (contractors, trades,
   architect, authorities) with role, company, phone, email and notes.
   Phone numbers and emails open the phone or mail app; the list can be
