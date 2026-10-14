@@ -185,6 +185,22 @@ the deploy run shows a warning and the site shows "Setup not finished".
 3. Share the Drive folder with them as Editor, and the calendar with
    *Make changes to events*.
 
+### A login for the house model only (e.g. for Claude)
+
+A house editor can read the house model and add new versions, but sees
+nothing else and can't change, delete or pick the current version.
+
+1. Supabase → **Authentication → Users → Add user → Create new user**,
+   with **Auto Confirm User** ticked (the email needn't be a real
+   mailbox). The **Email** provider must be on. Don't add it to `members`.
+2. SQL Editor:
+   `insert into public.house_editors (email) values ('claude-haus@example.com');`
+3. `scripts/haus/house.mjs` signs in with `HAUS_BOT_EMAIL` and
+   `HAUS_BOT_PASSWORD`: `pull` copies the versions and site data into
+   `.haus/` (ignored by git), `render` takes pictures of a model with the
+   app's viewer in headless Chromium, `save` adds a version named
+   "Claude: …". See the comment at the top of the script.
+
 ## Changing the database
 
 Schema changes live in `supabase/migrations/` as SQL files that each run
