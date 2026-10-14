@@ -945,13 +945,29 @@ export async function mountViewer(host, opts) {
       }
     }
 
-    // railings
+    // railings (rl.style: 'glass' = frameless glass with a slim steel handrail, 'cable' = steel posts with horizontal cables
+    // and a wooden handrail, default = wooden balusters)
+    const steel = new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.45, metalness: 0.6 });
+    const railGlass = new THREE.MeshStandardMaterial({ color: 0xcfe0e4, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
     for (const rl of D.railings) {
       const g = groups[rl.level];
       for (let i = 0; i + 1 < rl.points.length; i++) {
         const [ax, az] = rl.points[i], [bx, bz] = rl.points[i + 1];
         const L = Math.hypot(bx - ax, bz - az), ang = Math.atan2(-(bz - az), bx - ax);
         const seg = new THREE.Group(); seg.position.set(ax, rl.base, az); seg.rotation.y = ang; g.add(seg);
+        const tagRail = (m) => { m.userData = { kind: 'railing', data: rl }; pickables.push(m); return m; };
+        if (rl.style === 'glass') {
+          const pane = tagRail(box(L, rl.height - 0.05, 0.02, railGlass)); pane.position.set(L / 2, (rl.height - 0.05) / 2, 0); seg.add(pane);
+          const cap = tagRail(box(L + 0.03, 0.04, 0.04, steel)); cap.position.set(L / 2, rl.height - 0.02, 0); seg.add(cap);
+          continue;
+        }
+        if (rl.style === 'cable') {
+          const n = Math.max(1, Math.ceil(L / 1.3));
+          for (let j = 0; j <= n; j++) { const post = tagRail(box(0.04, rl.height - 0.04, 0.04, steel)); post.position.set(j * L / n, (rl.height - 0.04) / 2, 0); seg.add(post); }
+          const cap = tagRail(box(L + 0.06, 0.04, 0.09, mats.wood)); cap.position.set(L / 2, rl.height - 0.02, 0); seg.add(cap);
+          for (let k = 1; k <= 9; k++) { const c = tagRail(box(L, 0.008, 0.008, steel)); c.position.set(L / 2, k * (rl.height - 0.1) / 10, 0); seg.add(c); }
+          continue;
+        }
         const top = box(L + 0.06, 0.06, 0.1, mats.wood); top.position.set(L / 2, rl.height - 0.03, 0); seg.add(top);
         const bot = box(L, 0.05, 0.06, mats.wood); bot.position.set(L / 2, 0.1, 0); seg.add(bot);
         const n = Math.max(1, Math.floor(L / 0.11));
@@ -962,7 +978,7 @@ export async function mountViewer(host, opts) {
         top.userData = bot.userData = { kind: 'railing', data: rl }; pickables.push(top, bot);
       }
     }
-    for (const p of D.posts) { const m = box(p.size, p.top - p.base, p.size, mats.wood); m.position.set(p.x, (p.top + p.base) / 2, p.z); m.userData = { kind: 'post', data: p }; groups[p.level].add(m); pickables.push(m); }
+    for (const p of D.posts) { const m = box(p.size, p.top - p.base, p.size, p.material === 'steel' ? steel : mats[p.material] || mats.wood); m.position.set(p.x, (p.top + p.base) / 2, p.z); m.userData = { kind: 'post', data: p }; groups[p.level].add(m); pickables.push(m); }
     for (const b of D.beams) {
       const [ax, az] = b.start, [bx, bz] = b.end, L = Math.hypot(bx - ax, bz - az);
       const m = box(L, b.top - b.bottom, b.width, mats.plaster); m.position.set((ax + bx) / 2, (b.top + b.bottom) / 2, (az + bz) / 2); m.rotation.y = Math.atan2(-(bz - az), bx - ax);
