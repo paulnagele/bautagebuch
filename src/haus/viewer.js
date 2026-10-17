@@ -603,64 +603,79 @@ export async function mountViewer(host, opts) {
     terrainMesh.parent.add(contourGroup);
   }
 
-  // Dimension lines of one level (outer outline, overall size, clear room
-  // sizes), built the first time they are shown: one line geometry and one
-  // texture with all numbers, so they cost little on weak phone GPUs.
+  // Dimension lines around one level's outer walls (each wall section and
+  // the overall size), built the first time they are shown: one line
+  // geometry and one texture with all numbers, so they cost little on weak
+  // phone GPUs. Room sizes go into the room labels (roomLabel).
   let dimGroups = {}, dimMat = null;
   function buildDims(level) {
     const lvl = DATA.levels.find(l => l.id === level), y = (lvl?.floor ?? 0) + 0.03;
     const pts = [], labels = [];
     const seg = (x1, z1, x2, z2) => pts.push(x1, y, z1, x2, y, z2);
-    // a-b measured, line moved off by `off` along the normal n; size: text size (1 = outline),
-    // at: where along the line the number sits
-    function dim(a, b, n, off, size, ext = true, at = 0.5) {
-      const len = Math.hypot(b[0] - a[0], b[1] - a[1]); if (len < 0.3) return;
+    // a-b measured on the wall face, the line drawn `off` metres out along the
+    // normal n, with extension lines from the wall and slashes at the ends
+    function dim(a, b, n, off, big) {
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
       const d = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
       const p = [a[0] + n[0] * off, a[1] + n[1] * off], q = [b[0] + n[0] * off, b[1] + n[1] * off];
-      if (ext) for (const e of [a, b]) seg(e[0] + n[0] * 0.15, e[1] + n[1] * 0.15, e[0] + n[0] * (off + 0.15), e[1] + n[1] * (off + 0.15));
+      for (const e of [a, b]) seg(e[0] + n[0] * 0.2, e[1] + n[1] * 0.2, e[0] + n[0] * (off + 0.2), e[1] + n[1] * (off + 0.2));
       seg(p[0], p[1], q[0], q[1]);
-      const t = 0.09; for (const e of [p, q]) seg(e[0] - (d[0] + n[0]) * t, e[1] - (d[1] + n[1]) * t, e[0] + (d[0] + n[0]) * t, e[1] + (d[1] + n[1]) * t);
-      labels.push({ text: metres(len), x: p[0] + (q[0] - p[0]) * at + n[0] * 0.22, z: p[1] + (q[1] - p[1]) * at + n[1] * 0.22, size });
+      const t = 0.14; for (const e of [p, q]) seg(e[0] - (d[0] + n[0]) * t, e[1] - (d[1] + n[1]) * t, e[0] + (d[0] + n[0]) * t, e[1] + (d[1] + n[1]) * t);
+      labels.push({ text: metres(len), x: (p[0] + q[0]) / 2, z: (p[1] + q[1]) / 2, big });
     }
     const { edges, boxes } = levelOutline(DATA, level);
-    for (const e of edges) dim(e.a, e.b, e.n, 0.6, 1);
-    // overall size of each building, unless one edge already shows it
+    // wall sections; short steps (bay sides, wall ends) would only clutter
+    for (const e of edges) if (e.length >= 1.2) dim(e.a, e.b, e.n, 1.0, false);
+    // overall size of each building, further out on the -z and -x sides,
+    // unless one wall section there already spans it
     for (const [x0, z0, x1, z1] of boxes) {
-      const shown = (n, len) => edges.some(e => e.n[0] === n[0] && e.n[1] === n[1] && Math.abs(e.length - len) < 0.005);
-      if (!shown([0, -1], x1 - x0)) dim([x0, z0], [x1, z0], [0, -1], 1.5, 1.1);
-      if (!shown([-1, 0], z1 - z0)) dim([x0, z0], [x0, z1], [-1, 0], 1.5, 1.1);
-    }
-    // clear width and depth of each room, near its -z and -x walls (the depth's
-    // number off-centre, so it misses the room name in narrow rooms)
-    for (const r of DATA.rooms.filter(r => r.level === level && r.label)) {
-      const { x, z } = roomExtent(DATA, r);
-      if (x) dim([x[0], (z ? z[0] : r.label[1] - 0.8) + 0.4], [x[1], (z ? z[0] : r.label[1] - 0.8) + 0.4], [0, 1], 0, 0.85, false);
-      if (z) dim([(x ? x[0] : r.label[0] - 0.8) + 0.4, z[0]], [(x ? x[0] : r.label[0] - 0.8) + 0.4, z[1]], [1, 0], 0, 0.85, false, 0.3);
+      const spans = (n, len) => edges.some(e => e.n[0] === n[0] && e.n[1] === n[1] && Math.abs(e.length - len) < 0.005);
+      if (!spans([0, -1], x1 - x0)) dim([x0, z0], [x1, z0], [0, -1], 3.4, true);
+      if (!spans([-1, 0], z1 - z0)) dim([x0, z0], [x0, z1], [-1, 0], 3.4, true);
     }
     const g = new THREE.Group(); g.renderOrder = 9;
-    if (!dimMat) dimMat = new THREE.LineBasicMaterial({ color: cssVar('--ink') || '#1d2420', depthTest: false, transparent: true, opacity: 0.85 });
+    if (!dimMat) dimMat = new THREE.LineBasicMaterial({ color: cssVar('--ink') || '#1d2420', depthTest: false });
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     const lines = new THREE.LineSegments(geo, dimMat); lines.renderOrder = 9; g.add(lines);
-    // all numbers in one canvas; each sprite shows its part of it
-    const W = 1024, rowH = 56, c = document.createElement('canvas'), ctx = c.getContext('2d');
-    const font = '500 40px "IBM Plex Mono", ui-monospace, monospace';
-    ctx.font = font; let cx = 0, cy = 0;
-    for (const l of labels) { l.w = Math.ceil(ctx.measureText(l.text).width) + 16; if (cx + l.w > W) { cx = 0; cy += rowH; } l.u = cx; l.v = cy; cx += l.w; }
+    // numbers in white boxes sitting on their line, all in one canvas
+    const W = 1024, rowH = 64, c = document.createElement('canvas'), ctx = c.getContext('2d');
+    const font = big => `${big ? 700 : 600} 40px "IBM Plex Mono", ui-monospace, monospace`;
+    let cx = 0, cy = 0;
+    for (const l of labels) { ctx.font = font(l.big); l.w = Math.ceil(ctx.measureText(l.text).width) + 28; if (cx + l.w > W) { cx = 0; cy += rowH; } l.u = cx; l.v = cy; cx += l.w; }
     c.width = W; c.height = Math.max(rowH, 2 ** Math.ceil(Math.log2(cy + rowH)));
-    ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.fillStyle = '#1d2420';
-    for (const l of labels) { ctx.strokeText(l.text, l.u + l.w / 2, l.v + rowH / 2); ctx.fillText(l.text, l.u + l.w / 2, l.v + rowH / 2); }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const l of labels) {
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1d2420'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(l.u + 2, l.v + 6, l.w - 4, rowH - 12, 10); ctx.fill(); ctx.stroke();
+      ctx.font = font(l.big); ctx.fillStyle = '#1d2420'; ctx.fillText(l.text, l.u + l.w / 2, l.v + rowH / 2 + 2);
+    }
     const atlas = new THREE.CanvasTexture(c); atlas.colorSpace = THREE.SRGBColorSpace;
-    const k = matchMedia('(max-width: 700px)').matches ? 0.85 : 1;
+    const k = matchMedia('(max-width: 700px)').matches ? 0.8 : 1;
     for (const l of labels) {
       const t = atlas.clone(); t.repeat.set(l.w / c.width, rowH / c.height); t.offset.set(l.u / c.width, 1 - (l.v + rowH) / c.height); t.needsUpdate = true;
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
       // a fixed size on screen, like the room names
-      const h = 0.014 * l.size * k; sp.material.sizeAttenuation = false;
+      const h = (l.big ? 0.026 : 0.023) * k; sp.material.sizeAttenuation = false;
       sp.position.set(l.x, y + 0.05, l.z); sp.scale.set(h * l.w / rowH, h, 1); sp.renderOrder = 10; g.add(sp);
     }
     atlas.dispose();
     root.add(g);
     return g;
+  }
+
+  // A room's label: name, area and, with Abmessungen on, its clear size.
+  function roomLabel(sp) {
+    const { room: r, size } = sp.userData, c = sp.material.map.image, ctx = c.getContext('2d');
+    const rows = [[r.name, '500 54px Spectral, Georgia, serif', '#1d2420']];
+    if (r.area) rows.push([r.area.toFixed(2).replace('.', ',') + ' m²', '500 38px "IBM Plex Mono", monospace', '#1d2420']);
+    if (state.dims && size) rows.push([size, '700 38px "IBM Plex Mono", monospace', '#1f5a46']);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    rows.forEach(([text, font, color], i) => {
+      const yy = c.height / 2 + (i - (rows.length - 1) / 2) * 60;
+      ctx.font = font; ctx.fillStyle = color; ctx.strokeText(text, 256, yy); ctx.fillText(text, 256, yy);
+    });
+    sp.material.map.needsUpdate = true;
   }
 
   // ---------- build ----------
@@ -1278,16 +1293,14 @@ export async function mountViewer(host, opts) {
     // room labels
     for (const r of D.rooms) {
       const lvl = levels[r.level];
-      const c = document.createElement('canvas'); c.width = 512; c.height = 160;
-      const ctx = c.getContext('2d');
-      ctx.font = '500 54px Spectral, Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.fillStyle = '#1d2420';
-      ctx.strokeText(r.name, 256, 58); ctx.fillText(r.name, 256, 58);
-      if (r.area) { ctx.font = '500 38px "IBM Plex Mono", monospace'; ctx.strokeText(r.area.toFixed(2) + ' m²', 256, 118); ctx.fillText(r.area.toFixed(2) + ' m²', 256, 118); }
+      const c = document.createElement('canvas'); c.width = 512; c.height = 224;
       const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+      const ext = roomExtent(D, r);
+      sp.userData.room = r; sp.userData.size = ext.x && ext.z ? `${metres(ext.x[1] - ext.x[0])} × ${metres(ext.z[1] - ext.z[0])} m` : null;
+      roomLabel(sp);
       sp.position.set(r.label[0], (r.floor ?? lvl.floor) + 0.4, r.label[1]);
-      { const k = matchMedia('(max-width: 700px)').matches ? 0.72 : 1; sp.scale.set(0.12 * k, 0.0375 * k, 1); } sp.material.sizeAttenuation = false; sp.renderOrder = 10;
+      { const k = matchMedia('(max-width: 700px)').matches ? 0.72 : 1; sp.scale.set(0.12 * k, 0.0525 * k, 1); } sp.material.sizeAttenuation = false; sp.renderOrder = 10;
       sp.userData.level = r.level; groups[r.level].add(sp); labelSprites.push(sp);
     }
     applyVisibility();
@@ -1303,7 +1316,7 @@ export async function mountViewer(host, opts) {
     groups.roof.visible = state.level === 'all' && state.roof;
     groups.ceiling.visible = state.level === 'all';
     groups.terrain.visible = state.terrain;
-    for (const s of labelSprites) s.visible = state.labels && state.level !== 'all' && s.userData.level === state.level;
+    for (const s of labelSprites) s.visible = (state.labels || state.dims) && state.level !== 'all' && s.userData.level === state.level;
     for (const l of edgeLines) l.visible = state.edges;
     for (const g of furnGroups) g.visible = state.furniture;
     if (cutfillGroup) cutfillGroup.visible = state.cutfill && state.terrain;
@@ -1340,8 +1353,11 @@ export async function mountViewer(host, opts) {
     b.setAttribute('aria-pressed', String(state[key]));
     b.addEventListener('click', () => {
       state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); if (key === 'roads') paintTerrain();
-      // dimensions are drawn per level: from the whole house go to the ground floor
+      if (key === 'dims') labelSprites.forEach(roomLabel);
+      // dimensions are drawn per level and read best from above: from the
+      // whole house go to the ground floor, and to the plan view
       if (key === 'dims' && state.dims && state.level === 'all') setLevel('EG'); else applyVisibility();
+      if (key === 'dims' && state.dims && !walk.active) goView('top');
     });
   }
   const cutmode = $('cutmode'), cutpos = $('cutpos'), cutval = $('cutval');
