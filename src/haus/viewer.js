@@ -13,6 +13,7 @@
 //   opts.store      { load, save, rename, remove, setCurrent } (houseStore.js)
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { levelOutline, metres, roomExtent } from './dimensions.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
@@ -56,6 +57,7 @@ const VIEW_HTML = `
           <button type="button" class="chip" data-h="t-furn" aria-pressed="true">Möbel</button>
           <button type="button" class="chip" data-h="t-cutfill" aria-pressed="false" hidden>Auf-/Abtrag</button>
           <button type="button" class="chip" data-h="t-contours" aria-pressed="false">Höhenlinien</button>
+          <button type="button" class="chip" data-h="t-dims" aria-pressed="false">Abmessungen</button>
         </div>
         <div class="levelmeta" data-h="cutfillnote" hidden></div>
       </div>
@@ -278,6 +280,7 @@ export async function mountViewer(host, opts) {
     scene.background = bg;
     scene.fog = new THREE.Fog(bg, 220, 950);
     if (edgeMat) edgeMat.color.set(cssVar('--edge') || '#27302b');
+    if (dimMat) dimMat.color.set(cssVar('--ink') || '#1d2420');
   }
   let edgeMat = null;
   on(matchMedia('(prefers-color-scheme: dark)'), 'change', applyTheme);
@@ -600,6 +603,81 @@ export async function mountViewer(host, opts) {
     terrainMesh.parent.add(contourGroup);
   }
 
+  // Dimension lines around one level's outer walls (each wall section and
+  // the overall size), built the first time they are shown: one line
+  // geometry and one texture with all numbers, so they cost little on weak
+  // phone GPUs. Room sizes go into the room labels (roomLabel).
+  let dimGroups = {}, dimMat = null;
+  function buildDims(level) {
+    const lvl = DATA.levels.find(l => l.id === level), y = (lvl?.floor ?? 0) + 0.03;
+    const pts = [], labels = [];
+    const seg = (x1, z1, x2, z2) => pts.push(x1, y, z1, x2, y, z2);
+    // a-b measured on the wall face, the line drawn `off` metres out along the
+    // normal n, with extension lines from the wall and slashes at the ends
+    function dim(a, b, n, off, big) {
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const d = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+      const p = [a[0] + n[0] * off, a[1] + n[1] * off], q = [b[0] + n[0] * off, b[1] + n[1] * off];
+      for (const e of [a, b]) seg(e[0] + n[0] * 0.2, e[1] + n[1] * 0.2, e[0] + n[0] * (off + 0.2), e[1] + n[1] * (off + 0.2));
+      seg(p[0], p[1], q[0], q[1]);
+      const t = 0.14; for (const e of [p, q]) seg(e[0] - (d[0] + n[0]) * t, e[1] - (d[1] + n[1]) * t, e[0] + (d[0] + n[0]) * t, e[1] + (d[1] + n[1]) * t);
+      labels.push({ text: metres(len), x: (p[0] + q[0]) / 2, z: (p[1] + q[1]) / 2, big });
+    }
+    const { edges, boxes } = levelOutline(DATA, level);
+    // wall sections; short steps (bay sides, wall ends) would only clutter
+    for (const e of edges) if (e.length >= 1.2) dim(e.a, e.b, e.n, 1.0, false);
+    // overall size of each building, further out on the -z and -x sides,
+    // unless one wall section there already spans it
+    for (const [x0, z0, x1, z1] of boxes) {
+      const spans = (n, len) => edges.some(e => e.n[0] === n[0] && e.n[1] === n[1] && Math.abs(e.length - len) < 0.005);
+      if (!spans([0, -1], x1 - x0)) dim([x0, z0], [x1, z0], [0, -1], 3.4, true);
+      if (!spans([-1, 0], z1 - z0)) dim([x0, z0], [x0, z1], [-1, 0], 3.4, true);
+    }
+    const g = new THREE.Group(); g.renderOrder = 9;
+    if (!dimMat) dimMat = new THREE.LineBasicMaterial({ color: cssVar('--ink') || '#1d2420', depthTest: false });
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    const lines = new THREE.LineSegments(geo, dimMat); lines.renderOrder = 9; g.add(lines);
+    // numbers in white boxes sitting on their line, all in one canvas
+    const W = 1024, rowH = 64, c = document.createElement('canvas'), ctx = c.getContext('2d');
+    const font = big => `${big ? 700 : 600} 40px "IBM Plex Mono", ui-monospace, monospace`;
+    let cx = 0, cy = 0;
+    for (const l of labels) { ctx.font = font(l.big); l.w = Math.ceil(ctx.measureText(l.text).width) + 28; if (cx + l.w > W) { cx = 0; cy += rowH; } l.u = cx; l.v = cy; cx += l.w; }
+    c.width = W; c.height = Math.max(rowH, 2 ** Math.ceil(Math.log2(cy + rowH)));
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const l of labels) {
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1d2420'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(l.u + 2, l.v + 6, l.w - 4, rowH - 12, 10); ctx.fill(); ctx.stroke();
+      ctx.font = font(l.big); ctx.fillStyle = '#1d2420'; ctx.fillText(l.text, l.u + l.w / 2, l.v + rowH / 2 + 2);
+    }
+    const atlas = new THREE.CanvasTexture(c); atlas.colorSpace = THREE.SRGBColorSpace;
+    const k = matchMedia('(max-width: 700px)').matches ? 0.8 : 1;
+    for (const l of labels) {
+      const t = atlas.clone(); t.repeat.set(l.w / c.width, rowH / c.height); t.offset.set(l.u / c.width, 1 - (l.v + rowH) / c.height); t.needsUpdate = true;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+      // a fixed size on screen, like the room names
+      const h = (l.big ? 0.026 : 0.023) * k; sp.material.sizeAttenuation = false;
+      sp.position.set(l.x, y + 0.05, l.z); sp.scale.set(h * l.w / rowH, h, 1); sp.renderOrder = 10; g.add(sp);
+    }
+    atlas.dispose();
+    root.add(g);
+    return g;
+  }
+
+  // A room's label: name, area and, with Abmessungen on, its clear size.
+  function roomLabel(sp) {
+    const { room: r, size } = sp.userData, c = sp.material.map.image, ctx = c.getContext('2d');
+    const rows = [[r.name, '500 54px Spectral, Georgia, serif', '#1d2420']];
+    if (r.area) rows.push([r.area.toFixed(2).replace('.', ',') + ' m²', '500 38px "IBM Plex Mono", monospace', '#1d2420']);
+    if (state.dims && size) rows.push([size, '700 38px "IBM Plex Mono", monospace', '#1f5a46']);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    rows.forEach(([text, font, color], i) => {
+      const yy = c.height / 2 + (i - (rows.length - 1) / 2) * 60;
+      ctx.font = font; ctx.fillStyle = color; ctx.strokeText(text, 256, yy); ctx.fillText(text, 256, yy);
+    });
+    sp.material.map.needsUpdate = true;
+  }
+
   // ---------- build ----------
   let terrainMesh = null, contourGroup = null;
   let root = null, groups = {}, labelSprites = [], pickables = [], edgeLines = []; let furnGroups = []; let cutfillGroup = null, cutfillVol = null;
@@ -611,7 +689,7 @@ export async function mountViewer(host, opts) {
       root.traverse(o => { o.geometry?.dispose?.(); if (o.material) [].concat(o.material).forEach(m => { if (!m.map?.userData?.keep) m.map?.dispose?.(); m.dispose?.(); }); });
     }
     root = new THREE.Group(); scene.add(root);
-    groups = {}; labelSprites = []; pickables = []; edgeLines = []; furnGroups = [];
+    groups = {}; labelSprites = []; pickables = []; edgeLines = []; furnGroups = []; dimGroups = {}; dimMat = null;
     for (const id of ['KG', 'EG', 'DG', 'roof', 'terrain', 'ceiling']) { groups[id] = new THREE.Group(); groups[id].name = id; root.add(groups[id]); }
     const M = D.materials;
     const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, side: THREE.DoubleSide, ...extra });
@@ -1215,23 +1293,21 @@ export async function mountViewer(host, opts) {
     // room labels
     for (const r of D.rooms) {
       const lvl = levels[r.level];
-      const c = document.createElement('canvas'); c.width = 512; c.height = 160;
-      const ctx = c.getContext('2d');
-      ctx.font = '500 54px Spectral, Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.fillStyle = '#1d2420';
-      ctx.strokeText(r.name, 256, 58); ctx.fillText(r.name, 256, 58);
-      if (r.area) { ctx.font = '500 38px "IBM Plex Mono", monospace'; ctx.strokeText(r.area.toFixed(2) + ' m²', 256, 118); ctx.fillText(r.area.toFixed(2) + ' m²', 256, 118); }
+      const c = document.createElement('canvas'); c.width = 512; c.height = 224;
       const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+      const ext = roomExtent(D, r);
+      sp.userData.room = r; sp.userData.size = ext.x && ext.z ? `${metres(ext.x[1] - ext.x[0])} × ${metres(ext.z[1] - ext.z[0])} m` : null;
+      roomLabel(sp);
       sp.position.set(r.label[0], (r.floor ?? lvl.floor) + 0.4, r.label[1]);
-      { const k = matchMedia('(max-width: 700px)').matches ? 0.72 : 1; sp.scale.set(0.12 * k, 0.0375 * k, 1); } sp.material.sizeAttenuation = false; sp.renderOrder = 10;
+      { const k = matchMedia('(max-width: 700px)').matches ? 0.72 : 1; sp.scale.set(0.12 * k, 0.0525 * k, 1); } sp.material.sizeAttenuation = false; sp.renderOrder = 10;
       sp.userData.level = r.level; groups[r.level].add(sp); labelSprites.push(sp);
     }
     applyVisibility();
   }
 
   // ---------- UI state ----------
-  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, cutfill: false, contours: false };
+  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, cutfill: false, contours: false, dims: false };
   const ORDER = ['KG', 'EG', 'DG'];
   function applyVisibility() {
     if (!root) return;
@@ -1240,12 +1316,15 @@ export async function mountViewer(host, opts) {
     groups.roof.visible = state.level === 'all' && state.roof;
     groups.ceiling.visible = state.level === 'all';
     groups.terrain.visible = state.terrain;
-    for (const s of labelSprites) s.visible = state.labels && state.level !== 'all' && s.userData.level === state.level;
+    for (const s of labelSprites) s.visible = (state.labels || state.dims) && state.level !== 'all' && s.userData.level === state.level;
     for (const l of edgeLines) l.visible = state.edges;
     for (const g of furnGroups) g.visible = state.furniture;
     if (cutfillGroup) cutfillGroup.visible = state.cutfill && state.terrain;
     if (state.contours && !contourGroup && terrainMesh) buildContours();
     if (contourGroup) contourGroup.visible = state.contours && state.terrain;
+    // dimensions, like room names, only on one level (see the t-dims chip)
+    if (state.dims && state.level !== 'all' && !dimGroups[state.level]) dimGroups[state.level] = buildDims(state.level);
+    for (const [id, g] of Object.entries(dimGroups)) g.visible = state.dims && id === state.level;
     kick(800);
     ctxGroups.buildings.visible = state.neighbors; ctxGroups.power.visible = state.power; ctxGroups.addresses.visible = state.addresses; ctxGroups.trees.visible = state.trees;
     renderer.clippingPlanes = clipPlanes();
@@ -1269,10 +1348,17 @@ export async function mountViewer(host, opts) {
     applyVisibility();
   }
   for (const id of ['all', 'DG', 'EG', 'KG']) $('lv-' + id).addEventListener('click', () => setLevel(id));
-  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
+  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['t-dims', 'dims'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
     const b = $(id); if (!b) continue;
     b.setAttribute('aria-pressed', String(state[key]));
-    b.addEventListener('click', () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); if (key === 'roads') paintTerrain(); applyVisibility(); });
+    b.addEventListener('click', () => {
+      state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); if (key === 'roads') paintTerrain();
+      if (key === 'dims') labelSprites.forEach(roomLabel);
+      // dimensions are drawn per level and read best from above: from the
+      // whole house go to the ground floor, and to the plan view
+      if (key === 'dims' && state.dims && state.level === 'all') setLevel('EG'); else applyVisibility();
+      if (key === 'dims' && state.dims && !walk.active) goView('top');
+    });
   }
   const cutmode = $('cutmode'), cutpos = $('cutpos'), cutval = $('cutval');
   function updCut() {
