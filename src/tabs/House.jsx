@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  addShareVersion,
   createShare,
   deleteVersion,
   importHouse,
@@ -7,8 +8,8 @@ import {
   loadContext,
   listShares,
   loadModel,
-  moveShare,
   readImportFile,
+  removeShareVersion,
   renameVersion,
   revokeShare,
   saveVersion,
@@ -28,7 +29,8 @@ const store = {
 const shares = {
   list: listShares,
   create: createShare,
-  move: moveShare,
+  add: addShareVersion,
+  remove: removeShareVersion,
   revoke: revokeShare,
 }
 

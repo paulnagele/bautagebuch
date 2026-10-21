@@ -1,8 +1,8 @@
-// The shared house page (haus.html#k=<token>): one version of the house
-// model for people without a login. The token is the secret part of a
+// The shared house page (haus.html#k=<token>): one or more versions of
+// the house model for people without a login. The token is the secret part of a
 // share link made in the Haus tab ("Teilen"); the database function
-// get_shared_house returns that version as it is now, with the site data,
-// or nothing when the link was revoked.
+// get_shared_house returns its versions as they are now (models included),
+// with the site data, or nothing when the link was revoked.
 import '../index.css'
 import { createClient } from '@supabase/supabase-js'
 import { config } from '../config.js'
@@ -48,15 +48,16 @@ function show(shared, lite) {
   dispose?.()
   dispose = null
   host.replaceChildren()
-  const version = { id: 'shared', name: shared.name, note: shared.note, created_at: shared.created_at }
+  const models = new Map(shared.versions.map((v) => [v.id, v.model]))
+  const versions = shared.versions.map(({ id, name, note, created_at }) => ({ id, name, note, created_at }))
   host.hidden = false
   msg.hidden = true
   mountViewer(host, {
-    model: shared.model,
+    model: shared.versions[0].model,
     context: shared.context,
-    versions: [version],
-    currentId: version.id,
-    store: {},
+    versions,
+    currentId: versions[0].id,
+    store: { load: async (id) => models.get(id) },
     readOnly: true,
     lite,
     onLost() {
@@ -96,11 +97,11 @@ async function start() {
     notice('Das Haus konnte nicht geladen werden. Bitte später noch einmal versuchen.')
     return
   }
-  if (!shared?.model) {
+  if (!shared?.versions?.length) {
     notice('Dieser Link ist nicht mehr gültig.')
     return
   }
-  document.title = shared.model.meta?.name || shared.name || 'Haus'
+  document.title = shared.versions[0].model?.meta?.name || 'Haus'
   show(shared, readLite())
 }
 

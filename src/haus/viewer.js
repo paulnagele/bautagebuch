@@ -11,8 +11,8 @@
 //   opts.versions   version list (houseStore.listVersions)
 //   opts.currentId  id of opts.model
 //   opts.store      { load, save, rename, remove, setCurrent } (houseStore.js)
-//   opts.shares     { list, create, move, revoke } for "Teilen" (houseStore.js), optional
-//   opts.readOnly   true on the shared page (haus.html): one version, the
+//   opts.shares     { list, create, add, remove, revoke } for "Teilen" (houseStore.js), optional
+//   opts.readOnly   true on the shared page (haus.html): the shared versions,
 //                   display options open, nothing can be saved or changed
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
@@ -1425,7 +1425,7 @@ export async function mountViewer(host, opts) {
   if (READ_ONLY) {
     for (const id of ['vactions', 'vrenform', 'vsavebox', 'editsec']) $(id).hidden = true;
     vsetEl.hidden = false;
-    host.querySelector('.vsec .vhead .label').textContent = 'Version';
+    if (opts.versions.length === 1) host.querySelector('.vsec .vhead .label').textContent = 'Version';
   }
   // Links of the share panel, to hide "Version löschen" for shared versions.
   let sharedIds = new Set();
@@ -1433,7 +1433,7 @@ export async function mountViewer(host, opts) {
     shares: opts.shares,
     getVersion: () => versions.find(v => v.id === currentId),
     getVersions: () => versions,
-    onChange: list => { sharedIds = new Set(list.map(s => s.version_id)); renderVersions(); },
+    onChange: list => { sharedIds = new Set(list.flatMap(s => s.versionIds)); renderVersions(); },
   }) : null;
   if (sharePanel) $('sharesec').hidden = false;
   const GEAR = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>';

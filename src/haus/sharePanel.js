@@ -1,9 +1,9 @@
-// "Teilen" behind the gear in the Haus tab: secret links that show one
-// version on haus.html without a login, always as it is now. Plain DOM
+// "Teilen" behind the gear in the Haus tab: secret links that show one or
+// more versions on haus.html without a login, always as they are now. Plain DOM
 // like the rest of the viewer.
 //
 // mountSharePanel(el, { shares, getVersion, getVersions, onChange })
-//   shares       { list, create, move, revoke } (houseStore.js)
+//   shares       { list, create, add, remove, revoke } (houseStore.js)
 //   getVersion   () => the open version's row
 //   getVersions  () => all version rows (for names)
 //   onChange     (shares) => called after the list changed
@@ -11,7 +11,7 @@
 export function mountSharePanel(el, { shares, getVersion, getVersions, onChange }) {
   el.innerHTML = `
     <span class="label">Teilen</span>
-    <p class="note">Wer einen Link hat, sieht die verlinkte Version ohne Login, immer im aktuellen Stand, mit Umgebung. Andere Versionen und der Rest des Bautagebuchs bleiben verborgen. Widerrufen beendet den Link sofort.</p>
+    <p class="note">Wer einen Link hat, sieht die verlinkten Versionen ohne Login (bei mehreren zum Umschalten), immer im aktuellen Stand, mit Umgebung. Andere Versionen und der Rest des Bautagebuchs bleiben verborgen. Widerrufen beendet den Link sofort.</p>
     <ul class="slist" data-s="list"></ul>
     <div class="vform">
       <input data-s="label" maxlength="60" placeholder="Für wen? z. B. Architekt" aria-label="Bezeichnung des Links">
@@ -57,24 +57,36 @@ export function mountSharePanel(el, { shares, getVersion, getVersions, onChange 
     $('list').replaceChildren(
       ...list.map((share) => {
         const li = document.createElement('li')
-        const text = document.createElement('span')
-        text.className = 'sname'
         const label = document.createElement('b')
         label.textContent = share.label
-        const target = document.createElement('span')
-        target.className = 'vdate'
-        target.textContent = names.get(share.version_id) ?? 'Version'
-        text.append(label, target)
+        const chips = document.createElement('span')
+        chips.className = 'row'
+        for (const versionId of share.versionIds) {
+          const name = names.get(versionId) ?? 'Version'
+          const chip = document.createElement('span')
+          chip.className = 'schip'
+          chip.textContent = name
+          if (share.versionIds.length > 1) {
+            const remove = document.createElement('button')
+            remove.type = 'button'
+            remove.textContent = '×'
+            remove.setAttribute('aria-label', `„${name}“ aus dem Link nehmen`)
+            remove.title = 'Aus dem Link nehmen'
+            remove.addEventListener('click', () => change(share, () => shares.remove(share, versionId), `„${name}“ aus „${share.label}“ genommen.`))
+            chip.append(remove)
+          }
+          chips.append(chip)
+        }
         const row = document.createElement('span')
         row.className = 'row'
-        if (version && share.version_id !== version.id) {
-          const move = document.createElement('button')
-          move.type = 'button'
-          move.className = 'btn'
-          move.textContent = 'Diese Version zeigen'
-          move.title = `Der Link zeigt dann „${version.name}“`
-          move.addEventListener('click', () => moveTo(share, version))
-          row.append(move)
+        if (version && !share.versionIds.includes(version.id)) {
+          const add = document.createElement('button')
+          add.type = 'button'
+          add.className = 'btn'
+          add.textContent = '+ Diese Version'
+          add.title = `„${version.name}“ zu diesem Link hinzufügen`
+          add.addEventListener('click', () => change(share, () => shares.add(share, version.id), `„${version.name}“ zu „${share.label}“ hinzugefügt.`))
+          row.append(add)
         }
         const revoke = document.createElement('button')
         revoke.type = 'button'
@@ -82,7 +94,7 @@ export function mountSharePanel(el, { shares, getVersion, getVersions, onChange 
         revoke.textContent = armed === share.id ? 'Wirklich widerrufen?' : 'Widerrufen'
         revoke.addEventListener('click', () => revokeLink(share))
         row.append(revoke)
-        li.append(text, row)
+        li.append(label, chips, row)
         return li
       }),
     )
@@ -94,13 +106,13 @@ export function mountSharePanel(el, { shares, getVersion, getVersions, onChange 
     }
   }
 
-  async function moveTo(share, version) {
+  async function change(share, run, done) {
     armed = null
     try {
-      const row = await shares.move(share.id, version.id)
+      const row = await run()
       list = list.map((s) => (s.id === row.id ? row : s))
       onChange?.(list)
-      setMsg(`„${share.label}“ zeigt jetzt „${version.name}“.`)
+      setMsg(done)
     } catch (error) {
       setMsg(error.message, true)
     }
