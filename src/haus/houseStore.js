@@ -64,7 +64,16 @@ export async function renameVersion(id, { name, note }) {
 export async function deleteVersion(id) {
   const { data, error } = await supabase.from('house_versions').delete().eq('id', id).select('id')
   if (error) throw failed(error)
-  if (data.length === 0) throw new Error('Diese Version kann nicht gelöscht werden.')
+  if (data.length === 0) {
+    const { count } = await supabase
+      .from('house_shares')
+      .select('id', { count: 'exact', head: true })
+      .eq('version_id', id)
+    if (count > 0) {
+      throw new Error('Diese Version wird geteilt. Widerrufe zuerst ihre Links (unter „Teilen“).')
+    }
+    throw new Error('Diese Version kann nicht gelöscht werden.')
+  }
 }
 
 export async function setCurrentVersion(id) {
@@ -115,4 +124,70 @@ export async function importHouse({ versions, currentId, context }) {
     if (contextError) throw failed(contextError)
   }
   await setCurrentVersion(ids.has(currentId) ? currentId : versions[0].id)
+}
+
+// ---------- share links (table house_shares, page haus.html) ----------
+// A link is haus.html#k=<token>. Only the token's SHA-256 hash is stored,
+// so the whole link can be shown only right after it is made.
+
+const SHARE_COLUMNS = 'id, label, version_id, created_at'
+
+export async function listShares() {
+  const { data, error } = await supabase
+    .from('house_shares')
+    .select(SHARE_COLUMNS)
+    .order('created_at', { ascending: true })
+  if (error) throw failed(error)
+  return data
+}
+
+// 128 random bits, base64url (22 characters).
+function newToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+// The address of the public page for a token, next to the app's page.
+export function shareUrl(token) {
+  const url = new URL('haus.html', window.location.origin + window.location.pathname)
+  url.hash = `k=${token}`
+  return url.href
+}
+
+// Makes a link for a version. Returns { share, url }.
+export async function createShare({ label, versionId }) {
+  const token = newToken()
+  const { data, error } = await supabase
+    .from('house_shares')
+    .insert({ label, version_id: versionId, token_hash: await sha256Hex(token) })
+    .select(SHARE_COLUMNS)
+    .single()
+  if (error) throw failed(error)
+  return { share: data, url: shareUrl(token) }
+}
+
+// Points an existing link at another version; the link stays the same.
+export async function moveShare(id, versionId) {
+  const { data, error } = await supabase
+    .from('house_shares')
+    .update({ version_id: versionId })
+    .eq('id', id)
+    .select(SHARE_COLUMNS)
+    .single()
+  if (error) throw failed(error)
+  return data
+}
+
+// Revoking deletes the link; opening it afterwards shows a notice.
+export async function revokeShare(id) {
+  const { error } = await supabase.from('house_shares').delete().eq('id', id)
+  if (error) throw failed(error)
 }

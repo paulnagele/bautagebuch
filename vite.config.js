@@ -9,5 +9,9 @@ export default defineConfig({
   base: './',
   // The Haus tab's chunk holds three.js (about 600 kB, 165 kB gzipped);
   // it is only loaded when that tab is opened.
-  build: { chunkSizeWarningLimit: 700 },
+  // Two pages: the app, and haus.html, the shared house page (no login).
+  build: {
+    chunkSizeWarningLimit: 700,
+    rollupOptions: { input: { main: 'index.html', haus: 'haus.html' } },
+  },
 })

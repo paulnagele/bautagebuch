@@ -88,6 +88,10 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return
   if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return
 
+  // The shared house page (haus.html) is for visitors, not part of the
+  // app: never stored as the app's page.
+  if (url.pathname.endsWith('/haus.html')) return
+
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(event))
   } else {
