@@ -151,7 +151,9 @@ html.haus-full {
 .haus3d .slist li { display: grid; gap: 4px; padding: 6px 0; border-top: 1px solid var(--h-line); }
 .haus3d .slist li:first-child { border-top: 0; }
 .haus3d .slist li.empty { font-size: 12.5px; color: var(--h-muted); }
-.haus3d .sname { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; min-width: 0; overflow-wrap: anywhere; }
+.haus3d .schip { display: inline-flex; align-items: center; gap: 2px; font-size: 12.5px; padding: 2px 8px; border: 1px solid var(--h-line); border-radius: 999px; overflow-wrap: anywhere; }
+.haus3d .schip button { font: inherit; line-height: 1; color: var(--h-muted); background: none; border: 0; padding: 0 0 0 4px; cursor: pointer; }
+.haus3d .schip button:hover { color: var(--h-warn); }
 
 .haus3d .compass { position: absolute; right: 12px; top: 12px; width: 64px; height: 64px; pointer-events: none; }
 .haus3d .compass svg { width: 100%; height: 100%; overflow: visible; }
