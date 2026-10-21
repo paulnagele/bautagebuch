@@ -11,8 +11,12 @@
 //   opts.versions   version list (houseStore.listVersions)
 //   opts.currentId  id of opts.model
 //   opts.store      { load, save, rename, remove, setCurrent } (houseStore.js)
+//   opts.shares     { list, create, move, revoke } for "Teilen" (houseStore.js), optional
+//   opts.readOnly   true on the shared page (haus.html): one version, the
+//                   display options open, nothing can be saved or changed
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { mountSharePanel } from './sharePanel.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
@@ -32,7 +36,7 @@ const VIEW_HTML = `
     <div class="vhead"><span class="label">Versionen</span><button type="button" class="dirty" data-h="dirty" hidden>ungespeicherte Änderung</button></div>
     <ul class="vlist" data-h="vlist"></ul>
     <div class="vsettings" data-h="vsettings" hidden>
-      <div class="row"><button type="button" class="btn" data-h="vren">Umbenennen</button><button type="button" class="btn" data-h="vdefault" hidden>Als Standard festlegen</button><button type="button" class="btn" data-h="vdel" hidden>Version löschen</button></div>
+      <div class="row" data-h="vactions"><button type="button" class="btn" data-h="vren">Umbenennen</button><button type="button" class="btn" data-h="vdefault" hidden>Als Standard festlegen</button><button type="button" class="btn" data-h="vdel" hidden>Version löschen</button></div>
       <div class="vform" data-h="vrenform" hidden>
         <input data-h="vrenname" maxlength="80" aria-label="Neuer Name der Version">
         <input data-h="vrennote" maxlength="300" placeholder="Was ist anders? (optional)" aria-label="Notiz zur Version">
@@ -70,6 +74,7 @@ const VIEW_HTML = `
         </div>
         <p class="note">Gelände aus Laserscan (BEV ALS 1 m bis ±64 m, 5 m bis ±300 m). Gebäudehöhen und Bäume aus dem Oberflächenmodell. Höhenlinien alle 1 m, alle 5 m kräftiger (m ü. A.).</p>
       </div>
+      <div class="vsub" data-h="sharesec" hidden></div>
     </div>
     <p class="msg" data-h="vmsg" role="status"></p>
   </section>
@@ -117,7 +122,7 @@ const VIEW_HTML = `
     <div class="info" data-h="info"><span class="empty">Wand, Fenster oder Bauteil antippen, um Maße und ID zu sehen.</span></div>
   </section>
 
-  <section class="editsec">
+  <section class="editsec" data-h="editsec">
     <details>
       <summary><span class="label">Modelldaten bearbeiten</span></summary>
       <div>
@@ -1415,6 +1420,22 @@ export async function mountViewer(host, opts) {
   // Everything about the open version (rename, save, default, delete) and the display
   // options sit behind the gear on the open version; the panel stays open across versions.
   const vsetEl = $('vsettings');
+  // The shared page shows one version with its display options; nothing to save or change.
+  const READ_ONLY = Boolean(opts.readOnly);
+  if (READ_ONLY) {
+    for (const id of ['vactions', 'vrenform', 'vsavebox', 'editsec']) $(id).hidden = true;
+    vsetEl.hidden = false;
+    host.querySelector('.vsec .vhead .label').textContent = 'Version';
+  }
+  // Links of the share panel, to hide "Version löschen" for shared versions.
+  let sharedIds = new Set();
+  const sharePanel = opts.shares && !READ_ONLY ? mountSharePanel($('sharesec'), {
+    shares: opts.shares,
+    getVersion: () => versions.find(v => v.id === currentId),
+    getVersions: () => versions,
+    onChange: list => { sharedIds = new Set(list.map(s => s.version_id)); renderVersions(); },
+  }) : null;
+  if (sharePanel) $('sharesec').hidden = false;
   const GEAR = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.5 1 2-3.5zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>';
   function toggleSettings(open = vsetEl.hidden) {
     vsetEl.hidden = !open; if (!open) { closeRename(); delArmed = false; }
@@ -1435,7 +1456,7 @@ export async function mountViewer(host, opts) {
       if (v.note) { const no = document.createElement('span'); no.className = 'vnote'; no.textContent = v.note; b.append(no); }
       b.addEventListener('click', () => openVersion(v.id));
       li.append(b);
-      if (v.id === currentId) {
+      if (v.id === currentId && !READ_ONLY) {
         const g = document.createElement('button');
         g.type = 'button'; g.className = 'vgear'; g.innerHTML = GEAR;
         g.setAttribute('aria-label', 'Einstellungen'); g.title = 'Einstellungen'; g.setAttribute('aria-expanded', String(!vsetEl.hidden));
@@ -1448,8 +1469,9 @@ export async function mountViewer(host, opts) {
     if (curEl) vlistEl.scrollTop = curEl.offsetTop - vlistEl.offsetTop - 4;
     const cur = versions.find(v => v.id === currentId);
     $('state').textContent = cur ? cur.name : 'Version';
-    $('dirty').hidden = !isDirty();
-    vdelBtn.hidden = !cur || cur.is_current || cur.locked; vdelBtn.textContent = delArmed ? 'Wirklich löschen?' : 'Version löschen';
+    $('dirty').hidden = READ_ONLY || !isDirty();
+    if (sharePanel && !vsetEl.hidden) sharePanel.refresh();
+    vdelBtn.hidden = !cur || cur.is_current || cur.locked || sharedIds.has(cur.id); vdelBtn.textContent = delArmed ? 'Wirklich löschen?' : 'Version löschen';
     vdefBtn.hidden = !cur || cur.is_current;
     vrenBtn.hidden = !cur || !vrenForm.hidden;
     $('dirty').title = vsetEl.hidden ? 'Zum Speichern öffnen' : '';
