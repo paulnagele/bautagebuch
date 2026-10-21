@@ -131,12 +131,15 @@ export async function importHouse({ versions, currentId, context }) {
 // so the whole link can be shown only right after it is made.
 
 // A link can show several versions (table house_share_versions); each
-// share comes back as { id, label, created_at, versionIds } in their order.
-const SHARE_COLUMNS = 'id, label, created_at, house_share_versions(version_id, position)'
+// share comes back as { id, label, created_at, versionIds } in the order
+// they were added.
+const SHARE_COLUMNS = 'id, label, created_at, house_share_versions(version_id, position, added_at)'
 
 function toShare(row) {
   const { house_share_versions: links = [], ...share } = row
-  const versionIds = [...links].sort((a, b) => a.position - b.position).map((link) => link.version_id)
+  const versionIds = [...links]
+    .sort((a, b) => (a.added_at < b.added_at ? -1 : a.added_at > b.added_at ? 1 : a.position - b.position))
+    .map((link) => link.version_id)
   return { ...share, versionIds }
 }
 
@@ -181,7 +184,7 @@ export async function createShare({ label, versionId }) {
   if (error) throw failed(error)
   const { error: linkError } = await supabase
     .from('house_share_versions')
-    .insert({ share_id: data.id, version_id: versionId, position: 0 })
+    .insert({ share_id: data.id, version_id: versionId })
   if (linkError) {
     await supabase.from('house_shares').delete().eq('id', data.id)
     throw failed(linkError)
@@ -199,7 +202,7 @@ async function loadShare(id) {
 export async function addShareVersion(share, versionId) {
   const { error } = await supabase
     .from('house_share_versions')
-    .insert({ share_id: share.id, version_id: versionId, position: share.versionIds.length })
+    .insert({ share_id: share.id, version_id: versionId })
   if (error) throw failed(error)
   return loadShare(share.id)
 }
