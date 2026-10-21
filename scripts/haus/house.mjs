@@ -140,7 +140,7 @@ async function render(file, options) {
     const button = (key) => page.locator(`#host [data-h="${key}"]`)
     const setChip = async (key, on) => {
       const chip = button(key)
-      if ((await chip.getAttribute('aria-pressed')) !== String(on)) await chip.click({ force: true })
+      if ((await chip.getAttribute('aria-pressed')) !== String(on)) await chip.evaluate((el) => el.click())
     }
     const chips = (list) => (list ? list.split(',').map((name) => name.trim()).filter(Boolean) : [])
     // House toggles are t-<name>, site toggles c-<name> (see viewer.js).
