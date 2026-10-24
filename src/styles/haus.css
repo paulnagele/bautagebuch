@@ -249,11 +249,16 @@ html.haus-full {
 .haus3d .gchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .haus3d .gchips .chip { padding: 8px 12px; font-size: 14px; }
 .haus3d .gfields { display: grid; gap: 8px; }
-.haus3d .gfield { display: grid; grid-template-columns: 76px 1fr auto; align-items: center; gap: 10px; font-size: 13px; }
+.haus3d .gcard > *, .haus3d .gfields > * { min-width: 0; }
+.haus3d .gfield { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: 13px; }
 .haus3d .gfield > span { color: var(--h-muted); }
 .haus3d .gfield output { font-family: var(--h-f-mono); font-size: 12px; min-width: 52px; text-align: right; }
 .haus3d .gfield input[type="range"] { width: 100%; accent-color: var(--h-accent); height: 28px; }
 .haus3d .gfield select, .haus3d .gfield input[type="text"], .haus3d .gfield input[type="number"] { grid-column: 2 / 4; font: inherit; font-size: 14px; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 6px; padding: 7px 8px; min-width: 0; }
+.haus3d .gnum { grid-column: 2 / 4; display: grid; grid-template-columns: 40px 1fr 40px; gap: 6px; }
+.haus3d .gnum .btn { padding: 6px 0; font-size: 17px; line-height: 1; }
+.haus3d .gfield .gnum input { grid-column: auto; font: inherit; font-size: 15px; font-family: var(--h-f-mono); text-align: center; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 6px; padding: 7px 4px; min-width: 0; }
+.haus3d .gnote { font-family: var(--h-f-mono); font-size: 12px; color: var(--h-muted); }
 .haus3d .grow { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .haus3d .grow .btn { padding: 9px 14px; }
 @media (max-width: 700px) {
