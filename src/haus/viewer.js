@@ -18,11 +18,22 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { mountSharePanel } from './sharePanel.js'
 import { buildGarden, gardenInfo, gardenSummary } from './garden.js'
+import { mountGardenEditor } from './gardenEditor.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
 <div class="walkhud" data-h="walkhud" hidden role="status"><span data-h="walkmsg"></span><button type="button" data-h="walkexit">Beenden</button></div>
 <div class="joy" data-h="joy" hidden aria-hidden="true"><i></i></div>
+<div class="gtool" data-h="gtool" hidden>
+  <div class="gbar">
+    <button type="button" class="btn primary" data-h="gadd" title="Pflanze, Objekt, Fläche oder Linie hinzufügen">+ Neu</button>
+    <button type="button" class="btn" data-h="gundo" disabled aria-label="Rückgängig" title="Rückgängig">↶</button>
+    <button type="button" class="btn" data-h="gview">Von oben</button>
+    <button type="button" class="btn" data-h="gdone">Fertig</button>
+  </div>
+  <div class="ghint" data-h="ghint" role="status"></div>
+</div>
+<div class="gcard" data-h="gcard" hidden></div>
 <div class="loading" data-h="loading">L A D E N …</div>
 <div class="fail" data-h="fail" hidden role="alert"><div class="box"><div data-h="failmsg">Die 3D-Ansicht konnte nicht geladen werden.</div><small data-h="faildetail"></small><button type="button" data-h="failreload">Neu laden</button></div></div>
 
@@ -117,6 +128,7 @@ const VIEW_HTML = `
       <button type="button" class="btn" data-view="top">Grundriss</button>
       <button type="button" class="btn" data-view="site">Umgebung</button>
       <button type="button" class="btn" data-h="walkbtn" aria-pressed="false" title="In Augenhöhe durch das Haus gehen">Begehen</button>
+      <button type="button" class="btn" data-h="gardenbtn" title="Garten, Wege und Pflanzen gestalten">Gestalten</button>
     </div>
   </section>
 
@@ -211,7 +223,7 @@ export async function mountViewer(host, opts) {
     if (disposed) return
     disposed = true
     cancelAnimationFrame(rafId); clearTimeout(ctxLostTimer)
-    offs.forEach((off) => off()); ro?.disconnect(); controls?.dispose()
+    offs.forEach((off) => off()); gardenEd?.dispose(); ro?.disconnect(); controls?.dispose()
     scene?.traverse((o) => { o.geometry?.dispose?.(); if (o.material) [].concat(o.material).forEach((m) => { m.map?.dispose?.(); m.dispose?.() }) })
     _terrainTex?.dispose()
     if (renderer) { renderer.dispose(); renderer.forceContextLoss(); }
@@ -220,6 +232,7 @@ export async function mountViewer(host, opts) {
   }
 
   let DATA = structuredClone(ORIGINAL);
+  let gardenEd = null;   // "Gestalten" (gardenEditor.js), mounted at the end
 
   // ---------- renderer / scene ----------
   const stage = $('stage');
@@ -613,6 +626,17 @@ export async function mountViewer(host, opts) {
   let root = null, groups = {}, labelSprites = [], pickables = [], edgeLines = []; let furnGroups = []; let cutfillGroup = null, cutfillVol = null;
   const FACADE = { NO: [1, 0], SW: [-1, 0], SO: [0, 1], NW: [0, -1] };
 
+  // outdoor design (D.garden, see garden.js) on the graded terrain; rebuilt on its own while "Gestalten" edits it
+  const groundY = (x, z) => { const y = groundAt(x, z); return Number.isFinite(y) ? y : 0; };
+  function buildGardenGroup(D) {
+    const g = groups.garden;
+    g.traverse(o => { if (o === g) return; o.geometry?.dispose?.(); if (o.material) [].concat(o.material).forEach(m => { m.map?.dispose?.(); m.dispose?.(); }); });
+    g.clear(); pickables = pickables.filter(o => o.userData?.kind !== 'garden');
+    if (D.garden?.length) { const gg = buildGarden(D.garden, { H: groundY, prism: prismGeometry, phone: PHONE }); g.add(gg); gg.traverse(o => { if (o.isMesh) pickables.push(o); }); }
+    const gb = $('t-garden'), gn = $('gardennote'), sum = gardenSummary(D.garden); if (gb) gb.hidden = !D.garden?.length;
+    if (gn) { gn.hidden = !sum; gn.textContent = sum ? 'Garten: ' + sum : ''; }
+    kick(400);
+  }
   function build(D) {
     if (root) {
       scene.remove(root);
@@ -1236,14 +1260,7 @@ export async function mountViewer(host, opts) {
     { const cb = $('t-cutfill'), cn = $('cutfillnote'); if (cb) cb.hidden = !cutfillGroup;
       if (cn) { cn.hidden = !cutfillVol; if (cutfillVol) cn.textContent = `Geländeänderung: Abtrag ${cutfillVol.cut.toFixed(1)} m³ · Auftrag ${cutfillVol.fill.toFixed(1)} m³`; } }
     { const fb = $('t-furn'); if (fb) fb.hidden = !D.furniture?.length; }
-    // outdoor design (D.garden, see garden.js): on the graded terrain
-    if (D.garden?.length) {
-      const H = (x, z) => { const y = groundAt(x, z); return Number.isFinite(y) ? y : 0; };
-      const gg = buildGarden(D.garden, { H, prism: prismGeometry, phone: PHONE });
-      groups.garden.add(gg); gg.traverse(o => { if (o.isMesh) pickables.push(o); });
-    }
-    { const gb = $('t-garden'), gn = $('gardennote'), sum = gardenSummary(D.garden); if (gb) gb.hidden = !D.garden?.length;
-      if (gn) { gn.hidden = !sum; gn.textContent = sum ? 'Garten: ' + sum : ''; } }
+    buildGardenGroup(D);
     // room labels
     for (const r of D.rooms) {
       const lvl = levels[r.level];
@@ -1259,7 +1276,7 @@ export async function mountViewer(host, opts) {
       { const k = matchMedia('(max-width: 700px)').matches ? 0.72 : 1; sp.scale.set(0.12 * k, 0.0375 * k, 1); } sp.material.sizeAttenuation = false; sp.renderOrder = 10;
       sp.userData.level = r.level; groups[r.level].add(sp); labelSprites.push(sp);
     }
-    applyVisibility();
+    applyVisibility();  gardenEd?.refresh();
   }
 
   // ---------- UI state ----------
@@ -1335,6 +1352,14 @@ export async function mountViewer(host, opts) {
     anim = (now) => { const k = Math.min(1, (now - t0) / 700), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
       camera.position.lerpVectors(from, to, e); controls.target.lerpVectors(tFrom, target, e); if (k >= 1) anim = null; };
   }
+  function flyTo(pos, tgt) {   // animated camera move to a position and target
+    const from = camera.position.clone(), tFrom = controls.target.clone();
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { camera.position.copy(pos); controls.target.copy(tgt); return; }
+    const t0 = performance.now();
+    anim = (now) => { const k = Math.min(1, (now - t0) / 700), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      camera.position.lerpVectors(from, pos, e); controls.target.lerpVectors(tFrom, tgt, e); if (k >= 1) anim = null; };
+    kick(900);
+  }
   view.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => goView(b.dataset.view)));
 
   // mobile bottom sheet
@@ -1352,6 +1377,7 @@ export async function mountViewer(host, opts) {
   renderer.domElement.addEventListener('pointerup', e => {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > (e.pointerType === 'touch' ? 12 : 5)) return;
     if (walk.pending) { walkPick(e); return; }
+    if (gardenEd?.active) return;
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
@@ -1774,6 +1800,32 @@ export async function mountViewer(host, opts) {
   await Promise.race([document.fonts?.ready, new Promise((done) => setTimeout(done, 2000))]);
   if (disposed) return dispose;
   buildContext(); if (!CONTEXT) $('ctxsec').hidden = true;
+  // "Gestalten": edit D.garden in the view (members only, not on the shared page)
+  if (READ_ONLY) $('gardenbtn').hidden = true;
+  else {
+    const gray = new THREE.Raycaster(), gplanes = () => clipPlanes();
+    const firstHit = (ndc, list) => { gray.setFromCamera(ndc, camera); return gray.intersectObjects(list, false).find(h => gplanes().every(pl => pl.distanceToPoint(h.point) >= 0)); };
+    gardenEd = mountGardenEditor({
+      $, host, camera, controls, renderer, scene, stage, phone: PHONE,
+      getData: () => DATA, ground: groundY, cutout: () => DATA.terrain?.cutout, accent: () => cssVar('--accent'), kick, view: goView, fly: flyTo,
+      rebuild: () => buildGardenGroup(DATA), gardenGroup: () => groups.garden,
+      terrainHit: ndc => (terrainMesh ? firstHit(ndc, [terrainMesh])?.point ?? null : null),
+      gardenHit: ndc => { const list = []; groups.garden.traverse(o => { if (o.isMesh) list.push(o); }); return firstHit(ndc, list)?.object.userData.data ?? null; },
+      onEnter: () => {
+        if (walk.active || walk.pending) exitWalk();
+        select(null); setSheet(false);
+        for (const [id, key] of [['t-terrain', 'terrain'], ['t-garden', 'garden']]) { state[key] = true; $(id)?.setAttribute('aria-pressed', 'true'); }
+        applyVisibility();
+      },
+      onChange: () => { fillEditor(); renderVersions(); },
+      onExit: () => {
+        fillEditor(); renderVersions();
+        if (isDirty()) { setSheet(true); $('vsavebox').open = true; toggleSettings(true); setVmsg('Garten geändert. Speichere den Stand als Version, um ihn zu behalten.'); }
+        kick(600);
+      },
+    });
+    $('gardenbtn').addEventListener('click', () => gardenEd.enter());
+  }
   build(DATA); fillEditor(); setLevel('all');
   renderVersions();
   $('loading').hidden = true;
