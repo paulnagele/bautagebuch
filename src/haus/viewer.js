@@ -1042,7 +1042,7 @@ export async function mountViewer(host, opts) {
     // terrain: house.json grid near the house, blended into the wide DEM grid (context/terrain.json)
     {
       const T = D.terrain, g = groups.terrain, CT = CONTEXT?.terrain;
-      const H0 = terrainHeightFn(T, CT), H = gradeFn(H0, D.grading); groundAt = H;
+      const H0 = terrainHeightFn(T, CT), H = gradeFn(H0, D.grading); groundAt = H; groundAt0 = H0;
       const ext = terrainExtent(T, CT);
       const poly = T.cutout;
       const inside = (x, z) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, zi] = poly[i], [xj, zj] = poly[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
@@ -1125,7 +1125,7 @@ export async function mountViewer(host, opts) {
             for (const sgn of [-1, 1]) { const y = H(x + sgn * nx * off, z + sgn * nz * off); lo = Math.min(lo, y); hi = Math.max(hi, y); } }
           const top = w.top ?? hi + 0.05, bot = lo - 0.3;
           const m = box(L + th, top - bot, th, mats.stone); m.position.set((ax + bx) / 2, (top + bot) / 2, (az + bz) / 2); m.rotation.y = Math.atan2(-(bz - az), bx - ax);
-          m.userData = { kind: 'gradewall', data: { ...w, _top: top, _h: top - lo } }; g.add(m); pickables.push(m);
+          m.userData = { kind: 'gradewall', data: { ...w, _top: top, _h: top - lo }, ref: w }; g.add(m); pickables.push(m);
         }
       }
     }
@@ -1339,7 +1339,7 @@ export async function mountViewer(host, opts) {
   const target = new THREE.Vector3(0, 1.2, 0);
   const fitTarget = () => target.set(0, camera.aspect < 0.8 ? -3.5 : 1.2, 0);
   const VIEWS = { persp: [17, 9, 24], NW: [0, 3, -30], NO: [30, 3, 0], SO: [0, 3, 30], SW: [-30, 3, 0], top: [0, 42, 0.01], site: [150, 120, 200] };
-  let anim = null, groundAt = () => -Infinity;
+  let anim = null, groundAt = () => -Infinity, groundAt0 = () => NaN;
   const viewScale = () => Math.min(2.4, Math.max(1, 0.95 / camera.aspect));
   function goView(v) {
     fitTarget(); const to = new THREE.Vector3(...VIEWS[v]).multiplyScalar(viewScale());
@@ -1803,15 +1803,21 @@ export async function mountViewer(host, opts) {
   // "Gestalten": edit D.garden in the view (members only, not on the shared page)
   if (READ_ONLY) $('gardenbtn').hidden = true;
   else {
-    const gray = new THREE.Raycaster(), gplanes = () => clipPlanes();
+    const gray = new THREE.Raycaster(), gplanes = () => clipPlanes(); let cutfillBefore = false;
     const firstHit = (ndc, list) => { gray.setFromCamera(ndc, camera); return gray.intersectObjects(list, false).find(h => gplanes().every(pl => pl.distanceToPoint(h.point) >= 0)); };
     gardenEd = mountGardenEditor({
       $, host, camera, controls, renderer, scene, stage, phone: PHONE,
       getData: () => DATA, ground: groundY, cutout: () => DATA.terrain?.cutout, accent: () => cssVar('--accent'), kick, view: goView, fly: flyTo,
       rebuild: () => buildGardenGroup(DATA), gardenGroup: () => groups.garden,
+      rebuildAll: () => build(DATA),   // terrain changed: ends in gardenEd.refresh()
+      groundOrig: (x, z) => groundAt0(x, z), cutfill: () => cutfillVol,
+      gradingMeshes: () => pickables.filter(o => o.userData?.kind === 'gradewall' || o.userData?.kind === 'pool'),
+      gradingHit: ndc => { const h = firstHit(ndc, pickables.filter(o => (o.userData?.kind === 'gradewall' || o.userData?.kind === 'pool') && shown(o))); return h ? h.object.userData.ref ?? h.object.userData.data : null; },
+      setCutfill: on => { state.cutfill = on || cutfillBefore; $('t-cutfill')?.setAttribute('aria-pressed', String(state.cutfill)); applyVisibility(); },
       terrainHit: ndc => (terrainMesh ? firstHit(ndc, [terrainMesh])?.point ?? null : null),
       gardenHit: ndc => { const list = []; groups.garden.traverse(o => { if (o.isMesh) list.push(o); }); return firstHit(ndc, list)?.object.userData.data ?? null; },
       onEnter: () => {
+        cutfillBefore = state.cutfill;
         if (walk.active || walk.pending) exitWalk();
         select(null); setSheet(false);
         for (const [id, key] of [['t-terrain', 'terrain'], ['t-garden', 'garden']]) { state[key] = true; $(id)?.setAttribute('aria-pressed', 'true'); }
@@ -1819,8 +1825,9 @@ export async function mountViewer(host, opts) {
       },
       onChange: () => { fillEditor(); renderVersions(); },
       onExit: () => {
+        state.cutfill = cutfillBefore; $('t-cutfill')?.setAttribute('aria-pressed', String(state.cutfill)); applyVisibility();
         fillEditor(); renderVersions();
-        if (isDirty()) { setSheet(true); $('vsavebox').open = true; toggleSettings(true); setVmsg('Garten geändert. Speichere den Stand als Version, um ihn zu behalten.'); }
+        if (isDirty()) { setSheet(true); $('vsavebox').open = true; toggleSettings(true); setVmsg('Garten oder Gelände geändert. Speichere den Stand als Version, um ihn zu behalten.'); }
         kick(600);
       },
     });
