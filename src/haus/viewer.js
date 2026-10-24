@@ -17,6 +17,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { mountSharePanel } from './sharePanel.js'
+import { buildGarden, gardenInfo, gardenSummary } from './garden.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
@@ -58,10 +59,12 @@ const VIEW_HTML = `
           <button type="button" class="chip" data-h="t-labels" aria-pressed="true">Raumnamen</button>
           <button type="button" class="chip" data-h="t-edges" aria-pressed="false">Kanten</button>
           <button type="button" class="chip" data-h="t-furn" aria-pressed="true">Möbel</button>
+          <button type="button" class="chip" data-h="t-garden" aria-pressed="true" hidden>Garten</button>
           <button type="button" class="chip" data-h="t-cutfill" aria-pressed="false" hidden>Auf-/Abtrag</button>
           <button type="button" class="chip" data-h="t-contours" aria-pressed="false">Höhenlinien</button>
         </div>
         <div class="levelmeta" data-h="cutfillnote" hidden></div>
+        <div class="levelmeta" data-h="gardennote" hidden></div>
       </div>
       <div class="vsub" data-h="ctxsec">
         <span class="label">Umgebung</span>
@@ -617,7 +620,7 @@ export async function mountViewer(host, opts) {
     }
     root = new THREE.Group(); scene.add(root);
     groups = {}; labelSprites = []; pickables = []; edgeLines = []; furnGroups = [];
-    for (const id of ['KG', 'EG', 'DG', 'roof', 'terrain', 'ceiling']) { groups[id] = new THREE.Group(); groups[id].name = id; root.add(groups[id]); }
+    for (const id of ['KG', 'EG', 'DG', 'roof', 'terrain', 'ceiling', 'garden']) { groups[id] = new THREE.Group(); groups[id].name = id; root.add(groups[id]); }
     const M = D.materials;
     const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, side: THREE.DoubleSide, ...extra });
     const mats = {
@@ -1233,6 +1236,14 @@ export async function mountViewer(host, opts) {
     { const cb = $('t-cutfill'), cn = $('cutfillnote'); if (cb) cb.hidden = !cutfillGroup;
       if (cn) { cn.hidden = !cutfillVol; if (cutfillVol) cn.textContent = `Geländeänderung: Abtrag ${cutfillVol.cut.toFixed(1)} m³ · Auftrag ${cutfillVol.fill.toFixed(1)} m³`; } }
     { const fb = $('t-furn'); if (fb) fb.hidden = !D.furniture?.length; }
+    // outdoor design (D.garden, see garden.js): on the graded terrain
+    if (D.garden?.length) {
+      const H = (x, z) => { const y = groundAt(x, z); return Number.isFinite(y) ? y : 0; };
+      const gg = buildGarden(D.garden, { H, prism: prismGeometry, phone: PHONE });
+      groups.garden.add(gg); gg.traverse(o => { if (o.isMesh) pickables.push(o); });
+    }
+    { const gb = $('t-garden'), gn = $('gardennote'), sum = gardenSummary(D.garden); if (gb) gb.hidden = !D.garden?.length;
+      if (gn) { gn.hidden = !sum; gn.textContent = sum ? 'Garten: ' + sum : ''; } }
     // room labels
     for (const r of D.rooms) {
       const lvl = levels[r.level];
@@ -1252,7 +1263,7 @@ export async function mountViewer(host, opts) {
   }
 
   // ---------- UI state ----------
-  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, cutfill: false, contours: false };
+  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, garden: true, cutfill: false, contours: false };
   const ORDER = ['KG', 'EG', 'DG'];
   function applyVisibility() {
     if (!root) return;
@@ -1261,6 +1272,7 @@ export async function mountViewer(host, opts) {
     groups.roof.visible = state.level === 'all' && state.roof;
     groups.ceiling.visible = state.level === 'all';
     groups.terrain.visible = state.terrain;
+    groups.garden.visible = state.garden && state.terrain;
     for (const s of labelSprites) s.visible = state.labels && state.level !== 'all' && s.userData.level === state.level;
     for (const l of edgeLines) l.visible = state.edges;
     for (const g of furnGroups) g.visible = state.furniture;
@@ -1290,7 +1302,7 @@ export async function mountViewer(host, opts) {
     applyVisibility();
   }
   for (const id of ['all', 'DG', 'EG', 'KG']) $('lv-' + id).addEventListener('click', () => setLevel(id));
-  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
+  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-garden', 'garden'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
     const b = $(id); if (!b) continue;
     b.setAttribute('aria-pressed', String(state[key]));
     b.addEventListener('click', () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); if (key === 'roads') paintTerrain(); applyVisibility(); });
@@ -1391,6 +1403,7 @@ export async function mountViewer(host, opts) {
       case 'pool': return `<h3>${esc(d.name || 'Pool')}</h3>` + dl([['Maße', `${f2(Math.max(...d.outline.map(p => p[0])) - Math.min(...d.outline.map(p => p[0])))} × ${f2(Math.max(...d.outline.map(p => p[1])) - Math.min(...d.outline.map(p => p[1])))} m`], ['Tiefe', f2(d.depth) + ' m'], ['Beckenrand', f2(d.top)], ['Hinweis', d.note]]);
       case 'gradewall': return `<h3>${esc(d.name || 'Stützmauer')}</h3>` + dl([['ID', d.id], ['Höhe über Gelände', f2(d._h) + ' m'], ['OK', f2(d._top)], ['Stärke', f2(d.thickness ?? 0.25) + ' m'], ['Hinweis', d.note]]);
       case 'furniture': return `<h3>${esc(d.name || d.type)}</h3>` + dl([['Raum', d.room], ['Maße', `${f2(Math.abs(d.x[1] - d.x[0]))} × ${f2(Math.abs(d.z[1] - d.z[0]))} m`], ['Hinweis', d.note]]);
+      case 'garden': { const g = gardenInfo(d); return `<h3>${esc(g.title)}</h3>` + dl(g.rows) + (g.note ? `<p class="note">${esc(g.note)}</p>` : ''); }
       case 'beam': return `<h3>Unterzug ${esc(d.id)}</h3>` + dl([['Breite', f2(d.width) + ' m'], ['UK', f2(d.bottom)]]);
       default: return '<span class="empty">Kein Bauteil.</span>';
     }
@@ -1582,7 +1595,8 @@ export async function mountViewer(host, opts) {
     walk.root = root; walk.ground = []; walk.block = [];
     root.traverse(o => {
       if (!o.isMesh || o.isInstancedMesh) return; const k = o.userData?.kind, d = o.userData?.data;
-      if (GROUND_KINDS.has(k)) walk.ground.push(o);
+      if (GROUND_KINDS.has(k) || (k === 'garden' && o.userData.walk === 'ground')) walk.ground.push(o);
+      else if (k === 'garden') { if (o.userData.walk === 'block') walk.block.push(o); }
       else if (BLOCK_KINDS.has(k) && !(k === 'opening' && d?.type === 'door') && !(k === 'furniture' && d?.type === 'rug')) walk.block.push(o);
     });
     root.updateMatrixWorld(true);
