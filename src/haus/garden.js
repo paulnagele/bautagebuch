@@ -32,21 +32,21 @@ export const SURFACES = {
   asphalt: { label: 'Asphalt', color: '#6e6e6c', tile: 2 },
   water: { label: 'Wasser', color: '#3f93b8', tile: 4 },
 }
-const LINES = {
+export const LINES = {
   hedge: { label: 'Hecke', width: 0.6, height: 1.6, color: '#4f7340' },
   fence: { label: 'Zaun', width: 0.04, height: 1.2, color: '#5b5f60' },
   wall: { label: 'Gartenmauer', width: 0.25, height: 1, color: '#b5aea3' },
   edging: { label: 'Einfassung', width: 0.08, height: 0.12, color: '#a9a59d' },
   path: { label: 'Weg', width: 1, height: 0 },
 }
-const OBJECTS = {
+export const OBJECTS = {
   raisedbed: { label: 'Hochbeet', size: [2, 1, 0.8], color: '#9a7650' },
   shed: { label: 'Gartenhütte', size: [3, 2.5, 2.3], color: '#8b6a48' },
   bench: { label: 'Bank', size: [1.6, 0.55, 0.45], color: '#9a7650' },
   table: { label: 'Gartentisch', size: [1.8, 0.9, 0.75], color: '#9a7650' },
   box: { label: 'Objekt', size: [1, 1, 1], color: '#b8b2a6' },
 }
-const TREE_SHAPES = { round: 'Laubbaum', conic: 'Nadelbaum', columnar: 'Säulenbaum' }
+export const TREE_SHAPES = { round: 'Laubbaum', conic: 'Nadelbaum', columnar: 'Säulenbaum' }
 
 // small seeded random, so textures and tree colours look the same on every build
 function rand(seed) { let s = seed >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
