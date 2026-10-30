@@ -19,6 +19,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { mountSharePanel } from './sharePanel.js'
 import { buildGarden, gardenInfo, gardenSummary } from './garden.js'
 import { mountGardenEditor } from './gardenEditor.js'
+import { buildFacade, wallSkin } from './facade.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
@@ -354,6 +355,38 @@ export async function mountViewer(host, opts) {
       for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) { g.fillStyle = (i + j) % 2 ? a : b; g.fillRect(i * w / 2 + 1, j * h / 2 + 1, w / 2 - 2, h / 2 - 2); }
     }, 1 / 1.2, 1 / 1.2);
   }
+  // Italian barrel tiles (D.facade.roofTiles = 'coppi'): same scale as tileTexture, rounded channels running down the slope
+  function coppiTexture(base) {
+    return canvasTex(128, 128, (g, w, h) => {
+      const c = new THREE.Color(base);
+      g.fillStyle = '#' + c.getHexString(); g.fillRect(0, 0, w, h);
+      for (let x = 0; x < w; x += 16) {
+        const gr = g.createLinearGradient(x, 0, x + 16, 0);
+        gr.addColorStop(0, 'rgba(0,0,0,0.38)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.10)'); gr.addColorStop(0.6, 'rgba(255,255,255,0.04)'); gr.addColorStop(1, 'rgba(0,0,0,0.30)');
+        g.fillStyle = gr; g.fillRect(x, 0, 16, h);
+      }
+      for (let row = 0; row < 4; row++) { g.fillStyle = 'rgba(0,0,0,0.16)'; g.fillRect(0, row * 32 + 29, w, 3); }
+      for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(${i % 2 ? '255,230,200' : '40,20,10'},0.06)`; g.fillRect((i * 53) % w, (i * 29) % h, 16, 24); }
+    });
+  }
+  // rough stone masonry for the socle (D.facade.socle = 'stone'): texture covers 1.6 x 0.8 m of a skin face
+  function stoneTexture(base) {
+    return canvasTex(256, 128, (g, w, h) => {
+      const c = new THREE.Color(base);
+      g.fillStyle = '#' + c.clone().multiplyScalar(0.62).getHexString(); g.fillRect(0, 0, w, h);
+      const rows = [0, 30, 58, 92, 128]; let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+      for (let r = 0; r < rows.length - 1; r++) {
+        let x = -rnd() * 40;
+        while (x < w) {
+          const bw = 34 + rnd() * 46, k = 0.82 + rnd() * 0.3;
+          g.fillStyle = '#' + c.clone().multiplyScalar(k).getHexString();
+          g.fillRect(x + 2, rows[r] + 2, bw - 4, rows[r + 1] - rows[r] - 4);
+          g.fillStyle = 'rgba(255,255,255,0.07)'; g.fillRect(x + 2, rows[r] + 2, bw - 4, 4);
+          x += bw;
+        }
+      }
+    }, 1 / 1.6, 1 / 0.8);
+  }
   function louvreTexture(base) {
     return canvasTex(32, 64, (g, w, h) => {
       g.fillStyle = base; g.fillRect(0, 0, w, h);
@@ -648,8 +681,8 @@ export async function mountViewer(host, opts) {
     const M = D.materials;
     const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, side: THREE.DoubleSide, ...extra });
     const mats = {
-      plaster: mat(M.plaster), plasterKG: mat(M.plasterKG), interior: mat(M.interior), slab: mat(M.slab),
-      stone: mat(M.stone), roof: mat(0xffffff, { map: tileTexture(M.roof) }), roofUnder: mat(M.roofUnder),
+      plaster: mat(M.plaster), plasterKG: D.facade?.socle === 'stone' ? mat(0xffffff, { map: stoneTexture(M.plasterKG) }) : mat(M.plasterKG), interior: mat(M.interior), slab: mat(M.slab),
+      stone: mat(M.stone), roof: mat(0xffffff, { map: D.facade?.roofTiles === 'coppi' ? coppiTexture(M.roof) : tileTexture(M.roof) }), roofUnder: mat(M.roofUnder),
       wood: mat(M.wood), woodBoards: mat(0xffffff, { map: boardTexture(M.wood) }), frame: mat(M.frame, { roughness: 0.6 }),
       glass: new THREE.MeshStandardMaterial({ color: M.glass, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.55, side: THREE.DoubleSide }),
       shutter: mat(0xffffff, { map: louvreTexture(M.shutter) }), terrain: CONTEXT ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: terrainTexture(), roughness: 1, side: THREE.DoubleSide }) : mat(M.terrain, { side: THREE.FrontSide }), chimney: mat(M.chimney),
@@ -716,6 +749,8 @@ export async function mountViewer(host, opts) {
       // inserts (windows, doors, shutters) in the wall's local frame
       const F = FACADE[w.facade];
       const out = F ? Math.sign(nx * F[0] + nz * F[1]) || 1 : 1;
+      // where shutters sit: on the plaster skin when the level has facade insulation, in front of any surround
+      const skin = ext ? wallSkin(D, w) : null, shutterZ = skin ? skin.side * (skin.offset + (D.facade?.surrounds ? (D.facade.surrounds.depth ?? 0.03) : 0) + 0.025) : null;
       const local = new THREE.Group(); local.position.copy(mesh.position); local.rotation.copy(mesh.rotation); g.add(local);
       for (const p of ops) {
         const o = p.o, wd = p.u1 - p.u0, ht = p.h1 - p.h0, cu = (p.u0 + p.u1) / 2, ch = (p.h0 + p.h1) / 2;
@@ -736,7 +771,7 @@ export async function mountViewer(host, opts) {
           if (o.shutters) {
             for (const sgn of [-1, 1]) {
               const sh = tag(box(wd / 2, ht, 0.035, mats.shutter));
-              sh.position.set(cu + sgn * (wd * 0.75 + 0.03), ch, out * (t / 2 + 0.03)); local.add(sh);
+              sh.position.set(cu + sgn * (wd * 0.75 + 0.03), ch, shutterZ ?? out * (t / 2 + 0.03)); local.add(sh);
             }
           }
         } else if (o.style === 'entrance' || o.style === 'garage') {
@@ -798,6 +833,10 @@ export async function mountViewer(host, opts) {
         g.add(m); pickables.push(m);
       }
     }
+
+    // facade decoration (D.facade: surrounds, string courses, quoins; see facade.js)
+    const facadeParts = buildFacade(D, { levels, roofTop: (x, z) => roof.top(x, z, true), facadeSide: (w, nx, nz) => { const F = FACADE[w.facade]; return F ? Math.sign(nx * F[0] + nz * F[1]) || 1 : 1; } });
+    for (const [lv, m] of Object.entries(facadeParts)) if (groups[lv]) { groups[lv].add(m); pickables.push(m); }
 
     // slabs
     for (const s of D.slabs) {
@@ -1412,6 +1451,7 @@ export async function mountViewer(host, opts) {
       case 'opening': return `<h3>${d.type === 'door' ? 'Tür' : 'Fenster'} ${esc(d.label ?? '')}</h3>` + dl([
         ['In Wand', u.wall.id], ['Breite', f2(d.width) + ' m'], ['Höhe', f2(d.height) + ' m'], ['Brüstung', f2(d.sill) + ' m'],
         ['Position', f2(d.at) + ' m ab Wandanfang'], ['Unterteil fix', d.fixedLower ? f2(d.fixedLower) + ' m' : null], ['Läden', d.shutters ? 'ja' : null]]) + (d.note ? `<p class="note">${esc(d.note)}</p>` : '');
+      case 'facade': return `<h3>Fassadengestaltung</h3>` + dl([['Stil', d.name || ''], ['Faschen', d.surrounds ? 'ja' : 'nein'], ['Gesimsbänder', String(d.bands?.length || 0)], ['Eckquader', d.quoins ? 'ja' : 'nein'], ['Sockel', d.socle === 'stone' ? 'Naturstein' : 'Putz'], ['Dach', d.roofTiles === 'coppi' ? 'Mönch-Nonne (Coppi)' : 'Ziegel']]);
       case 'insulation': return `<h3>${esc(d.name || 'Fassadendämmung')}</h3>` + dl([['Geschoss', d.level], ['Stärke', f2(d.thickness) + ' m'], ['Aufbau', d.note || '']]);
       case 'slab': return `<h3>${esc(d.name)}</h3>` + dl([['ID', d.id], ['OK', f2(d.top)], ['Stärke', f2(d.thickness) + ' m']]);
       case 'roof': return `<h3>${esc(d.name || d.id)}</h3>` + dl([['Neigung', (d.pitch ?? DATA.roof.pitch) + '°'], ['First', f2(d.Rc ?? d.ridgeHeight)], ['Traufe', f2(d.eaveHeight ?? makeRoof(DATA.roof).eaveH)], ['Breite', d.width ? f2(d.width) + ' m' : null]]);
@@ -1614,7 +1654,7 @@ export async function mountViewer(host, opts) {
   const walk = { active: false, pending: false, yaw: 0, pitch: 0, feet: 0, vy: 0, keys: new Set(), joy: [0, 0], look: null, saved: null, last: 0, dirty: false, root: null, ground: [], block: [] };
   const walkHud = $('walkhud'), walkMsg = $('walkmsg'), walkBtn = $('walkbtn');
   const joyEl = $('joy'), joyKnob = joyEl.querySelector('i'), wray = new THREE.Raycaster();
-  const GROUND_KINDS = new Set(['slab', 'floor', 'stair']), BLOCK_KINDS = new Set(['wall', 'opening', 'furniture', 'railing', 'post', 'pergola', 'insulation', 'chimney', 'gradewall']);
+  const GROUND_KINDS = new Set(['slab', 'floor', 'stair']), BLOCK_KINDS = new Set(['wall', 'opening', 'furniture', 'railing', 'post', 'pergola', 'insulation', 'facade', 'chimney', 'gradewall']);
   const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight']);
   const shown = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
   function walkLists() {   // meshes to stand on and meshes that stop you (doors are walked through, rugs ignored); world bounding spheres for a cheap near-filter
