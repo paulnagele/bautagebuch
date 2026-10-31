@@ -90,8 +90,10 @@ database (see step 4).
    `https://www.googleapis.com/auth/drive` and
    `https://www.googleapis.com/auth/calendar.events`.
 6. **Clients → Create client**, type *Web application*. Under
-   **Authorized JavaScript origins** add `https://paulnagele.github.io`
-   (and `http://localhost:5173` for local development). No redirect URIs
+   **Authorized JavaScript origins** add the address of every site
+   (e.g. `https://bautagebuch.pages.dev`, see [Deployment](#deployment);
+   `https://paulnagele.github.io` while GitHub Pages runs) and
+   `http://localhost:5173` for local development. No redirect URIs
    are needed. Note the **Client ID** and **Client secret**.
 
 ### 2. Google Drive (folder)
@@ -179,8 +181,8 @@ values ('site_location', '48.27, 14.25')
 on conflict (key) do update set value = excluded.value;
 ```
 
-Commit to `main`; the GitHub Actions workflow deploys the site. (Repository
-variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`
+Commit to `main`; the GitHub Actions workflow deploys the site (see
+[Deployment](#deployment)). (Repository variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`
 override these values if set.) If anything is missing,
 the deploy run shows a warning and the site shows "Setup not finished".
 
@@ -220,10 +222,10 @@ alter table public.diary_entries
   add column if not exists location text not null default '';
 ```
 
-Every push to `main` first runs the **Apply Supabase migrations** workflow,
-which applies every migration the database has not seen yet (`supabase db
-push`), and only then publishes the new version of the app; if a migration
-fails, the app is not updated.
+Every push to `main` first runs the **Apply Supabase migrations** workflow
+for each site's database, which applies every migration that database has
+not seen yet (`supabase db push`), and only then publishes the new version
+of that site; if a migration fails, that site is not updated.
 Supabase records which ones ran in `supabase_migrations.schema_migrations`.
 
 The existing migrations only create what is missing, so they are also safe
@@ -242,12 +244,66 @@ Then open http://localhost:5173.
 
 ## Deployment
 
-Pushes to `main` are built and deployed to GitHub Pages by
-`.github/workflows/deploy-pages.yml`. The site is served at
-https://paulnagele.github.io/bautagebuch/.
+Every push to `main` deploys every site (`.github/workflows/deploy.yml`).
+There are two sites on Cloudflare Pages, each with its own Supabase
+database and its own settings in a GitHub **environment**:
 
-One-time setup: in the repository go to **Settings → Pages** and set
-**Source** to **GitHub Actions**.
+| Site | Environment | Cloudflare Pages project | Address |
+| --- | --- | --- | --- |
+| Production | `production` | `bautagebuch` | https://bautagebuch.pages.dev |
+| Second | `second` | `bautagebuch-second` | https://bautagebuch-second.pages.dev |
+
+Each site is deployed on its own (`deploy-target.yml`): first its database
+migrations, then the app. If one site fails, the other is still updated.
+A site other than production refuses to run if any of its settings point
+to the production database (`scripts/check-target.mjs`).
+
+GitHub Pages (https://paulnagele.github.io/bautagebuch/) still gets the
+production build until it is switched off.
+
+### One-time Cloudflare setup
+
+1. Create a free account at https://dash.cloudflare.com/sign-up.
+2. **Account ID**: in the dashboard, open *Workers & Pages*; the Account
+   ID is in the right-hand column (or in the browser address:
+   `dash.cloudflare.com/<account ID>/…`). In GitHub, *Settings → Secrets
+   and variables → Actions → Variables*, add `CLOUDFLARE_ACCOUNT_ID`.
+3. **API token**: *My Profile → API Tokens → Create Token → Custom token*.
+   Permission: *Account · Cloudflare Pages · Edit*; Account Resources:
+   your account. Add it as the repository **secret**
+   `CLOUDFLARE_API_TOKEN`.
+4. Run *Actions → Deploy → Run workflow*. The first run creates the Pages
+   project. If the name `bautagebuch` is already taken on pages.dev,
+   Cloudflare adds a suffix; the address is shown at the end of the
+   "Deploy to Cloudflare Pages" step and in the dashboard. A different
+   project name can be set with the variable `CLOUDFLARE_PROJECT` in the
+   site's environment.
+5. Google Cloud → *Clients → Web client → Authorized JavaScript origins*:
+   add the site's address (no trailing slash).
+
+Optional: a custom domain is added in Cloudflare under the Pages project →
+*Custom domains* (then add it as a Google origin too).
+
+### The second site
+
+1. Create a second Supabase project and set it up like
+   [step 3](#3-supabase-database) (Google provider with the same Client ID
+   and secret, members), but don't add repository secrets.
+2. GitHub → *Settings → Environments → New environment* `second`:
+   - Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD` (and
+     `SUPABASE_ACCESS_TOKEN` if the project belongs to another Supabase
+     account).
+   - Variables: `SUPABASE_URL`, `SUPABASE_ANON_KEY` (and `GOOGLE_CLIENT_ID`
+     to use another Google client).
+3. Repository variable `SECOND_SITE` = `true`, then *Actions → Deploy →
+   Run workflow*. It creates the second database's tables and the
+   `bautagebuch-second` Pages project.
+4. Add the address as a Google origin, then in the second project's SQL
+   Editor add its own `drive_folder_id` and `calendar_id` (step 4), so the
+   sites don't share photos or calendar events.
+
+Migrations for one site can be run by hand with *Actions → Apply Supabase
+migrations → Run workflow* and choosing the site.
 
 ## Scripts
 
