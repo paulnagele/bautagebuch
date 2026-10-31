@@ -89,8 +89,9 @@ self.addEventListener('fetch', (event) => {
   if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return
 
   // The shared house page (haus.html) is for visitors, not part of the
-  // app: never stored as the app's page.
-  if (url.pathname.endsWith('/haus.html')) return
+  // app: never stored as the app's page. Cloudflare Pages serves it at
+  // /haus (it drops ".html").
+  if (/\/haus(\.html)?$/.test(url.pathname)) return
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(event))

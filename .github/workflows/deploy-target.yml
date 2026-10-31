@@ -1,0 +1,114 @@
+name: Deploy one site
+
+# One deployment from start to finish: its database first, then the app.
+# If a migration fails, that site is not updated and keeps running the
+# version that matches its database. Called by deploy.yml once per site.
+#
+# Each site's settings live in the GitHub environment of the same name:
+#   production  the repository-wide secrets and .env.production
+#   second      its own Supabase project (see README, "Deployment")
+on:
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  migrate:
+    uses: ./.github/workflows/supabase-migrations.yml
+    with:
+      target: ${{ inputs.target }}
+    secrets: inherit
+
+  build:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    concurrency:
+      group: deploy-${{ inputs.target }}
+      cancel-in-progress: false
+    env:
+      DEPLOY_TARGET: ${{ inputs.target }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Cloudflare Pages project, one per site. The site is served at
+      # https://<project>.pages.dev unless that name is taken.
+      CLOUDFLARE_PROJECT: ${{ vars.CLOUDFLARE_PROJECT || (inputs.target == 'production' && 'bautagebuch' || format('bautagebuch-{0}', inputs.target)) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Build
+        run: |
+          # Environment/repository variables or secrets override
+          # .env.production when set.
+          for name in GOOGLE_CLIENT_ID SUPABASE_URL SUPABASE_ANON_KEY; do
+            value="$(printenv "CFG_$name" || true)"
+            if [ -n "$value" ]; then export "VITE_$name=$value"; fi
+          done
+          CHECK_BUILD=1 node scripts/check-target.mjs
+          node scripts/check-config.mjs
+          npm run build
+        env:
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || secrets.SUPABASE_PROJECT_REF }}
+          CFG_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
+          CFG_SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+          CFG_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+
+      - name: Check Cloudflare settings
+        id: cloudflare
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Cloudflare not set up::Add the secret CLOUDFLARE_API_TOKEN and the variable CLOUDFLARE_ACCOUNT_ID (README, Deployment). Skipping the Cloudflare deploy of $DEPLOY_TARGET."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Deploy to Cloudflare Pages
+        if: steps.cloudflare.outputs.ready == 'true'
+        run: |
+          # Fixed version, so a new release cannot break deploys unnoticed.
+          wrangler="npx --yes wrangler@4.148.0"
+          # First deploy: create the Pages project.
+          if ! $wrangler pages project list --json | grep -q "\"$CLOUDFLARE_PROJECT\""; then
+            $wrangler pages project create "$CLOUDFLARE_PROJECT" --production-branch=main
+          fi
+          $wrangler pages deploy dist \
+            --project-name="$CLOUDFLARE_PROJECT" \
+            --branch=main \
+            --commit-hash="$GITHUB_SHA" \
+            --commit-dirty=true
+          # Shows the site's address (Project Domains) in the log.
+          $wrangler pages project list
+
+      # GitHub Pages keeps serving production until it is switched off.
+      - if: inputs.target == 'production'
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - if: inputs.target == 'production'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  github-pages:
+    if: inputs.target == 'production'
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

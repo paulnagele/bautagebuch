@@ -1,38 +1,57 @@
 name: Apply Supabase migrations
 
-# Runs before every deployment (deploy-pages.yml), so a new version of the
+# Runs before every deployment (deploy-target.yml), so a new version of the
 # app only goes live once its database changes are in place. Can also be
 # started by hand.
+#
+# Each deployment has its own database. The settings come from the GitHub
+# environment named like the deployment ("production", "second");
+# production uses the repository-wide secrets.
 on:
   workflow_call:
+    inputs:
+      target:
+        type: string
+        default: production
   workflow_dispatch:
+    inputs:
+      target:
+        description: Which deployment's database
+        type: choice
+        options: [production, second]
+        default: production
 
 permissions:
   contents: read
 
 concurrency:
-  group: supabase-migrations
+  group: supabase-migrations-${{ inputs.target || 'production' }}
   cancel-in-progress: false
 
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.target || 'production' }}
     env:
+      DEPLOY_TARGET: ${{ inputs.target || 'production' }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || secrets.SUPABASE_PROJECT_REF }}
+      VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
     steps:
       - name: Check settings
         run: |
           missing=0
           for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
             if [ -z "$(printenv "$name")" ]; then
-              echo "::error title=Missing setting $name::Add it as a repository secret."
+              echo "::error title=Missing setting $name::Add it as a secret (environment \"$DEPLOY_TARGET\" or repository)."
               missing=1
             fi
           done
           exit "$missing"
       - uses: actions/checkout@v4
+      # Stops a second deployment from touching the production database.
+      - run: node scripts/check-target.mjs
       - uses: supabase/setup-cli@v1
         with:
           # Fixed, so a new CLI release cannot break the migrations unnoticed.

@@ -1,0 +1,28 @@
+name: Deploy
+
+# Every push to main updates every site. Each site has its own database
+# and is deployed on its own (deploy-target.yml), so a failure on one site
+# does not hold back the other.
+#
+# The second site joins once the repository variable SECOND_SITE is
+# "true" and its "second" environment is filled in (README, Deployment).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(vars.SECOND_SITE == 'true' && '["production","second"]' || '["production"]') }}
+    uses: ./.github/workflows/deploy-target.yml
+    with:
+      target: ${{ matrix.target }}
+    secrets: inherit
