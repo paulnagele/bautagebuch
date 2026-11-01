@@ -20,6 +20,7 @@ import { mountSharePanel } from './sharePanel.js'
 import { buildGarden, gardenInfo, gardenSummary } from './garden.js'
 import { mountGardenEditor } from './gardenEditor.js'
 import { buildFacade, wallSkin } from './facade.js'
+import { buildGrid, gridExtent, updateGridLabels, pointText, pointPlain } from './grid.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
@@ -30,6 +31,7 @@ const VIEW_HTML = `
     <button type="button" class="btn primary" data-h="gadd" title="Pflanze, Objekt, Fläche oder Linie hinzufügen">+ Neu</button>
     <button type="button" class="btn" data-h="gundo" disabled aria-label="Rückgängig" title="Rückgängig">↶</button>
     <button type="button" class="btn" data-h="gview">Von oben</button>
+    <button type="button" class="btn" data-h="ggrid" aria-pressed="false" aria-label="Raster mit Koordinaten" title="Raster mit Koordinaten zeigen"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 2h16v16H2zM7.3 2v16M12.7 2v16M2 7.3h16M2 12.7h16"/></svg></button>
     <button type="button" class="btn" data-h="gdone">Fertig</button>
   </div>
   <div class="ghint" data-h="ghint" role="status"></div>
@@ -74,6 +76,7 @@ const VIEW_HTML = `
           <button type="button" class="chip" data-h="t-garden" aria-pressed="true" hidden>Garten</button>
           <button type="button" class="chip" data-h="t-cutfill" aria-pressed="false" hidden>Auf-/Abtrag</button>
           <button type="button" class="chip" data-h="t-contours" aria-pressed="false">Höhenlinien</button>
+          <button type="button" class="chip" data-h="t-grid" aria-pressed="false">Raster</button>
         </div>
         <div class="levelmeta" data-h="cutfillnote" hidden></div>
         <div class="levelmeta" data-h="gardennote" hidden></div>
@@ -87,7 +90,7 @@ const VIEW_HTML = `
           <button type="button" class="chip" data-h="c-trees" aria-pressed="true">Bäume</button>
           <button type="button" class="chip" data-h="c-addr" aria-pressed="false">Adressen</button>
         </div>
-        <p class="note">Gelände aus Laserscan (BEV ALS 1 m bis ±64 m, 5 m bis ±300 m). Gebäudehöhen und Bäume aus dem Oberflächenmodell. Höhenlinien alle 1 m, alle 5 m kräftiger (m ü. A.).</p>
+        <p class="note">Gelände aus Laserscan (BEV ALS 1 m bis ±64 m, 5 m bis ±300 m). Gebäudehöhen und Bäume aus dem Oberflächenmodell. Höhenlinien alle 1 m, alle 5 m kräftiger (m ü. A.). Raster alle 1 m, alle 5 m mit Koordinaten (x längs zum Haus, z quer, in m). Höhe 0 = EG-Fußboden.</p>
       </div>
       <div class="vsub" data-h="sharesec" hidden></div>
     </div>
@@ -135,7 +138,7 @@ const VIEW_HTML = `
 
   <section class="infosec">
     <div class="vhead"><span class="label">Auswahl</span><button type="button" class="sheetx" data-h="infoclose" aria-label="Auswahl schließen" hidden>×</button></div>
-    <div class="info" data-h="info"><span class="empty">Wand, Fenster oder Bauteil antippen, um Maße und ID zu sehen.</span></div>
+    <div class="info" data-h="info"><span class="empty">Wand, Fenster, Bauteil oder Gelände antippen, um Maße, Koordinaten und Höhe zu sehen.</span></div>
   </section>
 
   <section class="editsec" data-h="editsec">
@@ -655,7 +658,7 @@ export async function mountViewer(host, opts) {
   }
 
   // ---------- build ----------
-  let terrainMesh = null, contourGroup = null;
+  let terrainMesh = null, contourGroup = null, grid = null;
   let root = null, groups = {}, labelSprites = [], pickables = [], edgeLines = []; let furnGroups = []; let cutfillGroup = null, cutfillVol = null;
   const FACADE = { NO: [1, 0], SW: [-1, 0], SO: [0, 1], NW: [0, -1] };
 
@@ -1108,7 +1111,7 @@ export async function mountViewer(host, opts) {
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
       geo.setIndex(idx); geo.computeVertexNormals();
       const m = new THREE.Mesh(geo, mats.terrain); m.receiveShadow = true; m.userData = { kind: 'terrain', data: { note: T.note } }; g.add(m);
-      terrainMesh = m; contourGroup = null;
+      terrainMesh = m; contourGroup = null; grid = null;
 
       // cut/fill: overlay on the terrain (red = Abtrag, blue = Auftrag) and volumes on a 0.25 m grid
       cutfillGroup = null; cutfillVol = null;
@@ -1319,7 +1322,7 @@ export async function mountViewer(host, opts) {
   }
 
   // ---------- UI state ----------
-  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, garden: true, cutfill: false, contours: false };
+  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, garden: true, cutfill: false, contours: false, grid: false };
   const ORDER = ['KG', 'EG', 'DG'];
   function applyVisibility() {
     if (!root) return;
@@ -1335,6 +1338,9 @@ export async function mountViewer(host, opts) {
     if (cutfillGroup) cutfillGroup.visible = state.cutfill && state.terrain;
     if (state.contours && !contourGroup && terrainMesh) buildContours();
     if (contourGroup) contourGroup.visible = state.contours && state.terrain;
+    if (state.grid && !grid && terrainMesh) { grid = buildGrid({ H: groundAt, cutout: DATA.terrain?.cutout, extent: gridExtent(DATA), phone: PHONE }); terrainMesh.parent.add(grid.group); }
+    if (grid) grid.group.visible = state.grid && state.terrain;
+    for (const id of ['t-grid', 'ggrid']) $(id)?.setAttribute('aria-pressed', String(state.grid));
     kick(800);
     ctxGroups.buildings.visible = state.neighbors; ctxGroups.power.visible = state.power; ctxGroups.addresses.visible = state.addresses; ctxGroups.trees.visible = state.trees;
     renderer.clippingPlanes = clipPlanes();
@@ -1358,7 +1364,7 @@ export async function mountViewer(host, opts) {
     applyVisibility();
   }
   for (const id of ['all', 'DG', 'EG', 'KG']) $('lv-' + id).addEventListener('click', () => setLevel(id));
-  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-garden', 'garden'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
+  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-garden', 'garden'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['t-grid', 'grid'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
     const b = $(id); if (!b) continue;
     b.setAttribute('aria-pressed', String(state[key]));
     b.addEventListener('click', () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); if (key === 'roads') paintTerrain(); applyVisibility(); });
@@ -1421,17 +1427,40 @@ export async function mountViewer(host, opts) {
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const planes = clipPlanes();
-    const hits = ray.intersectObjects(pickables.concat(ctxPickables).filter(o => { let p = o; while (p) { if (!p.visible) return false; p = p.parent; } return true; }), false)
+    const visible = o => { let p = o; while (p) { if (!p.visible) return false; p = p.parent; } return true; };
+    const hits = ray.intersectObjects(pickables.concat(ctxPickables, terrainMesh && visible(terrainMesh) ? [terrainMesh] : []).filter(visible), false)
       .filter(h => planes.every(pl => pl.distanceToPoint(h.point) >= 0));
-    select(hits[0]?.object || null, hits[0]?.instanceId);
+    select(hits[0]?.object || null, hits[0]?.instanceId, hits[0]?.point);
   });
-  function select(obj, inst) {
+  // where the finger landed: a small pin, and its coordinates under the description (with a button to copy them)
+  const pinMat = new THREE.MeshBasicMaterial({ color: 0xd4572a, depthTest: false, transparent: true });
+  const pin = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), pinMat); pin.renderOrder = 22; pin.visible = false; scene.add(pin);
+  const pinStem = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1, 8).translate(0, 0.5, 0), pinMat); pinStem.renderOrder = 22; pin.add(pinStem);
+  const pinSize = () => { if (pin.visible) pin.scale.setScalar(Math.max(0.06, camera.position.distanceTo(controls.target) * (PHONE ? 0.006 : 0.004))); };
+  controls.addEventListener('change', pinSize);
+  function pointHtml(pt, terrain) {
+    const y = terrain ? groundAt(pt.x, pt.z) : pt.y, y0 = groundAt0(pt.x, pt.z);
+    const base = CONTEXT?.neighborhood?.meta?.georef?.egFloorAbsoluteM;
+    const rows = terrain ? dl([['x', f2(pt.x) + ' m'], ['z', f2(pt.z) + ' m'], ['Höhe', f2(y) + ' m'],
+      ['Bestand', Number.isFinite(y0) && Math.abs(y0 - y) > 0.005 ? f2(y0) + ' m' : null],
+      ['Auf-/Abtrag', Number.isFinite(y0) && Math.abs(y0 - y) > 0.005 ? (y > y0 ? '+' : '') + f2(y - y0) + ' m' : null],
+      ['Meereshöhe', Number.isFinite(base) ? (y + base).toFixed(1) + ' m ü. A.' : null]]) : `<p class="ptline">Angetippt: ${esc(pointText(pt.x, pt.z, y))}</p>`;
+    return rows + `<div class="ptrow"><button type="button" class="btn" data-copy="${esc(pointPlain(pt.x, pt.z, y))}">Koordinaten kopieren</button></div>`;
+  }
+  $('info').addEventListener('click', async e => {
+    const b = e.target.closest('[data-copy]'); if (!b) return;
+    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'Kopiert ✓'; }
+    catch { b.textContent = b.dataset.copy; }   // no clipboard: show the text so it can be copied by hand
+  });
+  function select(obj, inst, pt) {
     if (selected) { selected.material = selMat; selected = null; }
     const info = $('info');
+    pin.visible = !!(obj && pt); if (pin.visible) { pin.position.copy(pt); pinSize(); } kick(300);
     $('panel').classList.toggle('has-sel', !!obj); $('infoclose').hidden = !obj;
-    if (!obj) { info.innerHTML = '<span class="empty">Wand, Fenster oder Bauteil antippen, um Maße und ID zu sehen.</span>'; return; }
+    if (!obj) { info.innerHTML = '<span class="empty">Wand, Fenster, Bauteil oder Gelände antippen, um Maße, Koordinaten und Höhe zu sehen.</span>'; return; }
+    if (obj.userData.kind === 'terrain') { info.innerHTML = '<h3>Punkt im Gelände</h3>' + pointHtml(pt, true); return; }
     if (obj.isMesh && !obj.isInstancedMesh) { selected = obj; selMat = obj.material; obj.material = obj.material.clone(); obj.material.emissive = new THREE.Color(cssVar('--accent') || '#2d6a55'); obj.material.emissiveIntensity = 0.45; }
-    info.innerHTML = describe(obj.userData.items && inst != null ? { kind: obj.userData.kind, data: obj.userData.items[inst] } : obj.userData);
+    info.innerHTML = describe(obj.userData.items && inst != null ? { kind: obj.userData.kind, data: obj.userData.items[inst] } : obj.userData) + (pt ? pointHtml(pt, false) : '');
   }
   const f2 = v => (typeof v === 'number' ? v.toFixed(2) : v);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1823,7 +1852,8 @@ export async function mountViewer(host, opts) {
       const animating = !!anim; if (anim) anim(now);
       const moved = walk.active ? walkStep(now) : controls.update();
       if (!(animating || moved || now < renderUntil)) return;
-      updCompass(); cullTrees(); renderer.render(scene, camera); frameErrors = 0;
+      updCompass(); cullTrees(); if (grid?.group.visible) updateGridLabels(grid.labels, camera, controls.target, renderer.domElement.clientHeight);
+      renderer.render(scene, camera); frameErrors = 0;
     } catch (e) { console.error(e); if (++frameErrors > 30) fail('Beim Zeichnen ist ein Fehler aufgetreten.', e.message); }
   }
 
@@ -1854,6 +1884,7 @@ export async function mountViewer(host, opts) {
       gradingMeshes: () => pickables.filter(o => o.userData?.kind === 'gradewall' || o.userData?.kind === 'pool'),
       gradingHit: ndc => { const h = firstHit(ndc, pickables.filter(o => (o.userData?.kind === 'gradewall' || o.userData?.kind === 'pool') && shown(o))); return h ? h.object.userData.ref ?? h.object.userData.data : null; },
       setCutfill: on => { state.cutfill = on || cutfillBefore; $('t-cutfill')?.setAttribute('aria-pressed', String(state.cutfill)); applyVisibility(); },
+      grid: on => { if (on !== undefined) { state.grid = on; applyVisibility(); } return state.grid; },
       terrainHit: ndc => (terrainMesh ? firstHit(ndc, [terrainMesh])?.point ?? null : null),
       gardenHit: ndc => { const list = []; groups.garden.traverse(o => { if (o.isMesh) list.push(o); }); return firstHit(ndc, list)?.object.userData.data ?? null; },
       onEnter: () => {
