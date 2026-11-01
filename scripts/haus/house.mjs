@@ -15,7 +15,7 @@
 //   node scripts/haus/house.mjs render <model.json> --out shot.png
 //       [--context .haus/context.json] [--view persp|NW|NO|SO|SW|top|site]
 //       [--level all|DG|EG|KG] [--off roof,terrain,labels,furn,neighbors,…]
-//       [--on edges,contours,…] [--cut x|z:<metres>] [--panel] [--size 1400x900]
+//       [--on edges,contours,grid,…] [--cut x|z:<metres>] [--panel] [--size 1400x900]
 import { createClient } from '@supabase/supabase-js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'

@@ -11,6 +11,9 @@
 //   and the pool can be selected and changed the same way (outline, height,
 //   Böschung, slope ends). The terrain and the cut/fill volumes are rebuilt
 //   after each change; while dragging only the outline follows.
+// - Raster shows the 1 m grid with coordinates; tapping empty ground and
+//   dragging a corner show where you are (x, z, height), and a selected
+//   corner can be typed in as numbers.
 // - Rückgängig steps back; "Fertig" leaves the mode. Changes are a preview
 //   until they are saved as a version (like the JSON editor).
 //
@@ -18,6 +21,7 @@
 // { enter, exit, refresh, get active }.
 import * as THREE from 'three'
 import { SURFACES, LINES, OBJECTS, gardenInfo } from './garden.js'
+import { pointText } from './grid.js'
 
 const PLANTS = [
   { key: 'tree', label: 'Laubbaum', make: () => ({ type: 'tree', shape: 'round', height: 6, crown: 4.5 }) },
@@ -233,10 +237,20 @@ export function mountGardenEditor(o) {
     }
     const pts = g.outline || g.points, minPts = g.outline ? 3 : 2
     card.innerHTML = `<div class="ghead"><b>${esc(info.title)}</b>${meta ? `<span class="gmeta">${esc(meta[1])}</span>` : ''}<button type="button" class="sheetx" data-act="deselect" aria-label="Auswahl aufheben">×</button></div>
-      <div class="gfields">${fields}<label class="gfield"><span>Name</span><input type="text" maxlength="60" data-k="name" value="${esc(g.name)}" placeholder="optional"></label></div>
+      <div class="gfields">${vertexFields(g)}${fields}<label class="gfield"><span>Name</span><input type="text" maxlength="60" data-k="name" value="${esc(g.name)}" placeholder="optional"></label></div>
       <div class="grow">${pts && ed.vertex >= 0 && pts.length > minPts ? '<button type="button" class="btn" data-act="delpoint">Punkt löschen</button>' : ''}
         <button type="button" class="btn" data-act="copy">Kopie</button><button type="button" class="btn danger" data-act="delete">Löschen</button></div>`
     card.hidden = false
+  }
+
+  // the selected corner point as numbers (x, z), so it can be set exactly
+  function vertexFields(g) {
+    const pts = g.type === 'pool' ? null : g.outline || g.points
+    if (!pts || ed.vertex < 0 || !pts[ed.vertex]) return ''
+    const [x, z] = pts[ed.vertex]
+    return `<div class="gfield"><span>Punkt ${ed.vertex + 1}</span><div class="gxy">
+      <label>x <input type="number" inputmode="decimal" step="0.1" data-k="vx" value="${x}" aria-label="Punkt ${ed.vertex + 1}, x in m"></label>
+      <label>z <input type="number" inputmode="decimal" step="0.1" data-k="vz" value="${z}" aria-label="Punkt ${ed.vertex + 1}, z in m"></label></div></div>`
   }
 
   // terrain card: heights as numbers with ±5 cm buttons (exact values matter here), applied when changed
@@ -267,7 +281,7 @@ export function mountGardenEditor(o) {
     const v = o.cutfill(); if (v) notes.push(`Gelände gesamt: Abtrag ${fmt(v.cut, 1)} m³ · Auftrag ${fmt(v.fill, 1)} m³`)
     const pts = g.outline || g.points, minPts = g.outline ? 3 : 2
     card.innerHTML = `<div class="ghead"><b>${esc(g.name || GRADING_LABEL[g.type])}</b>${meta ? `<span class="gmeta">${esc(meta)}</span>` : ''}<button type="button" class="sheetx" data-act="deselect" aria-label="Auswahl aufheben">×</button></div>
-      <div class="gfields">${fields}<label class="gfield"><span>Name</span><input type="text" maxlength="80" data-k="name" value="${esc(g.name)}" placeholder="optional"></label></div>
+      <div class="gfields">${vertexFields(g)}${fields}<label class="gfield"><span>Name</span><input type="text" maxlength="80" data-k="name" value="${esc(g.name)}" placeholder="optional"></label></div>
       ${notes.map(n => `<div class="gnote">${esc(n)}</div>`).join('')}
       <div class="grow">${g.type !== 'pool' && pts && ed.vertex >= 0 && pts.length > minPts ? '<button type="button" class="btn" data-act="delpoint">Punkt löschen</button>' : ''}
         ${g.type !== 'pool' ? '<button type="button" class="btn" data-act="copy">Kopie</button>' : ''}<button type="button" class="btn danger" data-act="delete">Löschen</button></div>`
@@ -310,7 +324,7 @@ export function mountGardenEditor(o) {
     }
   })
   card.addEventListener('input', e => {
-    const k = e.target.dataset.k, g = ed.sel; if (!k || !g) return
+    const k = e.target.dataset.k, g = ed.sel; if (!k || !g || k === 'vx' || k === 'vz') return
     if (isGrading(g)) {   // terrain: show the slider value now, apply on release ("change")
       const out = e.target.parentElement.querySelector('output'), v = +e.target.value
       if (out) out.textContent = k === 'batter' ? (v <= 0.05 ? 'senkrecht' : `1 : ${fmt(v, 1)}`) : fmt(v) + ' m'
@@ -328,6 +342,12 @@ export function mountGardenEditor(o) {
   })
   card.addEventListener('change', e => {
     const k = e.target.dataset.k, g = ed.sel
+    if ((k === 'vx' || k === 'vz') && g) {
+      const pts = g.outline || g.points, n = parseFloat(String(e.target.value).replace(',', '.'))
+      if (!pts?.[ed.vertex] || !Number.isFinite(n)) { renderCard(); return }
+      touch(); const p = pts[ed.vertex].slice(); p[k === 'vx' ? 0 : 1] = r2(n); pts[ed.vertex] = p
+      changed(true); if (isGrading(g)) renderCard(); settle(); showPoint(p[0], p[1]); return
+    }
     if (k && k !== 'name' && isGrading(g)) { touch(); if (setGrading(g, k, e.target.value)) changed(true); else renderCard() }
     settle()
   })
@@ -365,6 +385,7 @@ export function mountGardenEditor(o) {
     o.setCutfill(isGrading(g))
     setHint(g ? selHint() + (more ? ' Nochmal tippen wählt, was darunter liegt.' : '') : defaultHint())
   }
+  const showPoint = (x, z) => setHint(pointText(x, z, o.ground(x, z)))
   const defaultHint = () => 'Tippe etwas im Garten oder im Gelände an, um es zu bearbeiten.'
   const selHint = () => ed.sel?.type === 'slope' ? 'Ziehen verschiebt. Die zwei Ringe legen Anfang und Ende des Gefälles fest.'
     : ed.sel?.type !== 'pool' && (ed.sel?.outline || ed.sel?.points) ? 'Ziehen verschiebt. Punkte ziehen ändert die Form, die kleinen Punkte fügen Ecken ein.' : 'Ziehen verschiebt.'
@@ -397,7 +418,7 @@ export function mountGardenEditor(o) {
       if (!d.moved) { touch(); d.moved = true }
       ed.lastChange = performance.now()
       const g = ed.sel, pts = g.outline || g.points
-      if (d.kind === 'vertex') { const [x, z] = snapPoint(p[0], p[1], g); pts[d.i] = [x, z] }
+      if (d.kind === 'vertex') { const [x, z] = snapPoint(p[0], p[1], g); pts[d.i] = [x, z]; showPoint(x, z) }
       else if (d.kind === 'from' || d.kind === 'to') { const [x, z] = snapPoint(p[0], p[1], g); g[d.kind] = [x, z, g[d.kind][2]] }
       else {
         const dx = snap(p[0] - d.g0[0]), dz = snap(p[1] - d.g0[1]), op = d.orig.outline || d.orig.points
@@ -414,6 +435,7 @@ export function mountGardenEditor(o) {
     ed.down = null
     if (d) { ed.drag = null; controls.enabled = true
       if (d.moved) { if (isGrading(ed.sel)) changed(true); else renderCard(); settle() } else if (d.kind === 'vertex') { drawOverlay(); renderCard() }
+      if (d.kind === 'vertex') { const q = (ed.sel?.outline || ed.sel?.points)?.[d.i]; if (q) showPoint(q[0], q[1]) }
       return }
     if (!tap) return
     if (ed.mode === 'place') {
@@ -424,12 +446,13 @@ export function mountGardenEditor(o) {
     }
     if (ed.mode === 'draw') {
       const p = groundPoint(e); if (!p) return
-      ed.pts.push(snapPoint(p[0], p[1])); drawOverlay(); renderCard(); return
+      const q = snapPoint(p[0], p[1]); ed.pts.push(q); drawOverlay(); renderCard(); showPoint(q[0], q[1]); return
     }
     if (ed.picker) return
     // tapping the same spot again steps down through what lies there (lawn → terrace → …)
     const c = candidatesAt(e), i = c.indexOf(ed.sel), next = c.length ? c[i >= 0 ? (i + 1) % c.length : 0] : null
     if (next !== ed.sel) selectItem(next, c.length > 1)
+    if (!next) { const p = groundPoint(e); if (p) showPoint(p[0], p[1]) }   // empty ground: where is this?
   }
   const offs = []
   const on = (t, type, fn, opt) => { t.addEventListener(type, fn, opt); offs.push(() => t.removeEventListener(type, fn, opt)) }
@@ -450,6 +473,8 @@ export function mountGardenEditor(o) {
     } else if (ed.camBack) o.fly(ed.camBack.pos, ed.camBack.tgt)
     else o.view('persp')
   })
+  const gridBtn = $('ggrid')
+  gridBtn.addEventListener('click', () => o.grid(!o.grid()))
   $('gdone').addEventListener('click', () => exit())
 
   function enter() {

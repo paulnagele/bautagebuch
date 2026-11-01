@@ -108,6 +108,8 @@ html.haus-full {
 .haus3d .info dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; }
 .haus3d .info dt { color: var(--h-muted); }
 .haus3d .info dd { margin: 0; font-family: var(--h-f-mono); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.haus3d .info .ptline { margin: 6px 0 0; font-family: var(--h-f-mono); font-size: 12px; color: var(--h-muted); }
+.haus3d .info .ptrow { margin-top: 8px; }
 .haus3d .info ul { margin: 6px 0 0; padding-left: 16px; font-family: var(--h-f-mono); font-size: 12px; }
 
 .haus3d details summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
@@ -258,6 +260,11 @@ html.haus-full {
 .haus3d .gnum { grid-column: 2 / 4; display: grid; grid-template-columns: 40px 1fr 40px; gap: 6px; }
 .haus3d .gnum .btn { padding: 6px 0; font-size: 17px; line-height: 1; }
 .haus3d .gfield .gnum input { grid-column: auto; font: inherit; font-size: 15px; font-family: var(--h-f-mono); text-align: center; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 6px; padding: 7px 4px; min-width: 0; }
+.haus3d .gbar [data-h="ggrid"] { padding: 4px 11px; display: inline-flex; align-items: center; }
+.haus3d .gbar [data-h="ggrid"][aria-pressed="true"] { background: var(--h-accent); border-color: var(--h-accent); color: var(--h-accent-ink); }
+.haus3d .gxy { grid-column: 2 / 4; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.haus3d .gxy label { display: flex; align-items: center; gap: 6px; color: var(--h-muted); }
+.haus3d .gfield .gxy input { flex: 1; width: 100%; font: inherit; font-size: 15px; font-family: var(--h-f-mono); text-align: center; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 6px; padding: 7px 4px; min-width: 0; }
 .haus3d .gnote { font-family: var(--h-f-mono); font-size: 12px; color: var(--h-muted); }
 .haus3d .grow { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .haus3d .grow .btn { padding: 9px 14px; }
