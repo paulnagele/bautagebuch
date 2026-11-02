@@ -260,8 +260,8 @@ html.haus-full {
 .haus3d .gnum { grid-column: 2 / 4; display: grid; grid-template-columns: 40px 1fr 40px; gap: 6px; }
 .haus3d .gnum .btn { padding: 6px 0; font-size: 17px; line-height: 1; }
 .haus3d .gfield .gnum input { grid-column: auto; font: inherit; font-size: 15px; font-family: var(--h-f-mono); text-align: center; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 6px; padding: 7px 4px; min-width: 0; }
-.haus3d .gbar [data-h="ggrid"] { padding: 4px 11px; display: inline-flex; align-items: center; }
-.haus3d .gbar [data-h="ggrid"][aria-pressed="true"] { background: var(--h-accent); border-color: var(--h-accent); color: var(--h-accent-ink); }
+.haus3d .gbar [data-h="ggrid"], .haus3d .gbar [data-h="gbrush"] { padding: 4px 11px; display: inline-flex; align-items: center; }
+.haus3d .gbar [data-h="ggrid"][aria-pressed="true"], .haus3d .gbar [data-h="gbrush"][aria-pressed="true"] { background: var(--h-accent); border-color: var(--h-accent); color: var(--h-accent-ink); }
 .haus3d .gxy { grid-column: 2 / 4; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .haus3d .gxy label { display: flex; align-items: center; gap: 6px; color: var(--h-muted); }
 .haus3d .gfield .gxy input { flex: 1; width: 100%; font: inherit; font-size: 15px; font-family: var(--h-f-mono); text-align: center; color: var(--h-ink); background: transparent; border: 1px solid var(--h-line); border-radius: 6px; padding: 7px 4px; min-width: 0; }
@@ -271,7 +271,8 @@ html.haus-full {
 @media (max-width: 700px) {
   .haus3d .gtool { left: 8px; right: 64px; transform: none; max-width: none; justify-items: start; }
   .haus3d .gbar { gap: 4px; padding: 4px; }
-  .haus3d .gbar .btn { padding: 8px 11px; }
+  .haus3d .gbar .btn { padding: 8px 9px; }
+  .haus3d .gbar [data-h="ggrid"], .haus3d .gbar [data-h="gbrush"], .haus3d .gbar [data-h="gundo"] { padding-left: 8px; padding-right: 8px; }
   .haus3d .gcard { bottom: 0; width: 100%; border-radius: 14px 14px 0 0; border-left: 0; border-right: 0; border-bottom: 0; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); max-height: 48%; }
   .haus3d .ghint { text-align: left; }
 }

@@ -3,6 +3,7 @@
 // model's metres: x along the house, z across, height 0 = EG floor. So a spot
 // can be read off the view, or named in a message ("x −18, z 4").
 import * as THREE from 'three'
+import { brushBounds } from './terrainBrush.js'
 
 const num = (v, d) => (v < -1e-9 ? '−' : '') + Math.abs(v).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d })
 // for the screen: "x −18,20 · z 4,50 · Höhe −1,10 m"
@@ -21,7 +22,8 @@ export function gridExtent(D) {
   const xs = [], zs = []
   const add = p => { if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) { xs.push(p[0]); zs.push(p[1]) } }
   for (const p of D.terrain?.cutout || []) add(p)
-  for (const g of [...(D.garden || []), ...(D.grading || [])]) { for (const p of g.outline || g.points || []) add(p); if (Number.isFinite(g.x)) add([g.x, g.z]) }
+  for (const g of [...(D.garden || []), ...(D.grading || [])]) { for (const p of g.outline || g.points || []) add(p); if (Number.isFinite(g.x)) add([g.x, g.z])
+    if (g.type === 'brush') { const b = brushBounds(g); if (b) { add([b[0], b[2]]); add([b[1], b[3]]) } } }
   if (!xs.length) { xs.push(-10, 10); zs.push(-10, 10) }
   const pad = 12, lo = v => Math.max(-60, Math.floor((v - pad) / 5) * 5), hi = v => Math.min(60, Math.ceil((v + pad) / 5) * 5)
   return [lo(Math.min(...xs)), hi(Math.max(...xs)), lo(Math.min(...zs)), hi(Math.max(...zs))]
