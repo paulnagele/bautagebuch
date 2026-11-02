@@ -19,6 +19,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { mountSharePanel } from './sharePanel.js'
 import { buildGarden, gardenInfo, gardenSummary } from './garden.js'
 import { mountGardenEditor } from './gardenEditor.js'
+import { brushFn, brushBounds } from './terrainBrush.js'
 import { buildFacade, wallSkin } from './facade.js'
 import { buildGrid, gridExtent, updateGridLabels, pointText, pointPlain } from './grid.js'
 
@@ -29,6 +30,7 @@ const VIEW_HTML = `
 <div class="gtool" data-h="gtool" hidden>
   <div class="gbar">
     <button type="button" class="btn primary" data-h="gadd" title="Pflanze, Objekt, Fläche oder Linie hinzufügen">+ Neu</button>
+    <button type="button" class="btn" data-h="gbrush" aria-pressed="false" aria-label="Gelände-Pinsel" title="Gelände mit dem Pinsel formen"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 2.5 9.2 10.8M10.6 12.2 7.8 9.4M7.8 9.4c-2-.4-3.6 1-3.8 3-.2 1.6-.8 2.6-2 3.2 2.6 1.4 6.4 1 7.6-1.2.6-1.2.6-2.2 1-3.2"/></svg></button>
     <button type="button" class="btn" data-h="gundo" disabled aria-label="Rückgängig" title="Rückgängig">↶</button>
     <button type="button" class="btn" data-h="gview">Von oben</button>
     <button type="button" class="btn" data-h="ggrid" aria-pressed="false" aria-label="Raster mit Koordinaten" title="Raster mit Koordinaten zeigen"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 2h16v16H2zM7.3 2v16M12.7 2v16M2 7.3h16M2 12.7h16"/></svg></button>
@@ -490,21 +492,24 @@ export async function mountViewer(host, opts) {
   function segCross(p1, p2, p3, p4) { const o = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
     const d1 = o(p3, p4, p1), d2 = o(p3, p4, p2), d3 = o(p1, p2, p3), d4 = o(p1, p2, p4); return d1 * d2 < 0 && d3 * d4 < 0; }
   function gradeFn(H0, grading) {
-    const areas = (grading || []).filter(g => (g.type === 'level' || g.type === 'slope' || g.type === 'pool') && g.outline?.length >= 3)
-      .map(g => g.type === 'pool' ? { ...g, type: 'level', height: g.top - g.depth, batter: 0.01 } : g);
-    if (!areas.length) return H0;
+    // in list order: level/slope areas (pools as a level area at their floor) and brush layers (Gelände-Pinsel: a height offset on top of what comes before)
+    const list = (grading || []).map(g => g.type === 'brush' ? g
+      : (g.type === 'level' || g.type === 'slope' || g.type === 'pool') && g.outline?.length >= 3 ? (g.type === 'pool' ? { ...g, type: 'level', height: g.top - g.depth, batter: 0.01 } : g) : null).filter(Boolean);
+    if (!list.length) return H0;
     const walls = (grading || []).filter(g => g.type === 'wall' && g.points?.length >= 2);
-    const items = areas.map(a => {
+    const items = list.map(a => {
+      if (a.type === 'brush') { const f = brushFn(a); return f ? { brush: f } : null; }
       const n = a.batter ?? 1.5, xs = a.outline.map(p => p[0]), zs = a.outline.map(p => p[1]), R = a.reach ?? 25;
       let h = () => a.height;
       if (a.type === 'slope') { const [x0, z0, y0] = a.from, [x1, z1, y1] = a.to, vx = x1 - x0, vz = z1 - z0, L2 = vx * vx + vz * vz || 1;
         h = (x, z) => y0 + (y1 - y0) * Math.max(0, Math.min(1, ((x - x0) * vx + (z - z0) * vz) / L2)); }
       return { a, n, h, bb: [Math.min(...xs) - R, Math.max(...xs) + R, Math.min(...zs) - R, Math.max(...zs) + R] };
-    });
+    }).filter(Boolean);
     const blocked = (x, z, qx, qz) => walls.some(w => w.points.some((p, i) => i > 0 && segCross([x, z], [qx, qz], w.points[i - 1], p)));
     return (x, z) => {
       let y = H0(x, z);
       for (const it of items) {
+        if (it.brush) { y += it.brush(x, z); continue; }
         if (x < it.bb[0] || x > it.bb[1] || z < it.bb[2] || z > it.bb[3]) continue;
         if (polyInside(it.a.outline, x, z)) { y = it.h(x, z); continue; }
         const [d, qx, qz] = polyNearest(it.a.outline, x, z), t = it.h(qx, qz);
@@ -514,6 +519,16 @@ export async function mountViewer(host, opts) {
       }
       return y;
     };
+  }
+  // [x0, x1, z0, z1] around all terrain edits (outlines, walls, brush layers), widened by pad; null without edits
+  function gradingBox(grading, pad) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    const add = (x, z) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; };
+    for (const g of grading || []) {
+      if (g.type === 'brush') { const b = brushBounds(g); if (b) { add(b[0], b[2]); add(b[1], b[3]); } }
+      else for (const p of g.outline || g.points || []) add(p[0], p[1]);
+    }
+    return x0 <= x1 ? [x0 - pad, x1 + pad, z0 - pad, z1 + pad] : null;
   }
   function terrainExtent(T, CT) { const G = CT || T; return [G.xs[0], G.xs[G.xs.length - 1], G.zs[0], G.zs[G.zs.length - 1]]; }
   const LANDUSE = { forest: '#55703f', shrub: '#6d8a50', wood: '#55703f', farmland: '#b3ad74', crop: '#b3ad74', meadow: '#98ae6f', grass: '#90ad67',
@@ -1089,11 +1104,13 @@ export async function mountViewer(host, opts) {
       const poly = T.cutout;
       const inside = (x, z) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, zi] = poly[i], [xj, zj] = poly[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
       const dist = (x, z) => { let d = Infinity; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [ax, az] = poly[j], [bx, bz] = poly[i]; const vx = bx - ax, vz = bz - az; const t = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / (vx * vx + vz * vz))); d = Math.min(d, Math.hypot(x - ax - t * vx, z - az - t * vz)); } return d; };
-      const axis = (a0, a1) => { const out = [], cuts = [...new Set([a0, -64, -16, 16, 64, a1].filter(v => v >= a0 && v <= a1))].sort((p, q) => p - q);
-        for (let i = 0; i + 1 < cuts.length; i++) { const m = Math.abs((cuts[i] + cuts[i + 1]) / 2), st = m < 16 ? (PHONE ? 0.5 : 0.25) : m < 64 ? 1 : (PHONE ? 8 : 4);
+      // fine mesh near the house and wherever the terrain is edited (so brush strokes and Böschungen show), coarser further out
+      const fineBox = gradingBox(D.grading, 4)?.map((v, i) => (i % 2 ? Math.ceil(v) : Math.floor(v)));
+      const axis = (a0, a1, lo, hi) => { const out = [], cuts = [...new Set([a0, -64, -16, 16, 64, a1, lo, hi].filter(v => Number.isFinite(v) && v >= a0 && v <= a1))].sort((p, q) => p - q);
+        for (let i = 0; i + 1 < cuts.length; i++) { const c = (cuts[i] + cuts[i + 1]) / 2, m = Math.abs(c), st = m < 16 || (c > lo && c < hi) ? (PHONE ? 0.5 : 0.25) : m < 64 ? 1 : (PHONE ? 8 : 4);
           for (let v = cuts[i]; v < cuts[i + 1] - 1e-9; v += st) out.push(+v.toFixed(4)); }
         out.push(a1); return out; };
-      const xs = axis(ext[0], ext[1]), zs = axis(ext[2], ext[3]), nx = xs.length, nz = zs.length;
+      const xs = axis(ext[0], ext[1], fineBox?.[0], fineBox?.[1]), zs = axis(ext[2], ext[3], fineBox?.[2], fineBox?.[3]), nx = xs.length, nz = zs.length;
       const pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
       for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
         const x = xs[i], z = zs[j], k = j * nx + i;
@@ -1111,15 +1128,14 @@ export async function mountViewer(host, opts) {
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
       geo.setIndex(idx); geo.computeVertexNormals();
       const m = new THREE.Mesh(geo, mats.terrain); m.receiveShadow = true; m.userData = { kind: 'terrain', data: { note: T.note } }; g.add(m);
+      m.userData.xs = xs; m.userData.zs = zs;
       terrainMesh = m; contourGroup = null; grid = null;
 
       // cut/fill: overlay on the terrain (red = Abtrag, blue = Auftrag) and volumes on a 0.25 m grid
       cutfillGroup = null; cutfillVol = null;
-      const G = (D.grading || []).filter(e => e.outline || e.points);
-      if (G.length) {
-        const pts = G.flatMap(e => e.outline || e.points);
-        const R = 12;
-        const bx0 = Math.min(...pts.map(p => p[0])) - R, bx1 = Math.max(...pts.map(p => p[0])) + R, bz0 = Math.min(...pts.map(p => p[1])) - R, bz1 = Math.max(...pts.map(p => p[1])) + R;
+      const cb = gradingBox(D.grading, 12);
+      if (cb) {
+        const [bx0, bx1, bz0, bz1] = cb;
         const st = 0.25; let cut = 0, fill = 0;
         const cx = [], cz = []; for (let x = bx0; x <= bx1 + 1e-9; x += st) cx.push(x); for (let z = bz0; z <= bz1 + 1e-9; z += st) cz.push(z);
         const diff = new Float32Array(cx.length * cz.length);
@@ -1885,6 +1901,24 @@ export async function mountViewer(host, opts) {
       gradingHit: ndc => { const h = firstHit(ndc, pickables.filter(o => (o.userData?.kind === 'gradewall' || o.userData?.kind === 'pool') && shown(o))); return h ? h.object.userData.ref ?? h.object.userData.data : null; },
       setCutfill: on => { state.cutfill = on || cutfillBefore; $('t-cutfill')?.setAttribute('aria-pressed', String(state.cutfill)); applyVisibility(); },
       grid: on => { if (on !== undefined) { state.grid = on; applyVisibility(); } return state.grid; },
+      // a brush stroke changed the ground in [x0, x1] × [z0, z1]: move those terrain points now (overlays catch up with rebuildAll)
+      updateTerrain: (x0, x1, z0, z1) => {
+        if (!terrainMesh) return;
+        groundAt = gradeFn(groundAt0, DATA.grading);
+        const { xs, zs } = terrainMesh.userData, nx = xs.length, nz = zs.length, geo = terrainMesh.geometry, P = geo.attributes.position.array, N = geo.attributes.normal.array;
+        const lb = (a, v) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; } return lo; };
+        const i0 = Math.max(0, lb(xs, x0) - 1), i1 = Math.min(nx - 1, lb(xs, x1)), j0 = Math.max(0, lb(zs, z0) - 1), j1 = Math.min(nz - 1, lb(zs, z1));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) P[(j * nx + i) * 3 + 1] = groundAt(xs[i], zs[j]);
+        const y = (i, j) => P[(j * nx + i) * 3 + 1];
+        for (let j = Math.max(0, j0 - 1); j <= Math.min(nz - 1, j1 + 1); j++) for (let i = Math.max(0, i0 - 1); i <= Math.min(nx - 1, i1 + 1); i++) {
+          const l = Math.max(0, i - 1), r = Math.min(nx - 1, i + 1), d = Math.max(0, j - 1), u = Math.min(nz - 1, j + 1);
+          const gx = (y(r, j) - y(l, j)) / (xs[r] - xs[l]), gz = (y(i, u) - y(i, d)) / (zs[u] - zs[d]), L = Math.hypot(gx, 1, gz), k = (j * nx + i) * 3;
+          N[k] = -gx / L; N[k + 1] = 1 / L; N[k + 2] = -gz / L;
+        }
+        geo.attributes.position.needsUpdate = true; geo.attributes.normal.needsUpdate = true;
+        for (const grp of [cutfillGroup, grid?.group, contourGroup]) if (grp) grp.visible = false;
+        kick(300);
+      },
       terrainHit: ndc => (terrainMesh ? firstHit(ndc, [terrainMesh])?.point ?? null : null),
       gardenHit: ndc => { const list = []; groups.garden.traverse(o => { if (o.isMesh) list.push(o); }); return firstHit(ndc, list)?.object.userData.data ?? null; },
       onEnter: () => {
