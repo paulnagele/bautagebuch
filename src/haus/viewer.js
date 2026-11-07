@@ -707,6 +707,52 @@ export async function mountViewer(host, opts) {
       shutter: mat(0xffffff, { map: louvreTexture(M.shutter) }), terrain: CONTEXT ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: terrainTexture(), roughness: 1, side: THREE.DoubleSide }) : mat(M.terrain, { side: THREE.FrontSide }), chimney: mat(M.chimney),
       glassRoof: new THREE.MeshStandardMaterial({ color: 0x3c4c58, roughness: 0.2, metalness: 0.2 }),
     };
+    mats.door = mat(0xf4f2ee, { roughness: 0.5 });
+    const doorArcMat = new THREE.LineBasicMaterial({ color: 0x6b6f6a, transparent: true, opacity: 0.7 });
+    mats.steel = new THREE.MeshStandardMaterial({ color: 0xc9ccce, roughness: 0.25, metalness: 0.9 });
+    // door leaf in an opening, drawn in the wall's local frame (x along the wall, z across, wall centred on z = 0).
+    // o.leaf: 'hinged' (o.hinge 'start'|'end' = side of the hinges along the wall, o.swing 1|-1 = wall side it opens to,
+    // o.open = opening angle in degrees, default 90) or 'sliding' (o.slide 'start'|'end' = where the open leaf is parked,
+    // o.side 1|-1 = wall face it runs on, o.open = 0..1 how far it is open, default 1). Lining and casings in both cases.
+    const addDoorLeaf = (local, o, p, t, tag) => {
+      const wd = p.u1 - p.u0, ht = p.h1 - p.h0, cu = (p.u0 + p.u1) / 2, cs = 0.06, ct = 0.015;
+      const add = (m, x, y, z) => { m.position.set(x, y, z); local.add(tag(m)); return m; };
+      add(box(wd, 0.02, t + 0.002, mats.door), cu, p.h1 - 0.01, 0);                       // lining (Zarge)
+      for (const u of [p.u0 + 0.01, p.u1 - 0.01]) add(box(0.02, ht, t + 0.002, mats.door), u, p.h0 + ht / 2, 0);
+      for (const s of [-1, 1]) {                                                            // casings on both faces
+        const z = s * (t / 2 + ct / 2);
+        add(box(wd + 2 * cs, cs, ct, mats.door), cu, p.h1 + cs / 2, z);
+        add(box(cs, ht + cs, ct, mats.door), p.u0 - cs / 2, p.h0 + (ht + cs) / 2, z);
+        add(box(cs, ht + cs, ct, mats.door), p.u1 + cs / 2, p.h0 + (ht + cs) / 2, z);
+      }
+      const lt = 0.04;
+      if (o.leaf === 'hinged') {
+        const sw = o.swing === -1 ? -1 : 1, atEnd = o.hinge === 'end', a = THREE.MathUtils.degToRad(o.open ?? 90);
+        const lw = wd - 0.04, lh = ht - 0.02;
+        const piv = new THREE.Group(); piv.position.set(atEnd ? p.u1 - 0.02 : p.u0 + 0.02, 0, sw * (t / 2 - lt / 2)); local.add(piv);
+        piv.rotation.y = atEnd ? sw * a : -sw * a;
+        const dir = atEnd ? -1 : 1;
+        const leaf = box(lw, lh, lt, mats.door); leaf.position.set(dir * lw / 2, p.h0 + lh / 2, 0); piv.add(tag(leaf));
+        const arc = [];                                                                     // swing arc on the floor, as in a floor plan
+        for (let i = 0; i <= 16; i++) { const b = a * i / 16; arc.push(new THREE.Vector3(dir * lw * Math.cos(b), p.h0 + 0.004, sw * lw * Math.sin(b))); }
+        const arcLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arc), doorArcMat); arcLine.position.copy(piv.position); local.add(arcLine);
+        for (const s of [-1, 1]) {                                                          // lever handles on both faces
+          const hx = dir * (lw - 0.07), z = s * (lt / 2 + 0.03);
+          const rose = box(0.05, 0.05, 0.01, mats.steel); rose.position.set(hx, p.h0 + 1.05, s * (lt / 2 + 0.005)); piv.add(tag(rose));
+          const neck = box(0.02, 0.02, 0.05, mats.steel); neck.position.set(hx, p.h0 + 1.05, s * (lt / 2 + 0.025)); piv.add(tag(neck));
+          const lever = box(0.13, 0.02, 0.02, mats.steel); lever.position.set(hx - dir * 0.055, p.h0 + 1.05, z); piv.add(tag(lever));
+        }
+      } else {
+        const sd = o.side === -1 ? -1 : 1, toEnd = o.slide === 'end', f = Math.min(1, Math.max(0, o.open ?? 1));
+        const lw = wd + 0.08, lh = ht + 0.03, z = sd * (t / 2 + ct + 0.03);
+        const closedU = cu, openU = toEnd ? p.u1 + lw / 2 - 0.06 : p.u0 - lw / 2 + 0.06, u = closedU + (openU - closedU) * f;
+        add(box(lw, lh, lt, mats.door), u, p.h0 + lh / 2, z);
+        const gu = toEnd ? u - lw / 2 + 0.06 : u + lw / 2 - 0.06;                            // grip at the leading edge
+        add(box(0.025, 0.3, 0.012, mats.steel), gu, p.h0 + 1.05, z + sd * (lt / 2 + 0.006));
+        const r0 = Math.min(p.u0, openU - lw / 2) - 0.02, r1 = Math.max(p.u1, openU + lw / 2) + 0.02;   // top rail over opening and park position
+        add(box(r1 - r0, 0.05, 0.05, mats.steel), (r0 + r1) / 2, p.h0 + lh + 0.03, sd * (t / 2 + ct + 0.03));
+      }
+    };
     edgeMat = new THREE.LineBasicMaterial({ color: cssVar('--edge') || '#27302b', transparent: true, opacity: 0.35 });
     const addEdges = (mesh, parent, angle = 28) => {
       const l = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, angle), edgeMat);
@@ -774,6 +820,7 @@ export async function mountViewer(host, opts) {
       for (const p of ops) {
         const o = p.o, wd = p.u1 - p.u0, ht = p.h1 - p.h0, cu = (p.u0 + p.u1) / 2, ch = (p.h0 + p.h1) / 2;
         const tag = (m) => { m.userData = { kind: 'opening', data: o, wall: w }; pickables.push(m); return m; };
+        if (o.type === 'door' && (o.leaf === 'hinged' || o.leaf === 'sliding')) { addDoorLeaf(local, o, p, t, tag); continue; }
         if (o.type === 'window' || o.style === 'glazed') {
           if (!ext) continue;
           const zf = out * (t / 2 - 0.12), f = 0.06, fd = 0.07;
@@ -1496,7 +1543,7 @@ export async function mountViewer(host, opts) {
       }
       case 'opening': return `<h3>${d.type === 'door' ? 'Tür' : 'Fenster'} ${esc(d.label ?? '')}</h3>` + dl([
         ['In Wand', u.wall.id], ['Breite', f2(d.width) + ' m'], ['Höhe', f2(d.height) + ' m'], ['Brüstung', f2(d.sill) + ' m'],
-        ['Position', f2(d.at) + ' m ab Wandanfang'], ['Unterteil fix', d.fixedLower ? f2(d.fixedLower) + ' m' : null], ['Läden', d.shutters ? 'ja' : null]]) + (d.note ? `<p class="note">${esc(d.note)}</p>` : '');
+        ['Position', f2(d.at) + ' m ab Wandanfang'], ['Unterteil fix', d.fixedLower ? f2(d.fixedLower) + ' m' : null], ['Läden', d.shutters ? 'ja' : null], ['Türblatt', d.leaf === 'sliding' ? 'Schiebetür' : d.leaf === 'hinged' ? 'Drehtür' : null]]) + (d.note ? `<p class="note">${esc(d.note)}</p>` : '');
       case 'facade': return `<h3>Fassadengestaltung</h3>` + dl([['Stil', d.name || ''], ['Faschen', d.surrounds ? 'ja' : 'nein'], ['Gesimsbänder', String(d.bands?.length || 0)], ['Eckquader', d.quoins ? 'ja' : 'nein'], ['Sockel', d.socle === 'stone' ? 'Naturstein' : 'Putz'], ['Dach', d.roofTiles === 'coppi' ? 'Mönch-Nonne (Coppi)' : 'Ziegel']]);
       case 'insulation': return `<h3>${esc(d.name || 'Fassadendämmung')}</h3>` + dl([['Geschoss', d.level], ['Stärke', f2(d.thickness) + ' m'], ['Aufbau', d.note || '']]);
       case 'slab': return `<h3>${esc(d.name)}</h3>` + dl([['ID', d.id], ['OK', f2(d.top)], ['Stärke', f2(d.thickness) + ' m']]);
