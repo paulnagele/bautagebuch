@@ -16,6 +16,7 @@ import {
   setCurrentVersion,
 } from '../haus/houseStore.js'
 import { mountViewer, showFailure } from '../haus/viewer.js'
+import { takeFullStart } from '../startLink.js'
 
 const store = {
   load: loadModel,
@@ -109,7 +110,7 @@ function HouseViewer({ view }) {
       }
       setLite(true)
     }
-    mountViewer(host, { ...view, store, shares, lite, onLost })
+    mountViewer(host, { ...view, store, shares, lite, onLost, full: takeFullStart() })
       .then((done) => {
         if (left) done?.()
         else dispose = done
