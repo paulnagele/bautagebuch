@@ -225,6 +225,7 @@ export async function mountViewer(host, opts) {
     document.documentElement.classList.toggle('haus-full', full)
   }
   $('fullbtn').addEventListener('click', () => setFull(!host.classList.contains('full')))
+  if (opts.full) setFull(true)   // opened by a "vollbild" link (src/startLink.js)
   function dispose() {
     if (disposed) return
     disposed = true

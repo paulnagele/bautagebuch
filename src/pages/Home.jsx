@@ -11,6 +11,7 @@ import Contacts from '../tabs/Contacts.jsx'
 import InstallHint from '../components/InstallHint.jsx'
 import UpdateHint from '../components/UpdateHint.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
+import { startTab } from '../startLink.js'
 
 // Finanzen, Zeitplan, Haus, Dokumente and Heizwärme are loaded when first opened, so
 // the app starts with less to download.
@@ -54,8 +55,9 @@ const TABS = [
 ]
 
 function Home({ user, onLogout }) {
-  // The app always opens on the start page.
-  const [activeTab, setActiveTab] = useState(TABS[0].id)
+  // The app opens on the start page, unless a link asks for a tab
+  // (e.g. ?tab=haus&vollbild, see startLink.js).
+  const [activeTab, setActiveTab] = useState(() => startTab(TABS) ?? TABS[0].id)
   const [focusEntryId, setFocusEntryId] = useState(null)
   const [focusContactId, setFocusContactId] = useState(null)
   // Which way the last swipe went, so the new tab slides in from that side.
