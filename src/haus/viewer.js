@@ -805,7 +805,8 @@ export async function mountViewer(host, opts) {
       const geo = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false, curveSegments: 1 });
       geo.translate(0, 0, -t / 2);
       const ext = w.kind === 'exterior';
-      const mesh = new THREE.Mesh(geo, ext ? (w.level === 'KG' ? mats.plasterKG : mats.plaster) : mats.interior);
+      // optional w.material: e.g. 'woodBoards' for a timber shed, 'wood' for plain timber
+      const mesh = new THREE.Mesh(geo, mats[w.material] || (ext ? (w.level === 'KG' ? mats.plasterKG : mats.plaster) : mats.interior));
       mesh.position.set(ax, 0, az); mesh.rotation.y = Math.atan2(-dz, dx);
       mesh.castShadow = mesh.receiveShadow = true;
       mesh.userData = { kind: 'wall', data: w };
