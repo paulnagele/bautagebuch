@@ -1350,6 +1350,15 @@ export async function mountViewer(host, opts) {
             break; }
           case 'wardrobe': case 'cabinet': case 'sideboard': case 'nightstand': {
             const h = H ?? { wardrobe: 2.2, cabinet: 2.2, sideboard: 0.55, nightstand: 0.5 }[f.type];
+            if (f.glass) {   // glass front: open carcass with shelves behind a glass pane on the front (+z local)
+              const t = 0.02, c = f.type === 'wardrobe' || f.type === 'cabinet' ? fm.front : fm.oak;
+              add(W, h, t, c, 0, h / 2, -Dp / 2 + t / 2);
+              for (const sx of [-1, 1]) add(t, h, Dp - 0.02, c, sx * (W / 2 - t / 2), h / 2, -0.01);
+              const n = Math.max(1, Math.round(h / 0.35)); for (let i = 0; i <= n; i++) add(W - 2 * t, t, Dp - 0.04, c, 0, Math.min(h - t / 2, t / 2 + i * (h - t) / n), -0.02);
+              add(W - 0.01, h - 0.01, 0.006, fm.glass, 0, h / 2, Dp / 2 - 0.01);
+              const m = Math.max(1, Math.round(W / 0.5)); for (let i = 1; i < m; i++) add(0.02, h, 0.02, c, -W / 2 + i * W / m, h / 2, Dp / 2 - 0.01);
+              break;
+            }
             add(W, h, Dp - 0.02, f.type === 'wardrobe' || f.type === 'cabinet' ? fm.front : fm.oak, 0, h / 2, -0.01);
             const n = Math.max(1, Math.round(W / 0.5)); for (let i = 1; i < n; i++) add(0.008, h - 0.06, 0.02, fm.dark, -W / 2 + i * W / n, h / 2, Dp / 2 - 0.01);
             break; }
