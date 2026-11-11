@@ -93,6 +93,8 @@ export function buildLights(D, levels, { roomFill = true } = {}) {
     groups[l.level].add(g)
     if (l.room && cx != null) {
       const k = l.level + '|' + l.room, r = roomLights[k] ??= { level: l.level, x: 0, z: 0, n: 0, p: 0, y: ceil - 0.35 }
+      // a spot with its own height marks a lower ceiling (e.g. the carport roof), so the fill light goes below it
+      if (l.type === 'spot' && l.y != null) r.y = Math.min(r.y, cy - 0.35)
       r.x += cx; r.z += cz; r.n++; r.p += power
     }
   }
