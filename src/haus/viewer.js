@@ -932,11 +932,14 @@ export async function mountViewer(host, opts) {
     for (const st of D.stairs) {
       const g = groups[st.level];
       const sm = mats[st.material] || mats.stone;   // st.material: e.g. "wood" for a timber stair
+      const tm = st.tread ? mats[st.tread] || mats.wood : null;   // st.tread: material of a 4 cm tread board on each step and landing (e.g. "wood")
+      const addTread = (w, d, x, top, z) => { if (!tm) return; const t = box(w, 0.04, d, tm); t.position.set(x, top - 0.02, z); t.userData = { kind: 'stair', data: st }; g.add(t); pickables.push(t); };
       const rise = (st.to - st.from) / st.steps;
       const addStep = (x0, x1, z0, z1, top) => {
         const h = Math.abs(rise) + 0.06;
         const m = box(x1 - x0, h, Math.abs(z1 - z0), sm);
         m.position.set((x0 + x1) / 2, top - h / 2, (z0 + z1) / 2); m.userData = { kind: 'stair', data: st }; g.add(m); pickables.push(m);
+        addTread(x1 - x0, Math.abs(z1 - z0) + 0.02, (x0 + x1) / 2, top + 0.002, (z0 + z1) / 2);
       };
       if (st.type === 'spiral') {
         // spiral stair: steps = risers from 'from' (top) to 'to'; steps-1 wedge treads, first tread centred on startAngle (deg, x -> z), stepAngle per tread
@@ -972,6 +975,7 @@ export async function mountViewer(host, opts) {
         for (let i = 1; i < m; i++) { const za = runStart + run * (i - 1), zb = za + run; addStep(halves[0][0], halves[0][1], Math.min(za, zb), Math.max(za, zb), st.from + rise * i); }
         const lh = st.from + rise * m;
         const land = box(x1 - x0, 0.2, ld, sm); land.position.set((x0 + x1) / 2, lh - 0.1, (lz0 + lz1) / 2); land.userData = { kind: 'stair', data: st }; g.add(land); pickables.push(land);
+        addTread(x1 - x0, ld, (x0 + x1) / 2, lh + 0.002, (lz0 + lz1) / 2);
         for (let i = 1; i < m; i++) { const za = runEnd - run * (i - 1), zb = za - run; addStep(halves[1][0], halves[1][1], Math.min(za, zb), Math.max(za, zb), lh + rise * i); }
       } else if (st.startAt === '+x' || st.startAt === '-x') {
         const [x0, x1] = st.x, [z0, z1] = st.z, n = st.steps;
@@ -1350,6 +1354,15 @@ export async function mountViewer(host, opts) {
             break; }
           case 'wardrobe': case 'cabinet': case 'sideboard': case 'nightstand': {
             const h = H ?? { wardrobe: 2.2, cabinet: 2.2, sideboard: 0.55, nightstand: 0.5 }[f.type];
+            if (f.glass) {   // glass front: open carcass with shelves behind a glass pane on the front (+z local)
+              const t = 0.02, c = f.type === 'wardrobe' || f.type === 'cabinet' ? fm.front : fm.oak;
+              add(W, h, t, c, 0, h / 2, -Dp / 2 + t / 2);
+              for (const sx of [-1, 1]) add(t, h, Dp - 0.02, c, sx * (W / 2 - t / 2), h / 2, -0.01);
+              const n = Math.max(1, Math.round(h / 0.35)); for (let i = 0; i <= n; i++) add(W - 2 * t, t, Dp - 0.04, c, 0, Math.min(h - t / 2, t / 2 + i * (h - t) / n), -0.02);
+              add(W - 0.01, h - 0.01, 0.006, fm.glass, 0, h / 2, Dp / 2 - 0.01);
+              const m = Math.max(1, Math.round(W / 0.5)); for (let i = 1; i < m; i++) add(0.02, h, 0.02, c, -W / 2 + i * W / m, h / 2, Dp / 2 - 0.01);
+              break;
+            }
             add(W, h, Dp - 0.02, f.type === 'wardrobe' || f.type === 'cabinet' ? fm.front : fm.oak, 0, h / 2, -0.01);
             const n = Math.max(1, Math.round(W / 0.5)); for (let i = 1; i < n; i++) add(0.008, h - 0.06, 0.02, fm.dark, -W / 2 + i * W / n, h / 2, Dp / 2 - 0.01);
             break; }
