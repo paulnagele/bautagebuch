@@ -1317,8 +1317,13 @@ export async function mountViewer(host, opts) {
             add(bw * 0.7, h * 0.38, 0.01, fire, 0, 0.3 + h * 0.19, bd / 2 + 0.005);
             if (f.flue) cyl(0.075, f.flue - h, steel, 0, h + (f.flue - h) / 2, -0.03);
             break; }
-          case 'bench': {   // bench seat with backrest on the back (-z local) side; back: false leaves it out
-            add(W, 0.4, Dp, fm.oak, 0, 0.2, 0); add(W - 0.02, 0.06, Dp - 0.08, fm.fabric, 0, 0.43, 0.04);
+          case 'bench': {   // bench seat with backrest on the back (-z local) side; back: false leaves it out, open: true = seat on legs, open below
+            if (f.open) {
+              add(W, 0.05, Dp, fm.oak, 0, 0.375, 0);
+              const lx = W / 2 - 0.05, lz = Dp / 2 - 0.05, legs = Math.max(2, Math.ceil(W / 1.2) + 1);
+              for (let i = 0; i < legs; i++) { const x = -lx + (2 * lx * i) / (legs - 1); add(0.05, 0.35, 0.05, fm.oak, x, 0.175, -lz); add(0.05, 0.35, 0.05, fm.oak, x, 0.175, lz); }
+            } else add(W, 0.4, Dp, fm.oak, 0, 0.2, 0);
+            add(W - 0.02, 0.06, Dp - 0.08, fm.fabric, 0, 0.43, 0.04);
             if (f.back !== false) add(W, 0.5, 0.08, fm.oak, 0, 0.65, -Dp / 2 + 0.04); break; }
           case 'counter': case 'island': {
             const h = H ?? 0.9, oh = f.overhang ?? 0, cd = Dp - oh, cz = oh / 2;   // overhang: open bar top on the back (local -z) side
