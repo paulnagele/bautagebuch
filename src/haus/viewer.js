@@ -1084,7 +1084,7 @@ export async function mountViewer(host, opts) {
     }
 
     // railings (rl.style: 'glass' = frameless glass with a slim steel handrail, 'cable' = steel posts with horizontal cables
-    // and a wooden handrail, default = wooden balusters)
+    // and a wooden handrail, 'handrail' = wooden handrail only, default = wooden balusters)
     const steel = new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.45, metalness: 0.6 });
     const railGlass = new THREE.MeshStandardMaterial({ color: 0xcfe0e4, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
     for (const rl of D.railings) {
@@ -1099,6 +1099,7 @@ export async function mountViewer(host, opts) {
           const tagRail = (m) => { m.userData = { kind: 'railing', data: rl }; pickables.push(m); return m; };
           const S = Math.hypot(L, dy), tilt = Math.atan2(dy, L);
           const top = tagRail(box(S + 0.06, 0.06, 0.1, mats.wood)); top.position.set(L / 2, dy / 2 + rl.height - 0.03, 0); top.rotation.z = tilt; seg.add(top);
+          if (rl.style === 'handrail') continue;
           const bot = tagRail(box(S, 0.05, 0.06, mats.wood)); bot.position.set(L / 2, dy / 2 + 0.1, 0); bot.rotation.z = tilt; seg.add(bot);
           const n = Math.max(1, Math.floor(L / 0.11)), h = rl.height - 0.12;
           const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(0.075, h, 0.022), mats.wood, n), mtx = new THREE.Matrix4();
@@ -1120,6 +1121,7 @@ export async function mountViewer(host, opts) {
           continue;
         }
         const top = box(L + 0.06, 0.06, 0.1, mats.wood); top.position.set(L / 2, rl.height - 0.03, 0); seg.add(top);
+        if (rl.style === 'handrail') { top.userData = { kind: 'railing', data: rl }; pickables.push(top); continue; }
         const bot = box(L, 0.05, 0.06, mats.wood); bot.position.set(L / 2, 0.1, 0); seg.add(bot);
         const n = Math.max(1, Math.floor(L / 0.11));
         const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(0.075, rl.height - 0.12, 0.022), mats.wood, n);
