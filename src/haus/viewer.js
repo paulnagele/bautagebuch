@@ -18,6 +18,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { mountSharePanel } from './sharePanel.js'
 import { buildGarden, gardenInfo, gardenSummary } from './garden.js'
+import { buildLights, LIGHT_TYPES } from './lights.js'
 import { mountGardenEditor } from './gardenEditor.js'
 import { brushFn, brushBounds } from './terrainBrush.js'
 import { buildFacade, wallSkin } from './facade.js'
@@ -75,6 +76,8 @@ const VIEW_HTML = `
           <button type="button" class="chip" data-h="t-labels" aria-pressed="true">Raumnamen</button>
           <button type="button" class="chip" data-h="t-edges" aria-pressed="false">Kanten</button>
           <button type="button" class="chip" data-h="t-furn" aria-pressed="true">Möbel</button>
+          <button type="button" class="chip" data-h="t-lights" aria-pressed="true" hidden>Leuchten</button>
+          <button type="button" class="chip" data-h="t-evening" aria-pressed="false" hidden>Abend</button>
           <button type="button" class="chip" data-h="t-garden" aria-pressed="true" hidden>Garten</button>
           <button type="button" class="chip" data-h="t-cutfill" aria-pressed="false" hidden>Auf-/Abtrag</button>
           <button type="button" class="chip" data-h="t-contours" aria-pressed="false">Höhenlinien</button>
@@ -291,7 +294,7 @@ export async function mountViewer(host, opts) {
   controls.minDistance = 3;
   controls.maxDistance = 700;
 
-  scene.add(new THREE.HemisphereLight(0xf4f7ff, 0x6b6250, 1.15));
+  const hemi = new THREE.HemisphereLight(0xf4f7ff, 0x6b6250, 1.15); scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff3e0, 2.1);
   sun.castShadow = true;
   sun.shadow.mapSize.set(PHONE ? 1024 : 2048, PHONE ? 1024 : 2048);
@@ -303,11 +306,19 @@ export async function mountViewer(host, opts) {
   function cssVar(n) { return getComputedStyle(host).getPropertyValue(n.replace(/^--/, '--h-')).trim(); }
   function applyTheme() {
     const bg = new THREE.Color(cssVar('--scene') || '#e2e6e0');
+    if (eveningOn) bg.lerp(new THREE.Color(0x0d1420), 0.97);
     scene.background = bg;
     scene.fog = new THREE.Fog(bg, 220, 950);
     if (edgeMat) edgeMat.color.set(cssVar('--edge') || '#27302b');
   }
-  let edgeMat = null;
+  let edgeMat = null, eveningOn = false;
+  // "Abend": dim the daylight and switch the modelled light fittings on
+  function applyEvening() {
+    const on = Boolean(state.evening && lightSet && state.lights);
+    lightSet?.setEvening(on);
+    if (on === eveningOn) return;
+    eveningOn = on; hemi.intensity = on ? 0.12 : 1.15; sun.intensity = on ? 0.05 : 2.1; applyTheme();
+  }
   on(matchMedia('(prefers-color-scheme: dark)'), 'change', applyTheme);
 
   // ---------- textures ----------
@@ -675,7 +686,7 @@ export async function mountViewer(host, opts) {
 
   // ---------- build ----------
   let terrainMesh = null, contourGroup = null, grid = null;
-  let root = null, groups = {}, labelSprites = [], pickables = [], edgeLines = []; let furnGroups = []; let cutfillGroup = null, cutfillVol = null;
+  let root = null, groups = {}, labelSprites = [], pickables = [], edgeLines = []; let furnGroups = []; let lightGroups = [], lightSet = null; let cutfillGroup = null, cutfillVol = null;
   const FACADE = { NO: [1, 0], SW: [-1, 0], SO: [0, 1], NW: [0, -1] };
 
   // outdoor design (D.garden, see garden.js) on the graded terrain; rebuilt on its own while "Gestalten" edits it
@@ -695,7 +706,7 @@ export async function mountViewer(host, opts) {
       root.traverse(o => { o.geometry?.dispose?.(); if (o.material) [].concat(o.material).forEach(m => { if (!m.map?.userData?.keep) m.map?.dispose?.(); m.dispose?.(); }); });
     }
     root = new THREE.Group(); scene.add(root);
-    groups = {}; labelSprites = []; pickables = []; edgeLines = []; furnGroups = [];
+    groups = {}; labelSprites = []; pickables = []; edgeLines = []; furnGroups = []; lightGroups = []; lightSet = null;
     for (const id of ['KG', 'EG', 'DG', 'roof', 'terrain', 'ceiling', 'garden']) { groups[id] = new THREE.Group(); groups[id].name = id; root.add(groups[id]); }
     const M = D.materials;
     const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, side: THREE.DoubleSide, ...extra });
@@ -1400,6 +1411,13 @@ export async function mountViewer(host, opts) {
     { const cb = $('t-cutfill'), cn = $('cutfillnote'); if (cb) cb.hidden = !cutfillGroup;
       if (cn) { cn.hidden = !cutfillVol; if (cutfillVol) cn.textContent = `Geländeänderung: Abtrag ${cutfillVol.cut.toFixed(1)} m³ · Auftrag ${cutfillVol.fill.toFixed(1)} m³`; } }
     { const fb = $('t-furn'); if (fb) fb.hidden = !D.furniture?.length; }
+    // light fittings (optional, model.lights)
+    if (D.lights?.length) {
+      lightSet = buildLights(D, levels);
+      for (const [lv, g] of Object.entries(lightSet.groups)) { groups[lv]?.add(g); lightGroups.push(g); }
+      pickables.push(...lightSet.pickables);
+    }
+    for (const id of ['t-lights', 't-evening']) { const b = $(id); if (b) b.hidden = !D.lights?.length; }
     buildGardenGroup(D);
     // room labels
     for (const r of D.rooms) {
@@ -1420,7 +1438,7 @@ export async function mountViewer(host, opts) {
   }
 
   // ---------- UI state ----------
-  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, garden: true, cutfill: false, contours: false, grid: false };
+  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, lights: true, evening: false, garden: true, cutfill: false, contours: false, grid: false };
   const ORDER = ['KG', 'EG', 'DG'];
   function applyVisibility() {
     if (!root) return;
@@ -1433,6 +1451,8 @@ export async function mountViewer(host, opts) {
     for (const s of labelSprites) s.visible = state.labels && state.level !== 'all' && s.userData.level === state.level;
     for (const l of edgeLines) l.visible = state.edges;
     for (const g of furnGroups) g.visible = state.furniture;
+    for (const g of lightGroups) g.visible = state.lights;
+    applyEvening();
     if (cutfillGroup) cutfillGroup.visible = state.cutfill && state.terrain;
     if (state.contours && !contourGroup && terrainMesh) buildContours();
     if (contourGroup) contourGroup.visible = state.contours && state.terrain;
@@ -1462,7 +1482,7 @@ export async function mountViewer(host, opts) {
     applyVisibility();
   }
   for (const id of ['all', 'DG', 'EG', 'KG']) $('lv-' + id).addEventListener('click', () => setLevel(id));
-  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-garden', 'garden'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['t-grid', 'grid'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
+  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-lights', 'lights'], ['t-evening', 'evening'], ['t-garden', 'garden'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['t-grid', 'grid'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
     const b = $(id); if (!b) continue;
     b.setAttribute('aria-pressed', String(state[key]));
     b.addEventListener('click', () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); if (key === 'roads') paintTerrain(); applyVisibility(); });
@@ -1595,6 +1615,7 @@ export async function mountViewer(host, opts) {
       case 'post': return `<h3>Stütze ${esc(d.id)}</h3>` + dl([['Querschnitt', `${d.size * 100}/${d.size * 100} cm`], ['Höhe', f2(d.top - d.base) + ' m']]);
       case 'pool': return `<h3>${esc(d.name || 'Pool')}</h3>` + dl([['Maße', `${f2(Math.max(...d.outline.map(p => p[0])) - Math.min(...d.outline.map(p => p[0])))} × ${f2(Math.max(...d.outline.map(p => p[1])) - Math.min(...d.outline.map(p => p[1])))} m`], ['Tiefe', f2(d.depth) + ' m'], ['Beckenrand', f2(d.top)], ['Hinweis', d.note]]);
       case 'gradewall': return `<h3>${esc(d.name || 'Stützmauer')}</h3>` + dl([['ID', d.id], ['Höhe über Gelände', f2(d._h) + ' m'], ['OK', f2(d._top)], ['Stärke', f2(d.thickness ?? 0.25) + ' m'], ['Hinweis', d.note]]);
+      case 'light': return `<h3>${esc(d.name || LIGHT_TYPES[d.type] || 'Leuchte')}</h3>` + dl([['Art', LIGHT_TYPES[d.type]], ['Raum', d.room], ['Hinweis', d.note]]);
       case 'furniture': return `<h3>${esc(d.name || d.type)}</h3>` + dl([['Raum', d.room], ['Maße', `${f2(Math.abs(d.x[1] - d.x[0]))} × ${f2(Math.abs(d.z[1] - d.z[0]))} m`], ['Hinweis', d.note]]);
       case 'garden': { const g = gardenInfo(d); return `<h3>${esc(g.title)}</h3>` + dl(g.rows) + (g.note ? `<p class="note">${esc(g.note)}</p>` : ''); }
       case 'beam': return `<h3>Unterzug ${esc(d.id)}</h3>` + dl([['Breite', f2(d.width) + ' m'], ['UK', f2(d.bottom)]]);
