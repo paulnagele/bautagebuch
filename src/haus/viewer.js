@@ -1348,6 +1348,20 @@ export async function mountViewer(host, opts) {
             if (f.flue) cyl(0.075, f.flue - h, steel, 0, h + (f.flue - h) / 2, -0.03);
             break; }
           case 'bench': {   // bench seat with backrest on the back (-z local) side; back: false leaves it out, open: true = seat on legs, open below
+            if (f.stone) {   // stone stove bench (Ofenbank) in the stove's cladding colour, no cushion; logs: true = open log niche below the seat
+              const h = H ?? 0.45, clad = new THREE.MeshStandardMaterial({ color: 0xe6e1d8, roughness: 0.8 });
+              if (!f.logs) { add(W, h, Dp, clad, 0, h / 2, 0); break; }
+              const top = 0.06, base = 0.05, side = 0.05, nh = h - top - base;
+              add(W, top, Dp, clad, 0, h - top / 2, 0); add(W, base, Dp, clad, 0, base / 2, 0);
+              add(W, nh, 0.03, clad, 0, base + nh / 2, -Dp / 2 + 0.015);
+              for (const sx of [-1, 1]) add(side, nh, Dp, clad, sx * (W / 2 - side / 2), base + nh / 2, 0);
+              const log = mat(0x8a6845), r = 0.045, cols = Math.max(1, Math.floor((W - 2 * side) / (2 * r + 0.01))), rows = Math.max(1, Math.floor(nh / (2 * r)));
+              for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+                const x = -W / 2 + side + r + 0.005 + i * (2 * r + 0.01) + (j % 2 ? r : 0); if (x > W / 2 - side - r) continue;
+                cyl(r, Dp - 0.1, log, x, base + r + j * 2 * r * 0.9, 0.02).rotation.x = Math.PI / 2;
+              }
+              break;
+            }
             if (f.open) {
               add(W, 0.05, Dp, fm.oak, 0, 0.375, 0);
               const lx = W / 2 - 0.05, lz = Dp / 2 - 0.05, legs = Math.max(2, Math.ceil(W / 1.2) + 1);
