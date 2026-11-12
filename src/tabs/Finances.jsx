@@ -107,6 +107,22 @@ function Finances({ user, onOpenDiary }) {
     await Promise.all([categoryStore.reload(), reloadItems()])
   }
 
+  // Moves a category one place up (-1) or down (1) within its type, then
+  // numbers the list 1, 2, 3, … and saves the rows whose number changed
+  // (usually just the two swapped ones).
+  async function moveCategory(id, step) {
+    const category = categoryRows.find((c) => c.id === id)
+    const list = [...(category.type === 'funding' ? fundingCategories : expenseCategories)]
+    const from = list.findIndex((c) => c.id === id)
+    const to = from + step
+    if (from < 0 || to < 0 || to >= list.length) return
+    ;[list[from], list[to]] = [list[to], list[from]]
+    const changed = list
+      .map((c, i) => ({ ...c, sortOrder: i + 1 }))
+      .filter((c, i) => list[i].sortOrder !== c.sortOrder)
+    await Promise.all(changed.map((c) => categoryStore.update(c.id, c)))
+  }
+
   async function setPlannedAmount(id, plannedAmount) {
     const category = expenseCategories.find((c) => c.id === id)
     await categoryStore.update(id, { ...category, plannedAmount })
@@ -304,6 +320,7 @@ function Finances({ user, onOpenDiary }) {
           checkDelete={checkCategoryDelete}
           onAdd={addCategory}
           onRename={renameCategory}
+          onMove={moveCategory}
           onDelete={deleteCategory}
         />
       </Bookings>

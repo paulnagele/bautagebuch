@@ -11,6 +11,13 @@
 //   and the pool can be selected and changed the same way (outline, height,
 //   Böschung, slope ends). The terrain and the cut/fill volumes are rebuilt
 //   after each change; while dragging only the outline follows.
+// - Raster shows the 1 m grid with coordinates and snaps to half metres;
+//   tapping empty ground and dragging a corner show where you are (x, z,
+//   height). A selected corner, slope end, plant or object can be typed in
+//   as x/z numbers, and new surfaces and lines can be drawn by typing points.
+// - Pinsel (Gelände-Pinsel, terrainBrush.js): paint over the ground with one
+//   finger to raise, lower, flatten or smooth it; two fingers move and zoom
+//   the view meanwhile. Size and strength are set in the card.
 // - Rückgängig steps back; "Fertig" leaves the mode. Changes are a preview
 //   until they are saved as a version (like the JSON editor).
 //
@@ -18,6 +25,8 @@
 // { enter, exit, refresh, get active }.
 import * as THREE from 'three'
 import { SURFACES, LINES, OBJECTS, gardenInfo } from './garden.js'
+import { pointText } from './grid.js'
+import { MODES as BRUSH_MODES, CELL, startLive, endLive, dab } from './terrainBrush.js'
 
 const PLANTS = [
   { key: 'tree', label: 'Laubbaum', make: () => ({ type: 'tree', shape: 'round', height: 6, crown: 4.5 }) },
@@ -30,8 +39,9 @@ const PLANTS = [
 const OBJECT_KEYS = ['raisedbed', 'shed', 'bench', 'table']
 const AREA_KEYS = ['lawn', 'meadow', 'paving', 'slabs', 'gravel', 'wood', 'bed', 'mulch', 'water']
 const LINE_KEYS = ['path', 'hedge', 'fence', 'wall', 'edging']
-const PREFIX = { area: 'A', line: 'L', tree: 'T', shrub: 'B', object: 'O', level: 'G', slope: 'G', wall: 'W', pool: 'P' }
+const PREFIX = { area: 'A', line: 'L', tree: 'T', shrub: 'B', object: 'O', level: 'G', slope: 'G', wall: 'W', pool: 'P', brush: 'G' }
 const GRADING = new Set(['level', 'slope', 'wall', 'pool'])
+const BRUSH_KEY = 'haus3d-brush'   // size, strength and mode, remembered per device
 const GRADING_LABEL = { level: 'Ebene Fläche', slope: 'Schräge Fläche', wall: 'Stützmauer', pool: 'Pool' }
 const isGrading = g => GRADING.has(g?.type)
 function polyInside(poly, x, z) { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, zi] = poly[i], [xj, zj] = poly[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c } return c }
@@ -39,12 +49,15 @@ function polyArea(poly) { let a = 0; for (let i = 0, j = poly.length - 1; i < po
 const fmt = (v, d = 2) => Number(v).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d })
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
-const snap = (v, s = 0.1) => Math.round(v / s) * s
+const snapTo = (v, s) => Math.round(v / s) * s
 const r2 = v => Math.round(v * 100) / 100
 const r3 = v => Math.round(v * 1000) / 1000
 
 export function mountGardenEditor(o) {
   const { $, camera, controls, renderer, scene, stage, phone } = o
+  // free hand: 10 cm steps; with the Raster on: half metres, so points land on or between the grid lines
+  const step = () => (o.grid() ? 0.5 : 0.1)
+  const snap = v => snapTo(v, step())
   const bar = $('gtool'), hint = $('ghint'), card = $('gcard'), undoBtn = $('gundo'), viewBtn = $('gview')
   const overlay = new THREE.Group(); overlay.renderOrder = 20; overlay.visible = false; scene.add(overlay)
   const dotGeo = new THREE.SphereGeometry(1, 16, 12)
@@ -52,7 +65,10 @@ export function mountGardenEditor(o) {
   const dotRing = new THREE.MeshBasicMaterial({ color: 0x2d6a55, depthTest: false, transparent: true })
   const midMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.75 })
   const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true })
-  const ed = { active: false, mode: 'select', tool: null, sel: null, pts: [], undo: [], lastChange: 0, drag: null, down: null, handles: [], vertex: -1, top: false, picker: false }
+  const brush = { mode: 'raise', R: 1.5, strength: 4, target: null, used: null, stroke: null, cursor: null }
+  try { Object.assign(brush, JSON.parse(localStorage.getItem(BRUSH_KEY)) || {}) } catch { /* ignore */ }
+  brush.target = null; brush.stroke = null; brush.cursor = null
+  const ed = { active: false, mode: 'select', tool: null, sel: null, pts: [], undo: [], lastChange: 0, drag: null, down: null, handles: [], vertex: -1, end: null, top: false, picker: false }
 
   const garden = () => { const D = o.getData(); if (!Array.isArray(D.garden)) D.garden = []; return D.garden }
   const grading = () => { const D = o.getData(); if (!Array.isArray(D.grading)) D.grading = []; return D.grading }
@@ -73,15 +89,16 @@ export function mountGardenEditor(o) {
     o.rebuild(); highlight(); drawOverlay(); if (full) renderCard(); o.kick(600)
   }
   function settle() { o.onChange() }   // after a gesture: JSON editor, "ungespeicherte Änderung"
-  undoBtn.addEventListener('click', () => {
+  undoBtn.addEventListener('click', () => undo())
+  function undo() {
     if (!ed.undo.length) return
     const prev = JSON.parse(ed.undo.pop()), D = o.getData()
     const terrain = JSON.stringify(prev.grading) !== JSON.stringify(D.grading ?? [])
     const key = isGrading(ed.sel) ? 'grading' : 'garden', selIdx = ed.sel ? (D[key] || []).indexOf(ed.sel) : -1
-    D.garden = prev.garden; D.grading = prev.grading; ed.sel = selIdx >= 0 ? D[key][selIdx] ?? null : null; ed.vertex = -1
+    D.garden = prev.garden; D.grading = prev.grading; ed.sel = selIdx >= 0 ? D[key][selIdx] ?? null : null; ed.vertex = -1; ed.end = null
     ed.lastChange = 0; undoBtn.disabled = !ed.undo.length
     tidy(); if (terrain) o.rebuildAll(); else changed(true, false); settle()
-  })
+  }
 
   function newId(type) {
     const D = o.getData(), p = PREFIX[type] || 'G', used = new Set([...(D.garden || []), ...(D.grading || [])].map(g => g.id)); let n = 1
@@ -119,7 +136,7 @@ export function mountGardenEditor(o) {
     return [...new Set(out)]
   }
 
-  // snapping: 10 cm grid, or onto the house outline and other items' corners nearby
+  // snapping: 10 cm (50 cm with the Raster), or onto the house outline and other items' corners nearby
   function snapPoint(x, z, skip) {
     const reach = phone ? 0.4 : 0.3; let best = null
     const consider = (px, pz) => { const d = Math.hypot(px - x, pz - z); if (d < reach && (!best || d < best[0])) best = [d, px, pz] }
@@ -144,6 +161,14 @@ export function mountGardenEditor(o) {
       if (pts.length < 2) return
       const v = pts.map(p => new THREE.Vector3(p[0], H(p[0], p[1]) + 0.08, p[1])); if (closed) v.push(v[0].clone())
       const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(v), lineMat); l.renderOrder = 20; overlay.add(l)
+    }
+    if (ed.mode === 'brush') {
+      if (!brush.cursor) return
+      const [cx, cz] = brush.cursor, v = []
+      for (let i = 0; i <= 48; i++) { const t = i / 48 * Math.PI * 2, x = cx + brush.R * Math.cos(t), z = cz + brush.R * Math.sin(t); v.push(new THREE.Vector3(x, H(x, z) + 0.08, z)) }
+      const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(v), lineMat); l.renderOrder = 20; overlay.add(l)
+      dot(cx, H(cx, cz) + 0.08, cz, s * 0.5, dotRing)
+      return
     }
     if (ed.mode === 'draw') {
       polyline(ed.pts, ed.tool.closed && ed.pts.length > 2)
@@ -191,9 +216,10 @@ export function mountGardenEditor(o) {
         chips('Objekte', OBJECT_KEYS.map(k => ['o:' + k, OBJECTS[k].label])) +
         chips('Flächen', AREA_KEYS.map(k => ['a:' + k, SURFACES[k].label])) +
         chips('Linien', LINE_KEYS.map(k => ['l:' + k, k === 'path' ? 'Weg' : LINES[k].label])) +
-        chips('Gelände', [['g:level', 'Ebene Fläche'], ['g:slope', 'Schräge Fläche'], ['g:wall', 'Stützmauer']])
+        chips('Gelände', [['g:level', 'Ebene Fläche'], ['g:slope', 'Schräge Fläche'], ['g:wall', 'Stützmauer'], ['b:brush', 'Pinsel']])
       card.hidden = false; return
     }
+    if (ed.mode === 'brush') { renderBrushCard(); return }
     if (ed.mode === 'place') {
       card.innerHTML = `<div class="ghead"><b>${esc(ed.tool.label)} setzen</b></div><div class="grow"><button type="button" class="btn" data-act="cancel">Abbrechen</button></div>`
       card.hidden = false; return
@@ -201,6 +227,8 @@ export function mountGardenEditor(o) {
     if (ed.mode === 'draw') {
       const need = ed.tool.closed ? 3 : 2, n = ed.pts.length
       card.innerHTML = `<div class="ghead"><b>${esc(ed.tool.label)} zeichnen</b><span class="gmeta">${n} ${n === 1 ? 'Punkt' : 'Punkte'}</span></div>
+        <div class="gfields">${xyField(`Punkt ${n + 1}`, '', '', 'nx', 'nz')}<div class="grow"><button type="button" class="btn" data-act="addpt">Punkt setzen</button></div></div>
+        <div class="gnote">Antippen im Gelände oder Koordinaten eingeben.</div>
         <div class="grow"><button type="button" class="btn" data-act="cancel">Abbrechen</button><button type="button" class="btn" data-act="back" ${n ? '' : 'disabled'}>Letzten Punkt weg</button>
         <button type="button" class="btn primary" data-act="finish" ${n >= need ? '' : 'disabled'}>Fertig</button></div>`
       card.hidden = false; return
@@ -233,10 +261,54 @@ export function mountGardenEditor(o) {
     }
     const pts = g.outline || g.points, minPts = g.outline ? 3 : 2
     card.innerHTML = `<div class="ghead"><b>${esc(info.title)}</b>${meta ? `<span class="gmeta">${esc(meta[1])}</span>` : ''}<button type="button" class="sheetx" data-act="deselect" aria-label="Auswahl aufheben">×</button></div>
-      <div class="gfields">${fields}<label class="gfield"><span>Name</span><input type="text" maxlength="60" data-k="name" value="${esc(g.name)}" placeholder="optional"></label></div>
+      <div class="gfields">${vertexFields(g)}${fields}<label class="gfield"><span>Name</span><input type="text" maxlength="60" data-k="name" value="${esc(g.name)}" placeholder="optional"></label></div>
       <div class="grow">${pts && ed.vertex >= 0 && pts.length > minPts ? '<button type="button" class="btn" data-act="delpoint">Punkt löschen</button>' : ''}
         <button type="button" class="btn" data-act="copy">Kopie</button><button type="button" class="btn danger" data-act="delete">Löschen</button></div>`
     card.hidden = false
+  }
+
+  // Gelände-Pinsel: what it does (mode), how big and how strong; Ebnen can take an exact height
+  function renderBrushCard() {
+    const b = brush, D = o.getData(), layers = (D.grading || []).filter(g => g.type === 'brush').length
+    const slider = (key, label, min, max, step, val, show) => `<label class="gfield"><span>${label}</span><input type="range" data-k="${key}" min="${min}" max="${max}" step="${step}" value="${val}"><output>${show}</output></label>`
+    let fields = slider('bR', 'Größe', 0.5, 6, 0.25, b.R, fmt(b.R * 2, 1) + ' m') + slider('bS', 'Stärke', 1, 10, 1, b.strength, String(b.strength))
+    const notes = []
+    if (b.mode === 'flatten') {
+      fields += `<div class="gfield"><span>Höhe</span><div class="gnum">
+        <button type="button" class="btn" data-act="bnudge" data-d="-0.05" aria-label="Höhe 5 cm tiefer">−</button>
+        <input type="number" inputmode="decimal" step="0.05" data-k="bT" value="${b.target ?? ''}" placeholder="vom Startpunkt" aria-label="Höhe in m">
+        <button type="button" class="btn" data-act="bnudge" data-d="0.05" aria-label="Höhe 5 cm höher">+</button></div></div>`
+      notes.push(b.target == null ? (Number.isFinite(b.used) ? `Zuletzt geebnet auf ${fmt(b.used)} m. Ohne Zahl nimmt jeder Strich die Höhe, wo er anfängt.` : 'Ohne Zahl nimmt jeder Strich die Höhe, wo er anfängt.') : `Ebnet auf ${fmt(b.target)} m (0 = EG-Fußboden).`)
+    }
+    const v = o.cutfill(); if (v) notes.push(`Gelände gesamt: Abtrag ${fmt(v.cut, 1)} m³ · Auftrag ${fmt(v.fill, 1)} m³`)
+    card.innerHTML = `<div class="ghead"><b>Gelände-Pinsel</b><button type="button" class="sheetx" data-act="brushoff" aria-label="Pinsel beenden">×</button></div>
+      <div class="gchips" role="group" aria-label="Was der Pinsel macht">${BRUSH_MODES.map(m => `<button type="button" class="chip" data-bmode="${m.key}" aria-pressed="${m.key === b.mode}">${m.label}</button>`).join('')}</div>
+      <div class="gfields">${fields}</div>
+      ${notes.map(n => `<div class="gnote">${esc(n)}</div>`).join('')}
+      <div class="grow">${layers ? '<button type="button" class="btn danger" data-act="brushclear">Alle Pinselstriche löschen</button>' : ''}<button type="button" class="btn primary" data-act="brushoff">Fertig</button></div>`
+    card.hidden = false
+  }
+  const saveBrush = () => { try { localStorage.setItem(BRUSH_KEY, JSON.stringify({ mode: brush.mode, R: brush.R, strength: brush.strength })) } catch { /* ignore */ } }
+
+  // the selected corner point as numbers (x, z), so it can be set exactly
+  const xyField = (label, x, z, kx = 'vx', kz = 'vz') => `<div class="gfield"><span>${esc(label)}</span><div class="gxy">
+      <label>x <input type="number" inputmode="decimal" step="0.1" data-k="${kx}" value="${x ?? ''}" aria-label="${esc(label)}, x in m"></label>
+      <label>z <input type="number" inputmode="decimal" step="0.1" data-k="${kz}" value="${z ?? ''}" aria-label="${esc(label)}, z in m"></label></div></div>`
+  // where the selected corner, slope end or plant/object sits, as numbers
+  function vertexFields(g) {
+    if (Number.isFinite(g.x) && Number.isFinite(g.z)) return xyField('Lage', g.x, g.z)
+    if (ed.end && g[ed.end]) return xyField(ed.end === 'from' ? 'Anfang' : 'Ende', g[ed.end][0], g[ed.end][1])
+    const pts = g.type === 'pool' ? null : g.outline || g.points
+    if (!pts || ed.vertex < 0 || !pts[ed.vertex]) return ''
+    return xyField(`Punkt ${ed.vertex + 1}`, pts[ed.vertex][0], pts[ed.vertex][1])
+  }
+  // the point of g the x/z fields edit: [x, z] and a setter
+  function editedPoint(g) {
+    if (Number.isFinite(g.x) && Number.isFinite(g.z)) return [[g.x, g.z], (x, z) => { g.x = x; g.z = z }]
+    if (ed.end && g[ed.end]) return [g[ed.end], (x, z) => { g[ed.end] = [x, z, g[ed.end][2]] }]
+    const pts = g.outline || g.points
+    if (pts?.[ed.vertex]) return [pts[ed.vertex], (x, z) => { pts[ed.vertex] = [x, z] }]
+    return null
   }
 
   // terrain card: heights as numbers with ±5 cm buttons (exact values matter here), applied when changed
@@ -267,7 +339,7 @@ export function mountGardenEditor(o) {
     const v = o.cutfill(); if (v) notes.push(`Gelände gesamt: Abtrag ${fmt(v.cut, 1)} m³ · Auftrag ${fmt(v.fill, 1)} m³`)
     const pts = g.outline || g.points, minPts = g.outline ? 3 : 2
     card.innerHTML = `<div class="ghead"><b>${esc(g.name || GRADING_LABEL[g.type])}</b>${meta ? `<span class="gmeta">${esc(meta)}</span>` : ''}<button type="button" class="sheetx" data-act="deselect" aria-label="Auswahl aufheben">×</button></div>
-      <div class="gfields">${fields}<label class="gfield"><span>Name</span><input type="text" maxlength="80" data-k="name" value="${esc(g.name)}" placeholder="optional"></label></div>
+      <div class="gfields">${vertexFields(g)}${fields}<label class="gfield"><span>Name</span><input type="text" maxlength="80" data-k="name" value="${esc(g.name)}" placeholder="optional"></label></div>
       ${notes.map(n => `<div class="gnote">${esc(n)}</div>`).join('')}
       <div class="grow">${g.type !== 'pool' && pts && ed.vertex >= 0 && pts.length > minPts ? '<button type="button" class="btn" data-act="delpoint">Punkt löschen</button>' : ''}
         ${g.type !== 'pool' ? '<button type="button" class="btn" data-act="copy">Kopie</button>' : ''}<button type="button" class="btn danger" data-act="delete">Löschen</button></div>`
@@ -285,12 +357,20 @@ export function mountGardenEditor(o) {
   }
 
   card.addEventListener('click', e => {
-    const t = e.target.closest('[data-tool],[data-act]'); if (!t) return
+    const t = e.target.closest('[data-tool],[data-act],[data-bmode]'); if (!t) return
     if (t.dataset.tool) { startTool(t.dataset.tool); return }
+    if (t.dataset.bmode) { brush.mode = t.dataset.bmode; saveBrush(); renderCard(); setHint(brushHint()); return }
     const act = t.dataset.act, D = o.getData()
+    if (act === 'brushoff') { brushMode(false); return }
+    if (act === 'bnudge') { const base = brush.target ?? brush.used ?? (brush.cursor ? o.ground(...brush.cursor) : 0); brush.target = r2(Math.round((base + Number(t.dataset.d)) / 0.05) * 0.05); renderCard(); return }
+    if (act === 'brushclear') {
+      const G = grading(); if (!G.some(g => g.type === 'brush')) return
+      touch(); D.grading = G.filter(g => g.type !== 'brush'); tidy(); ed.lastChange = 0; o.rebuildAll(); settle(); return
+    }
     if (act === 'close') { ed.picker = false; renderCard(); setHint(defaultHint()) }
     else if (act === 'cancel') { ed.mode = 'select'; ed.tool = null; ed.pts = []; drawOverlay(); renderCard(); setHint(defaultHint()) }
     else if (act === 'back') { ed.pts.pop(); drawOverlay(); renderCard() }
+    else if (act === 'addpt') addTypedPoint()
     else if (act === 'finish') finishDraw()
     else if (act === 'deselect') selectItem(null)
     else if (act === 'nudge' && isGrading(ed.sel)) {
@@ -304,13 +384,18 @@ export function mountGardenEditor(o) {
       const mv = p => [r2(p[0] + 1), r2(p[1] + 1)]
       if (c.outline) c.outline = c.outline.map(mv); if (c.points) c.points = c.points.map(mv); if (Number.isFinite(c.x)) { c.x = r2(c.x + 1); c.z = r2(c.z + 1) }
       if (c.from) c.from = [r2(c.from[0] + 1), r2(c.from[1] + 1), c.from[2]]; if (c.to) c.to = [r2(c.to[0] + 1), r2(c.to[1] + 1), c.to[2]]
-      listOf(c).push(c); ed.sel = c; ed.vertex = -1; changed(true); settle()
+      listOf(c).push(c); ed.sel = c; ed.vertex = -1; ed.end = null; changed(true); settle()
     } else if (act === 'delpoint' && ed.sel && ed.vertex >= 0) {
-      touch(); (ed.sel.outline || ed.sel.points).splice(ed.vertex, 1); ed.vertex = -1; changed(true); settle()
+      touch(); (ed.sel.outline || ed.sel.points).splice(ed.vertex, 1); ed.vertex = -1; ed.end = null; changed(true); settle()
     }
   })
   card.addEventListener('input', e => {
-    const k = e.target.dataset.k, g = ed.sel; if (!k || !g) return
+    if (e.target.dataset.k === 'bR' || e.target.dataset.k === 'bS') {
+      const v = +e.target.value, out = e.target.parentElement.querySelector('output')
+      if (e.target.dataset.k === 'bR') { brush.R = v; if (out) out.textContent = fmt(v * 2, 1) + ' m'; drawOverlay(); o.kick() } else { brush.strength = v; if (out) out.textContent = String(v) }
+      saveBrush(); return
+    }
+    const k = e.target.dataset.k, g = ed.sel; if (!k || !g || k === 'vx' || k === 'vz') return
     if (isGrading(g)) {   // terrain: show the slider value now, apply on release ("change")
       const out = e.target.parentElement.querySelector('output'), v = +e.target.value
       if (out) out.textContent = k === 'batter' ? (v <= 0.05 ? 'senkrecht' : `1 : ${fmt(v, 1)}`) : fmt(v) + ' m'
@@ -327,14 +412,33 @@ export function mountGardenEditor(o) {
     changed(e.target.tagName === 'SELECT')
   })
   card.addEventListener('change', e => {
+    if (e.target.dataset.k === 'bR' || e.target.dataset.k === 'bS') return
+    if (e.target.dataset.k === 'bT') { const n = parseFloat(String(e.target.value).replace(',', '.')); brush.target = Number.isFinite(n) ? r2(n) : null; renderCard(); return }
     const k = e.target.dataset.k, g = ed.sel
+    if ((k === 'vx' || k === 'vz') && g) {
+      const ep = editedPoint(g), n = parseFloat(String(e.target.value).replace(',', '.'))
+      if (!ep || !Number.isFinite(n)) { renderCard(); return }
+      const p = [ep[0][0], ep[0][1]]; p[k === 'vx' ? 0 : 1] = r2(n)
+      touch(); ep[1](p[0], p[1]); changed(true); if (isGrading(g)) renderCard(); settle(); showPoint(p[0], p[1]); return
+    }
+    if (k === 'nx' || k === 'nz') return   // typed point while drawing: added with the button
     if (k && k !== 'name' && isGrading(g)) { touch(); if (setGrading(g, k, e.target.value)) changed(true); else renderCard() }
     settle()
   })
 
+  function addTypedPoint() {
+    const val = k => parseFloat(String(card.querySelector(`[data-k="${k}"]`)?.value ?? '').replace(',', '.'))
+    const x = val('nx'), z = val('nz')
+    if (!Number.isFinite(x) || !Number.isFinite(z)) { setHint('Bitte x und z als Zahlen eingeben.'); return }
+    ed.pts.push([r2(x), r2(z)]); drawOverlay(); renderCard(); showPoint(x, z)
+    card.querySelector('[data-k="nx"]')?.focus()
+  }
+  card.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.target.dataset.k === 'nx' || e.target.dataset.k === 'nz')) { e.preventDefault(); if (e.target.dataset.k === 'nx') card.querySelector('[data-k="nz"]')?.focus(); else addTypedPoint() } })
+
   // ---------- tools ----------
   function startTool(key) {
-    const [grp, k] = key.split(':'); ed.picker = false; ed.sel = null; ed.vertex = -1
+    if (key === 'b:brush') { ed.picker = false; brushMode(true); return }
+    const [grp, k] = key.split(':'); ed.picker = false; ed.sel = null; ed.vertex = -1; ed.end = null
     if (grp === 'p') { const p = PLANTS.find(x => x.key === k); ed.tool = { type: 'point', label: p.label, make: p.make }; ed.mode = 'place' }
     else if (grp === 'o') { ed.tool = { type: 'point', label: OBJECTS[k].label, make: () => ({ type: 'object', kind: k, rot: 0 }) }; ed.mode = 'place' }
     else if (grp === 'g') { ed.tool = { type: k, closed: k !== 'wall', label: GRADING_LABEL[k], make: pts => makeGrading(k, pts) }; ed.mode = 'draw'; ed.pts = [] }
@@ -355,29 +459,109 @@ export function mountGardenEditor(o) {
   function finishDraw() {
     const need = ed.tool.closed ? 3 : 2; if (ed.pts.length < need) return
     touch(); const item = ed.tool.make(ed.pts.map(p => [r2(p[0]), r2(p[1])])); item.id = newId(item.type)
-    listOf(item).push(item); ed.mode = 'select'; ed.tool = null; ed.pts = []; ed.sel = item; ed.vertex = -1
+    listOf(item).push(item); ed.mode = 'select'; ed.tool = null; ed.pts = []; ed.sel = item; ed.vertex = -1; ed.end = null
     if (isGrading(item)) o.setCutfill(true)
     changed(true); settle(); setHint(selHint())
   }
   function selectItem(g, more = false) {
-    const was = ed.sel; ed.sel = g; ed.vertex = -1
+    const was = ed.sel; ed.sel = g; ed.vertex = -1; ed.end = null
     if (isGrading(was)) o.rebuildAll(); else { o.rebuild(); highlight(); drawOverlay(); renderCard() }   // rebuildAll ends in refresh()
     o.setCutfill(isGrading(g))
     setHint(g ? selHint() + (more ? ' Nochmal tippen wählt, was darunter liegt.' : '') : defaultHint())
   }
+  const showPoint = (x, z) => setHint(pointText(x, z, o.ground(x, z)))
   const defaultHint = () => 'Tippe etwas im Garten oder im Gelände an, um es zu bearbeiten.'
   const selHint = () => ed.sel?.type === 'slope' ? 'Ziehen verschiebt. Die zwei Ringe legen Anfang und Ende des Gefälles fest.'
     : ed.sel?.type !== 'pool' && (ed.sel?.outline || ed.sel?.points) ? 'Ziehen verschiebt. Punkte ziehen ändert die Form, die kleinen Punkte fügen Ecken ein.' : 'Ziehen verschiebt.'
 
+  // ---------- Gelände-Pinsel: one finger paints, two fingers move the view ----------
+  const brushBtn = $('gbrush'), pointers = new Set()
+  let savedControls = null
+  const coarse = () => matchMedia('(pointer: coarse)').matches
+  const brushHint = () => (coarse() ? 'Mit einem Finger über den Boden malen. Zwei Finger verschieben und zoomen die Ansicht.' : 'Mit gedrückter Maustaste über den Boden malen. Rechte Maustaste dreht, das Mausrad zoomt.')
+  function brushMode(on) {
+    if (on === (ed.mode === 'brush')) { if (on) renderCard(); return }
+    if (on) {
+      const was = ed.sel; ed.sel = null; ed.vertex = -1; ed.end = null; ed.tool = null; ed.pts = []; ed.picker = false
+      if (isGrading(was)) o.rebuildAll(); else if (was) o.rebuild()
+      ed.mode = 'brush'
+      savedControls = { one: controls.touches.ONE, left: controls.mouseButtons.LEFT, right: controls.mouseButtons.RIGHT }
+      controls.touches.ONE = null; controls.mouseButtons.LEFT = null; controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE
+      o.setCutfill(true)
+    } else {
+      endStroke(); ed.mode = 'select'; brush.cursor = null
+      if (savedControls) { controls.touches.ONE = savedControls.one; controls.mouseButtons.LEFT = savedControls.left; controls.mouseButtons.RIGHT = savedControls.right; savedControls = null }
+      o.setCutfill(false)
+    }
+    brushBtn.setAttribute('aria-pressed', String(on)); drawOverlay(); renderCard(); setHint(on ? brushHint() : defaultHint()); o.kick()
+  }
+  // spots the brush leaves alone: inside the house and the pool basins (they have their own walls)
+  function brushSkip() {
+    const cut = o.cutout(), pools = grading().filter(g => g.type === 'pool' && g.outline?.length >= 3).map(g => {
+      const xs = g.outline.map(p => p[0]), zs = g.outline.map(p => p[1]), m = (g.coping ?? 0.35) + 0.15
+      return [Math.min(...xs) - m, Math.max(...xs) + m, Math.min(...zs) - m, Math.max(...zs) + m]
+    })
+    return (x, z) => pools.some(b => x >= b[0] && x <= b[1] && z >= b[2] && z <= b[3]) || (cut?.length >= 3 && polyInside(cut, x, z))
+  }
+  function startStroke(e) {
+    const p = groundPoint(e); if (!p) { setHint('Dort ist kein Gelände. Male neben dem Haus.'); return }
+    brush.stroke = { id: e.pointerId, ev: e, t0: performance.now(), last: 0, layer: null, touch: e.pointerType !== 'mouse' }
+    brush.cursor = p; drawOverlay(); o.kick()
+    requestAnimationFrame(strokeFrame)
+  }
+  function beginPaint(st) {   // the finger stayed alone long enough: this is a stroke, not a two-finger gesture
+    ed.lastChange = 0; touch()   // one undo step per stroke
+    const G = grading(); let L = G[G.length - 1]
+    if (L?.type !== 'brush') { L = { type: 'brush', id: newId('brush'), name: 'Pinsel', cell: CELL, cells: {} }; G.push(L) }   // brushing always works on top of everything else
+    startLive(L); st.layer = L; st.skip = brushSkip()
+    o.updateTerrain(0, 0, 0, 0)   // the ground now reads the live layer
+    if (brush.mode === 'flatten') { st.target = brush.target ?? r2(o.ground(...brush.cursor)); brush.used = st.target }
+  }
+  function strokeFrame(now) {
+    const st = brush.stroke; if (!st || !ed.active) return
+    if (!st.layer) {
+      if (st.touch && now - st.t0 < 90) { requestAnimationFrame(strokeFrame); return }
+      beginPaint(st); st.last = now
+    }
+    const dt = Math.min(0.1, (now - st.last) / 1000); st.last = now
+    const p = groundPoint(st.ev, true)
+    if (p && dt > 0) {
+      dab(st.layer, { mode: brush.mode, px: p[0], pz: p[1], R: brush.R, strength: brush.strength, dt, target: st.target, H: o.ground, skip: st.skip })
+      const R = brush.R + 0.6; o.updateTerrain(p[0] - R, p[0] + R, p[1] - R, p[1] + R)
+      brush.cursor = p; drawOverlay()
+      if (brush.mode === 'flatten') setHint(pointText(p[0], p[1], o.ground(p[0], p[1])) + ` · Ziel ${fmt(st.target)} m`)
+      else setHint(pointText(p[0], p[1], o.ground(p[0], p[1])))
+    }
+    requestAnimationFrame(strokeFrame)
+  }
+  // finger up: back to whole cm, then the whole model catches up (garden on the new ground, cut/fill, grid)
+  function endStroke(cancel = false) {
+    const st = brush.stroke; brush.stroke = null
+    if (st?.touch) { brush.cursor = null; drawOverlay() }   // no finger, no ring (a mouse keeps it under the pointer)
+    if (!st?.layer) return
+    const left = endLive(st.layer)
+    if (cancel) { undo(); return }
+    if (!left) { const G = grading(); G.splice(G.indexOf(st.layer), 1); tidy() }
+    ed.lastChange = 0; o.rebuildAll(); settle()
+  }
+  brushBtn.addEventListener('click', () => brushMode(ed.mode !== 'brush'))
+
   // ---------- pointer: taps place and draw, drags move ----------
   function onDown(e) {
+    if (e.isPrimary) pointers.clear()   // a lost pointerup (outside the window) must not block the next stroke
+    pointers.add(e.pointerId)
+    if (ed.active && ed.mode === 'brush') {
+      if (pointers.size > 1) { endStroke(true); return }   // second finger: the view moves, the stroke is undone
+      if (e.button === 0) startStroke(e)
+      return
+    }
     if (!ed.active || e.button > 0 || ed.drag) return
     ed.down = { x: e.clientX, y: e.clientY, id: e.pointerId }
     if (ed.mode !== 'select' || !ed.sel) return
     const h = handleAt(e), g = ed.sel
     let start = null
-    if (h?.kind === 'vertex') { start = { kind: 'vertex', i: h.i }; ed.vertex = h.i }
-    else if (h?.kind === 'from' || h?.kind === 'to') start = { kind: h.kind }
+    if (h?.kind === 'vertex') { start = { kind: 'vertex', i: h.i }; ed.vertex = h.i; ed.end = null }
+    else if (h?.kind === 'from' || h?.kind === 'to') { start = { kind: h.kind }; ed.end = h.kind; ed.vertex = -1 }
     else if (h?.kind === 'mid') { touch(); (g.outline || g.points).splice(h.i, 0, [r2(h.x), r2(h.z)]); start = { kind: 'vertex', i: h.i }; ed.vertex = h.i; changed() }
     else if (h?.kind === 'move' || candidatesAt(e).includes(g)) start = { kind: 'body' }
     if (!start) return
@@ -388,6 +572,13 @@ export function mountGardenEditor(o) {
   }
   let rafPending = false, lastMove = null
   function onMove(e) {
+    if (ed.active && ed.mode === 'brush') {
+      if (brush.stroke && e.pointerId === brush.stroke.id) brush.stroke.ev = e
+      else if (!brush.stroke && e.pointerType === 'mouse' && !e.buttons && e.target === renderer.domElement) {   // mouse: the ring follows
+        const p = groundPoint(e); brush.cursor = p; drawOverlay(); o.kick(100)
+      }
+      return
+    }
     if (!ed.drag || e.pointerId !== ed.down?.id) return
     lastMove = e; if (rafPending) return; rafPending = true
     requestAnimationFrame(() => {
@@ -397,8 +588,8 @@ export function mountGardenEditor(o) {
       if (!d.moved) { touch(); d.moved = true }
       ed.lastChange = performance.now()
       const g = ed.sel, pts = g.outline || g.points
-      if (d.kind === 'vertex') { const [x, z] = snapPoint(p[0], p[1], g); pts[d.i] = [x, z] }
-      else if (d.kind === 'from' || d.kind === 'to') { const [x, z] = snapPoint(p[0], p[1], g); g[d.kind] = [x, z, g[d.kind][2]] }
+      if (d.kind === 'vertex') { const [x, z] = snapPoint(p[0], p[1], g); pts[d.i] = [x, z]; showPoint(x, z) }
+      else if (d.kind === 'from' || d.kind === 'to') { const [x, z] = snapPoint(p[0], p[1], g); g[d.kind] = [x, z, g[d.kind][2]]; showPoint(x, z) }
       else {
         const dx = snap(p[0] - d.g0[0]), dz = snap(p[1] - d.g0[1]), op = d.orig.outline || d.orig.points
         if (pts) op.forEach((q, i) => { pts[i] = [r2(q[0] + dx), r2(q[1] + dz)] })
@@ -409,39 +600,46 @@ export function mountGardenEditor(o) {
     })
   }
   function onUp(e) {
+    pointers.delete(e.pointerId)
+    if (ed.active && ed.mode === 'brush') { if (brush.stroke?.id === e.pointerId) endStroke(); return }
     if (!ed.active || e.pointerId !== ed.down?.id) return
     const d = ed.drag, tap = Math.hypot(e.clientX - ed.down.x, e.clientY - ed.down.y) < (e.pointerType === 'touch' ? 10 : 4)
     ed.down = null
     if (d) { ed.drag = null; controls.enabled = true
-      if (d.moved) { if (isGrading(ed.sel)) changed(true); else renderCard(); settle() } else if (d.kind === 'vertex') { drawOverlay(); renderCard() }
+      if (d.moved) { if (isGrading(ed.sel)) changed(true); else renderCard(); settle() } else if (d.kind !== 'body') { drawOverlay(); renderCard() }
+      if (d.kind === 'vertex') { const q = (ed.sel?.outline || ed.sel?.points)?.[d.i]; if (q) showPoint(q[0], q[1]) }
+      else if (d.kind !== 'body' && ed.sel?.[d.kind]) showPoint(ed.sel[d.kind][0], ed.sel[d.kind][1])
       return }
     if (!tap) return
     if (ed.mode === 'place') {
       const p = groundPoint(e); if (!p) { setHint('Dort ist kein Gelände. Tippe neben das Haus.'); return }
       touch(); const item = ed.tool.make(); item.id = newId(item.type); item.x = r2(snap(p[0])); item.z = r2(snap(p[1]))
-      garden().push(item); ed.mode = 'select'; ed.tool = null; ed.sel = item; ed.vertex = -1
+      garden().push(item); ed.mode = 'select'; ed.tool = null; ed.sel = item; ed.vertex = -1; ed.end = null
       changed(true); settle(); setHint(selHint()); return
     }
     if (ed.mode === 'draw') {
       const p = groundPoint(e); if (!p) return
-      ed.pts.push(snapPoint(p[0], p[1])); drawOverlay(); renderCard(); return
+      const q = snapPoint(p[0], p[1]); ed.pts.push(q); drawOverlay(); renderCard(); showPoint(q[0], q[1]); return
     }
     if (ed.picker) return
     // tapping the same spot again steps down through what lies there (lawn → terrace → …)
     const c = candidatesAt(e), i = c.indexOf(ed.sel), next = c.length ? c[i >= 0 ? (i + 1) % c.length : 0] : null
     if (next !== ed.sel) selectItem(next, c.length > 1)
+    if (!next) { const p = groundPoint(e); if (p) showPoint(p[0], p[1]) }   // empty ground: where is this?
   }
   const offs = []
   const on = (t, type, fn, opt) => { t.addEventListener(type, fn, opt); offs.push(() => t.removeEventListener(type, fn, opt)) }
   on(stage, 'pointerdown', onDown, { capture: true })
   on(window, 'pointermove', onMove)
   on(window, 'pointerup', onUp)
-  on(window, 'pointercancel', e => { if (ed.drag && e.pointerId === ed.down?.id) { const t = isGrading(ed.sel) && ed.drag.moved; ed.drag = null; controls.enabled = true; if (t) changed(true); settle() } ed.down = null })
+  on(window, 'pointercancel', e => { pointers.delete(e.pointerId); if (brush.stroke?.id === e.pointerId) endStroke(); if (ed.drag && e.pointerId === ed.down?.id) { const t = isGrading(ed.sel) && ed.drag.moved; ed.drag = null; controls.enabled = true; if (t) changed(true); settle() } ed.down = null })
 
-  $('gadd').addEventListener('click', () => { ed.picker = !ed.picker; ed.mode = 'select'; ed.tool = null; ed.pts = []; if (ed.picker && ed.sel) selectItem(null); renderCard(); setHint(ed.picker ? 'Was möchtest du hinzufügen?' : defaultHint()) })
+  $('gadd').addEventListener('click', () => { if (ed.mode === 'brush') brushMode(false); ed.picker = !ed.picker; ed.mode = 'select'; ed.tool = null; ed.pts = []; if (ed.picker && ed.sel) selectItem(null); renderCard(); setHint(ed.picker ? 'Was möchtest du hinzufügen?' : defaultHint()) })
+  // phones get the short label, so the toolbar fits next to the compass
+  function viewLabel() { viewBtn.textContent = ed.top ? 'Schräg' : matchMedia('(max-width: 700px)').matches ? 'Oben' : 'Von oben'; viewBtn.title = ed.top ? 'Zurück zur schrägen Ansicht' : 'Ansicht von oben' }
   // "Von oben": straight down over the current spot, high enough to see the garden; "Schräg" goes back
   viewBtn.addEventListener('click', () => {
-    ed.top = !ed.top; viewBtn.textContent = ed.top ? 'Schräg' : 'Von oben'
+    ed.top = !ed.top; viewLabel()
     if (ed.top) {
       ed.camBack = { pos: camera.position.clone(), tgt: controls.target.clone() }
       // same orientation as the "Grundriss" view: portrait phones turned so the long facade runs up the screen
@@ -450,17 +648,20 @@ export function mountGardenEditor(o) {
     } else if (ed.camBack) o.fly(ed.camBack.pos, ed.camBack.tgt)
     else o.view('persp')
   })
+  const gridBtn = $('ggrid')
+  gridBtn.addEventListener('click', () => o.grid(!o.grid()))
   $('gdone').addEventListener('click', () => exit())
 
   function enter() {
     if (ed.active) return
     ed.active = true; ed.mode = 'select'; ed.sel = null; ed.pts = []; ed.undo = []; ed.picker = !o.getData().garden?.length; ed.top = false
-    undoBtn.disabled = true; viewBtn.textContent = 'Von oben'
+    undoBtn.disabled = true; viewLabel(); brushBtn.setAttribute('aria-pressed', 'false')
     o.host.classList.add('designing'); bar.hidden = false; overlay.visible = true
     o.onEnter(); renderCard(); setHint(ed.picker ? 'Was möchtest du hinzufügen?' : defaultHint()); drawOverlay()
   }
   function exit() {
     if (!ed.active) return
+    if (ed.mode === 'brush') brushMode(false)
     const terrain = isGrading(ed.sel)
     ed.active = false; ed.drag = null; ed.sel = null; ed.picker = false; ed.mode = 'select'; ed.pts = []; controls.enabled = true
     o.host.classList.remove('designing'); bar.hidden = true; card.hidden = true; overlay.visible = false; overlay.clear()
@@ -469,7 +670,7 @@ export function mountGardenEditor(o) {
   // after the whole model was rebuilt (another version, JSON editor): keep the selection if it still exists
   function refresh() {
     if (!ed.active) return
-    const D = o.getData(); if (ed.sel && !(D[isGrading(ed.sel) ? 'grading' : 'garden'] || []).includes(ed.sel)) { ed.sel = null; ed.vertex = -1; o.setCutfill(false) }
+    const D = o.getData(); if (ed.sel && !(D[isGrading(ed.sel) ? 'grading' : 'garden'] || []).includes(ed.sel)) { ed.sel = null; ed.vertex = -1; ed.end = null; o.setCutfill(false) }
     highlight(); drawOverlay(); renderCard()
   }
   return { enter, exit, refresh, dispose: () => { offs.forEach(f => f()); scene.remove(overlay) }, get active() { return ed.active } }

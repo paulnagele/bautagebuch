@@ -10,7 +10,12 @@
 //   opts.context    site data ({ terrain, neighborhood }) or null
 //   opts.versions   version list (houseStore.listVersions)
 //   opts.currentId  id of opts.model
-//   opts.store      { load, save, rename, remove, setCurrent } (houseStore.js)
+//   opts.store      { list, load, save, rename, remove, setCurrent } (houseStore.js)
+//   opts.onChat     optional, shows the "Claude" button and is called on a click
+//   opts.onVersion  optional, called with the open version's list row (or null)
+//                   whenever the version list is drawn
+// Returns dispose(); dispose.openVersion(id, { reload }) opens a version, also
+// one added since, and with reload fetches its model again (Haus chat).
 //   opts.shares     { list, create, add, remove, revoke } for "Teilen" (houseStore.js), optional
 //   opts.readOnly   true on the shared page (haus.html): the shared versions,
 //                   display options open, nothing can be saved or changed
@@ -18,8 +23,14 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { mountSharePanel } from './sharePanel.js'
 import { buildGarden, gardenInfo, gardenSummary } from './garden.js'
+import { buildLights, LIGHT_TYPES } from './lights.js'
 import { mountGardenEditor } from './gardenEditor.js'
+import { brushFn, brushBounds } from './terrainBrush.js'
 import { buildFacade, wallSkin } from './facade.js'
+import { buildGrid, gridExtent, updateGridLabels, pointText, pointPlain } from './grid.js'
+import { rotateSite } from './siteRotation.js'
+import { sunPosition } from './sun.js'
+import { mountSunPanel } from './sunPanel.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
@@ -28,8 +39,10 @@ const VIEW_HTML = `
 <div class="gtool" data-h="gtool" hidden>
   <div class="gbar">
     <button type="button" class="btn primary" data-h="gadd" title="Pflanze, Objekt, Fläche oder Linie hinzufügen">+ Neu</button>
+    <button type="button" class="btn" data-h="gbrush" aria-pressed="false" aria-label="Gelände-Pinsel" title="Gelände mit dem Pinsel formen"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 2.5 9.2 10.8M10.6 12.2 7.8 9.4M7.8 9.4c-2-.4-3.6 1-3.8 3-.2 1.6-.8 2.6-2 3.2 2.6 1.4 6.4 1 7.6-1.2.6-1.2.6-2.2 1-3.2"/></svg></button>
     <button type="button" class="btn" data-h="gundo" disabled aria-label="Rückgängig" title="Rückgängig">↶</button>
     <button type="button" class="btn" data-h="gview">Von oben</button>
+    <button type="button" class="btn" data-h="ggrid" aria-pressed="false" aria-label="Raster mit Koordinaten" title="Raster mit Koordinaten zeigen"><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 2h16v16H2zM7.3 2v16M12.7 2v16M2 7.3h16M2 12.7h16"/></svg></button>
     <button type="button" class="btn" data-h="gdone">Fertig</button>
   </div>
   <div class="ghint" data-h="ghint" role="status"></div>
@@ -71,9 +84,11 @@ const VIEW_HTML = `
           <button type="button" class="chip" data-h="t-labels" aria-pressed="true">Raumnamen</button>
           <button type="button" class="chip" data-h="t-edges" aria-pressed="false">Kanten</button>
           <button type="button" class="chip" data-h="t-furn" aria-pressed="true">Möbel</button>
+          <button type="button" class="chip" data-h="t-lights" aria-pressed="true" hidden>Leuchten</button>
           <button type="button" class="chip" data-h="t-garden" aria-pressed="true" hidden>Garten</button>
           <button type="button" class="chip" data-h="t-cutfill" aria-pressed="false" hidden>Auf-/Abtrag</button>
           <button type="button" class="chip" data-h="t-contours" aria-pressed="false">Höhenlinien</button>
+          <button type="button" class="chip" data-h="t-grid" aria-pressed="false">Raster</button>
         </div>
         <div class="levelmeta" data-h="cutfillnote" hidden></div>
         <div class="levelmeta" data-h="gardennote" hidden></div>
@@ -87,7 +102,7 @@ const VIEW_HTML = `
           <button type="button" class="chip" data-h="c-trees" aria-pressed="true">Bäume</button>
           <button type="button" class="chip" data-h="c-addr" aria-pressed="false">Adressen</button>
         </div>
-        <p class="note">Gelände aus Laserscan (BEV ALS 1 m bis ±64 m, 5 m bis ±300 m). Gebäudehöhen und Bäume aus dem Oberflächenmodell. Höhenlinien alle 1 m, alle 5 m kräftiger (m ü. A.).</p>
+        <p class="note">Gelände aus Laserscan (BEV ALS 1 m bis ±64 m, 5 m bis ±300 m). Gebäudehöhen und Bäume aus dem Oberflächenmodell. Höhenlinien alle 1 m, alle 5 m kräftiger (m ü. A.). Raster alle 1 m, alle 5 m mit Koordinaten (x längs zum Haus, z quer, in m). Höhe 0 = EG-Fußboden.</p>
       </div>
       <div class="vsub" data-h="sharesec" hidden></div>
     </div>
@@ -135,7 +150,7 @@ const VIEW_HTML = `
 
   <section class="infosec">
     <div class="vhead"><span class="label">Auswahl</span><button type="button" class="sheetx" data-h="infoclose" aria-label="Auswahl schließen" hidden>×</button></div>
-    <div class="info" data-h="info"><span class="empty">Wand, Fenster oder Bauteil antippen, um Maße und ID zu sehen.</span></div>
+    <div class="info" data-h="info"><span class="empty">Wand, Fenster, Bauteil oder Gelände antippen, um Maße, Koordinaten und Höhe zu sehen.</span></div>
   </section>
 
   <section class="editsec" data-h="editsec">
@@ -159,11 +174,15 @@ const VIEW_HTML = `
   <svg viewBox="-32 -32 64 64"><circle r="30"/><g data-h="needle"><path d="M0,-24 L6,4 L0,0 L-6,4 Z"/><text x="0" y="-8" text-anchor="middle" dy="-18">N</text></g></svg>
 </div>
 <div class="corner">
+  <button type="button" class="fullbtn chatbtn" data-h="chatbtn" title="Claude fragen" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span class="txt">Claude</span></button>
+  <button type="button" class="fullbtn sunbtn" data-h="sunbtn" aria-expanded="false" aria-haspopup="dialog"><span class="ico"></span><span class="txt"></span><span class="short mono"></span></button>
   <button type="button" class="fullbtn" data-h="fullbtn" aria-pressed="false" title="Vollbild">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="txt">Vollbild</span></button>
   <a class="earth" data-h="earth" href="https://earth.google.com/web/" target="_blank" rel="noopener" title="Diese Ansicht in Google Earth öffnen" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9M12 3c-2.6 2.6-3.8 5.6-3.8 9s1.2 6.4 3.8 9"/></svg><span class="txt">Google Earth</span></a>
 </div>
+<div class="suncard" data-h="suncard" role="dialog" aria-label="Datum und Uhrzeit für den Sonnenstand" hidden></div>
 <div class="scalebar">Ziehen: drehen · Rechts/zwei Finger: verschieben · Rad: zoomen</div>
 `
 
@@ -194,7 +213,7 @@ export function showFailure(host, error) {
 export async function mountViewer(host, opts) {
   const { store } = opts
   const ORIGINAL = opts.model
-  const CONTEXT = opts.context ?? null
+  const CONTEXT = rotateSite(opts.context ?? null)
   // Own wrapper (no box of its own), so a second viewer in the same host
   // (React mounts effects twice in development) never touches this one.
   const view = document.createElement('div')
@@ -220,6 +239,9 @@ export async function mountViewer(host, opts) {
     document.documentElement.classList.toggle('haus-full', full)
   }
   $('fullbtn').addEventListener('click', () => setFull(!host.classList.contains('full')))
+  if (opts.full) setFull(true)   // opened by a "vollbild" link (src/startLink.js)
+  // Haus chat (src/haus/HouseChat.jsx): the button sits with the others in the corner.
+  if (opts.onChat) { $('chatbtn').hidden = false; $('chatbtn').addEventListener('click', () => opts.onChat()); }
   function dispose() {
     if (disposed) return
     disposed = true
@@ -285,7 +307,7 @@ export async function mountViewer(host, opts) {
   controls.minDistance = 3;
   controls.maxDistance = 700;
 
-  scene.add(new THREE.HemisphereLight(0xf4f7ff, 0x6b6250, 1.15));
+  const hemi = new THREE.HemisphereLight(0xf4f7ff, 0x6b6250, 1.15); scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff3e0, 2.1);
   sun.castShadow = true;
   sun.shadow.mapSize.set(PHONE ? 1024 : 2048, PHONE ? 1024 : 2048);
@@ -297,11 +319,34 @@ export async function mountViewer(host, opts) {
   function cssVar(n) { return getComputedStyle(host).getPropertyValue(n.replace(/^--/, '--h-')).trim(); }
   function applyTheme() {
     const bg = new THREE.Color(cssVar('--scene') || '#e2e6e0');
+    if (darkness > 0) bg.lerp(new THREE.Color(0x0d1420), 0.97 * darkness);
     scene.background = bg;
     scene.fog = new THREE.Fog(bg, 220, 950);
     if (edgeMat) edgeMat.color.set(cssVar('--edge') || '#27302b');
   }
-  let edgeMat = null;
+  let edgeMat = null, darkness = 0;
+  // Sun and sky for the date and time picked in the upper right corner
+  // (sunPanel.js): the sun comes from where it really stands at the site,
+  // the daylight fades in the twilight, and after sunset the modelled
+  // light fittings switch on.
+  const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const SUN_LOW = new THREE.Color(0xffa860), SUN_HIGH = new THREE.Color(0xfff3e0);
+  let sunAlt = 45, sunDir = null;
+  function applySun() {
+    const day = smooth(-7, 6, sunAlt);
+    hemi.intensity = 0.12 + 1.03 * day;
+    sun.intensity = 2.1 * smooth(-0.5, 8, sunAlt);
+    sun.color.copy(SUN_LOW).lerp(SUN_HIGH, smooth(2, 25, sunAlt));
+    if (sunDir) {
+      // below the horizon the light is off anyway; keep it above so nothing is lit from beneath
+      const d = sunDir.clone(); if (d.y < 0.05) { d.y = 0.05; d.normalize(); }
+      sun.position.copy(sun.target.position).addScaledVector(d, 60);
+    }
+    lightSet?.setEvening(Boolean(lightSet && state.lights && sunAlt < 3));
+    const dk = Math.round((1 - day) * 100) / 100;
+    if (dk !== darkness) { darkness = dk; applyTheme(); }
+    kick(300);
+  }
   on(matchMedia('(prefers-color-scheme: dark)'), 'change', applyTheme);
 
   // ---------- textures ----------
@@ -487,21 +532,24 @@ export async function mountViewer(host, opts) {
   function segCross(p1, p2, p3, p4) { const o = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
     const d1 = o(p3, p4, p1), d2 = o(p3, p4, p2), d3 = o(p1, p2, p3), d4 = o(p1, p2, p4); return d1 * d2 < 0 && d3 * d4 < 0; }
   function gradeFn(H0, grading) {
-    const areas = (grading || []).filter(g => (g.type === 'level' || g.type === 'slope' || g.type === 'pool') && g.outline?.length >= 3)
-      .map(g => g.type === 'pool' ? { ...g, type: 'level', height: g.top - g.depth, batter: 0.01 } : g);
-    if (!areas.length) return H0;
+    // in list order: level/slope areas (pools as a level area at their floor) and brush layers (Gelände-Pinsel: a height offset on top of what comes before)
+    const list = (grading || []).map(g => g.type === 'brush' ? g
+      : (g.type === 'level' || g.type === 'slope' || g.type === 'pool') && g.outline?.length >= 3 ? (g.type === 'pool' ? { ...g, type: 'level', height: g.top - g.depth, batter: 0.01 } : g) : null).filter(Boolean);
+    if (!list.length) return H0;
     const walls = (grading || []).filter(g => g.type === 'wall' && g.points?.length >= 2);
-    const items = areas.map(a => {
+    const items = list.map(a => {
+      if (a.type === 'brush') { const f = brushFn(a); return f ? { brush: f } : null; }
       const n = a.batter ?? 1.5, xs = a.outline.map(p => p[0]), zs = a.outline.map(p => p[1]), R = a.reach ?? 25;
       let h = () => a.height;
       if (a.type === 'slope') { const [x0, z0, y0] = a.from, [x1, z1, y1] = a.to, vx = x1 - x0, vz = z1 - z0, L2 = vx * vx + vz * vz || 1;
         h = (x, z) => y0 + (y1 - y0) * Math.max(0, Math.min(1, ((x - x0) * vx + (z - z0) * vz) / L2)); }
       return { a, n, h, bb: [Math.min(...xs) - R, Math.max(...xs) + R, Math.min(...zs) - R, Math.max(...zs) + R] };
-    });
+    }).filter(Boolean);
     const blocked = (x, z, qx, qz) => walls.some(w => w.points.some((p, i) => i > 0 && segCross([x, z], [qx, qz], w.points[i - 1], p)));
     return (x, z) => {
       let y = H0(x, z);
       for (const it of items) {
+        if (it.brush) { y += it.brush(x, z); continue; }
         if (x < it.bb[0] || x > it.bb[1] || z < it.bb[2] || z > it.bb[3]) continue;
         if (polyInside(it.a.outline, x, z)) { y = it.h(x, z); continue; }
         const [d, qx, qz] = polyNearest(it.a.outline, x, z), t = it.h(qx, qz);
@@ -511,6 +559,16 @@ export async function mountViewer(host, opts) {
       }
       return y;
     };
+  }
+  // [x0, x1, z0, z1] around all terrain edits (outlines, walls, brush layers), widened by pad; null without edits
+  function gradingBox(grading, pad) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    const add = (x, z) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (z < z0) z0 = z; if (z > z1) z1 = z; };
+    for (const g of grading || []) {
+      if (g.type === 'brush') { const b = brushBounds(g); if (b) { add(b[0], b[2]); add(b[1], b[3]); } }
+      else for (const p of g.outline || g.points || []) add(p[0], p[1]);
+    }
+    return x0 <= x1 ? [x0 - pad, x1 + pad, z0 - pad, z1 + pad] : null;
   }
   function terrainExtent(T, CT) { const G = CT || T; return [G.xs[0], G.xs[G.xs.length - 1], G.zs[0], G.zs[G.zs.length - 1]]; }
   const LANDUSE = { forest: '#55703f', shrub: '#6d8a50', wood: '#55703f', farmland: '#b3ad74', crop: '#b3ad74', meadow: '#98ae6f', grass: '#90ad67',
@@ -655,8 +713,8 @@ export async function mountViewer(host, opts) {
   }
 
   // ---------- build ----------
-  let terrainMesh = null, contourGroup = null;
-  let root = null, groups = {}, labelSprites = [], pickables = [], edgeLines = []; let furnGroups = []; let cutfillGroup = null, cutfillVol = null;
+  let terrainMesh = null, contourGroup = null, grid = null;
+  let root = null, groups = {}, labelSprites = [], pickables = [], edgeLines = []; let furnGroups = []; let lightGroups = [], lightSet = null; let cutfillGroup = null, cutfillVol = null;
   const FACADE = { NO: [1, 0], SW: [-1, 0], SO: [0, 1], NW: [0, -1] };
 
   // outdoor design (D.garden, see garden.js) on the graded terrain; rebuilt on its own while "Gestalten" edits it
@@ -676,7 +734,7 @@ export async function mountViewer(host, opts) {
       root.traverse(o => { o.geometry?.dispose?.(); if (o.material) [].concat(o.material).forEach(m => { if (!m.map?.userData?.keep) m.map?.dispose?.(); m.dispose?.(); }); });
     }
     root = new THREE.Group(); scene.add(root);
-    groups = {}; labelSprites = []; pickables = []; edgeLines = []; furnGroups = [];
+    groups = {}; labelSprites = []; pickables = []; edgeLines = []; furnGroups = []; lightGroups = []; lightSet = null;
     for (const id of ['KG', 'EG', 'DG', 'roof', 'terrain', 'ceiling', 'garden']) { groups[id] = new THREE.Group(); groups[id].name = id; root.add(groups[id]); }
     const M = D.materials;
     const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, side: THREE.DoubleSide, ...extra });
@@ -687,6 +745,52 @@ export async function mountViewer(host, opts) {
       glass: new THREE.MeshStandardMaterial({ color: M.glass, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.55, side: THREE.DoubleSide }),
       shutter: mat(0xffffff, { map: louvreTexture(M.shutter) }), terrain: CONTEXT ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: terrainTexture(), roughness: 1, side: THREE.DoubleSide }) : mat(M.terrain, { side: THREE.FrontSide }), chimney: mat(M.chimney),
       glassRoof: new THREE.MeshStandardMaterial({ color: 0x3c4c58, roughness: 0.2, metalness: 0.2 }),
+    };
+    mats.door = mat(0xf4f2ee, { roughness: 0.5 });
+    const doorArcMat = new THREE.LineBasicMaterial({ color: 0x6b6f6a, transparent: true, opacity: 0.7 });
+    mats.steel = new THREE.MeshStandardMaterial({ color: 0xc9ccce, roughness: 0.25, metalness: 0.9 });
+    // door leaf in an opening, drawn in the wall's local frame (x along the wall, z across, wall centred on z = 0).
+    // o.leaf: 'hinged' (o.hinge 'start'|'end' = side of the hinges along the wall, o.swing 1|-1 = wall side it opens to,
+    // o.open = opening angle in degrees, default 90) or 'sliding' (o.slide 'start'|'end' = where the open leaf is parked,
+    // o.side 1|-1 = wall face it runs on, o.open = 0..1 how far it is open, default 1). Lining and casings in both cases.
+    const addDoorLeaf = (local, o, p, t, tag) => {
+      const wd = p.u1 - p.u0, ht = p.h1 - p.h0, cu = (p.u0 + p.u1) / 2, cs = 0.06, ct = 0.015;
+      const add = (m, x, y, z) => { m.position.set(x, y, z); local.add(tag(m)); return m; };
+      add(box(wd, 0.02, t + 0.002, mats.door), cu, p.h1 - 0.01, 0);                       // lining (Zarge)
+      for (const u of [p.u0 + 0.01, p.u1 - 0.01]) add(box(0.02, ht, t + 0.002, mats.door), u, p.h0 + ht / 2, 0);
+      for (const s of [-1, 1]) {                                                            // casings on both faces
+        const z = s * (t / 2 + ct / 2);
+        add(box(wd + 2 * cs, cs, ct, mats.door), cu, p.h1 + cs / 2, z);
+        add(box(cs, ht + cs, ct, mats.door), p.u0 - cs / 2, p.h0 + (ht + cs) / 2, z);
+        add(box(cs, ht + cs, ct, mats.door), p.u1 + cs / 2, p.h0 + (ht + cs) / 2, z);
+      }
+      const lt = 0.04;
+      if (o.leaf === 'hinged') {
+        const sw = o.swing === -1 ? -1 : 1, atEnd = o.hinge === 'end', a = THREE.MathUtils.degToRad(o.open ?? 90);
+        const lw = wd - 0.04, lh = ht - 0.02;
+        const piv = new THREE.Group(); piv.position.set(atEnd ? p.u1 - 0.02 : p.u0 + 0.02, 0, sw * (t / 2 - lt / 2)); local.add(piv);
+        piv.rotation.y = atEnd ? sw * a : -sw * a;
+        const dir = atEnd ? -1 : 1;
+        const leaf = box(lw, lh, lt, mats.door); leaf.position.set(dir * lw / 2, p.h0 + lh / 2, 0); piv.add(tag(leaf));
+        const arc = [];                                                                     // swing arc on the floor, as in a floor plan
+        for (let i = 0; i <= 16; i++) { const b = a * i / 16; arc.push(new THREE.Vector3(dir * lw * Math.cos(b), p.h0 + 0.004, sw * lw * Math.sin(b))); }
+        const arcLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arc), doorArcMat); arcLine.position.copy(piv.position); local.add(arcLine);
+        for (const s of [-1, 1]) {                                                          // lever handles on both faces
+          const hx = dir * (lw - 0.07), z = s * (lt / 2 + 0.03);
+          const rose = box(0.05, 0.05, 0.01, mats.steel); rose.position.set(hx, p.h0 + 1.05, s * (lt / 2 + 0.005)); piv.add(tag(rose));
+          const neck = box(0.02, 0.02, 0.05, mats.steel); neck.position.set(hx, p.h0 + 1.05, s * (lt / 2 + 0.025)); piv.add(tag(neck));
+          const lever = box(0.13, 0.02, 0.02, mats.steel); lever.position.set(hx - dir * 0.055, p.h0 + 1.05, z); piv.add(tag(lever));
+        }
+      } else {
+        const sd = o.side === -1 ? -1 : 1, toEnd = o.slide === 'end', f = Math.min(1, Math.max(0, o.open ?? 1));
+        const lw = wd + 0.08, lh = ht + 0.03, z = sd * (t / 2 + ct + 0.03);
+        const closedU = cu, openU = toEnd ? p.u1 + lw / 2 - 0.06 : p.u0 - lw / 2 + 0.06, u = closedU + (openU - closedU) * f;
+        add(box(lw, lh, lt, mats.door), u, p.h0 + lh / 2, z);
+        const gu = toEnd ? u - lw / 2 + 0.06 : u + lw / 2 - 0.06;                            // grip at the leading edge
+        add(box(0.025, 0.3, 0.012, mats.steel), gu, p.h0 + 1.05, z + sd * (lt / 2 + 0.006));
+        const r0 = Math.min(p.u0, openU - lw / 2) - 0.02, r1 = Math.max(p.u1, openU + lw / 2) + 0.02;   // top rail over opening and park position
+        add(box(r1 - r0, 0.05, 0.05, mats.steel), (r0 + r1) / 2, p.h0 + lh + 0.03, sd * (t / 2 + ct + 0.03));
+      }
     };
     edgeMat = new THREE.LineBasicMaterial({ color: cssVar('--edge') || '#27302b', transparent: true, opacity: 0.35 });
     const addEdges = (mesh, parent, angle = 28) => {
@@ -740,7 +844,8 @@ export async function mountViewer(host, opts) {
       const geo = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false, curveSegments: 1 });
       geo.translate(0, 0, -t / 2);
       const ext = w.kind === 'exterior';
-      const mesh = new THREE.Mesh(geo, ext ? (w.level === 'KG' ? mats.plasterKG : mats.plaster) : mats.interior);
+      // optional w.material: e.g. 'woodBoards' for a timber shed, 'wood' for plain timber
+      const mesh = new THREE.Mesh(geo, mats[w.material] || (ext ? (w.level === 'KG' ? mats.plasterKG : mats.plaster) : mats.interior));
       mesh.position.set(ax, 0, az); mesh.rotation.y = Math.atan2(-dz, dx);
       mesh.castShadow = mesh.receiveShadow = true;
       mesh.userData = { kind: 'wall', data: w };
@@ -755,6 +860,7 @@ export async function mountViewer(host, opts) {
       for (const p of ops) {
         const o = p.o, wd = p.u1 - p.u0, ht = p.h1 - p.h0, cu = (p.u0 + p.u1) / 2, ch = (p.h0 + p.h1) / 2;
         const tag = (m) => { m.userData = { kind: 'opening', data: o, wall: w }; pickables.push(m); return m; };
+        if (o.type === 'door' && (o.leaf === 'hinged' || o.leaf === 'sliding')) { addDoorLeaf(local, o, p, t, tag); continue; }
         if (o.type === 'window' || o.style === 'glazed') {
           if (!ext) continue;
           const zf = out * (t / 2 - 0.12), f = 0.06, fd = 0.07;
@@ -865,11 +971,14 @@ export async function mountViewer(host, opts) {
     for (const st of D.stairs) {
       const g = groups[st.level];
       const sm = mats[st.material] || mats.stone;   // st.material: e.g. "wood" for a timber stair
+      const tm = st.tread ? mats[st.tread] || mats.wood : null;   // st.tread: material of a 4 cm tread board on each step and landing (e.g. "wood")
+      const addTread = (w, d, x, top, z) => { if (!tm) return; const t = box(w, 0.04, d, tm); t.position.set(x, top - 0.02, z); t.userData = { kind: 'stair', data: st }; g.add(t); pickables.push(t); };
       const rise = (st.to - st.from) / st.steps;
       const addStep = (x0, x1, z0, z1, top) => {
         const h = Math.abs(rise) + 0.06;
         const m = box(x1 - x0, h, Math.abs(z1 - z0), sm);
         m.position.set((x0 + x1) / 2, top - h / 2, (z0 + z1) / 2); m.userData = { kind: 'stair', data: st }; g.add(m); pickables.push(m);
+        addTread(x1 - x0, Math.abs(z1 - z0) + 0.02, (x0 + x1) / 2, top + 0.002, (z0 + z1) / 2);
       };
       if (st.type === 'spiral') {
         // spiral stair: steps = risers from 'from' (top) to 'to'; steps-1 wedge treads, first tread centred on startAngle (deg, x -> z), stepAngle per tread
@@ -905,6 +1014,7 @@ export async function mountViewer(host, opts) {
         for (let i = 1; i < m; i++) { const za = runStart + run * (i - 1), zb = za + run; addStep(halves[0][0], halves[0][1], Math.min(za, zb), Math.max(za, zb), st.from + rise * i); }
         const lh = st.from + rise * m;
         const land = box(x1 - x0, 0.2, ld, sm); land.position.set((x0 + x1) / 2, lh - 0.1, (lz0 + lz1) / 2); land.userData = { kind: 'stair', data: st }; g.add(land); pickables.push(land);
+        addTread(x1 - x0, ld, (x0 + x1) / 2, lh + 0.002, (lz0 + lz1) / 2);
         for (let i = 1; i < m; i++) { const za = runEnd - run * (i - 1), zb = za - run; addStep(halves[1][0], halves[1][1], Math.min(za, zb), Math.max(za, zb), lh + rise * i); }
       } else if (st.startAt === '+x' || st.startAt === '-x') {
         const [x0, x1] = st.x, [z0, z1] = st.z, n = st.steps;
@@ -1017,15 +1127,29 @@ export async function mountViewer(host, opts) {
     }
 
     // railings (rl.style: 'glass' = frameless glass with a slim steel handrail, 'cable' = steel posts with horizontal cables
-    // and a wooden handrail, default = wooden balusters)
+    // and a wooden handrail, 'handrail' = wooden handrail only, default = wooden balusters)
     const steel = new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.45, metalness: 0.6 });
     const railGlass = new THREE.MeshStandardMaterial({ color: 0xcfe0e4, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false });
     for (const rl of D.railings) {
       const g = groups[rl.level];
       for (let i = 0; i + 1 < rl.points.length; i++) {
-        const [ax, az] = rl.points[i], [bx, bz] = rl.points[i + 1];
-        const L = Math.hypot(bx - ax, bz - az), ang = Math.atan2(-(bz - az), bx - ax);
-        const seg = new THREE.Group(); seg.position.set(ax, rl.base, az); seg.rotation.y = ang; g.add(seg);
+        // a point may carry its own base height as a third value ([x, z, y]): the segment then slopes (stair railings)
+        const [ax, az, ay = rl.base] = rl.points[i], [bx, bz, by = rl.base] = rl.points[i + 1];
+        const L = Math.hypot(bx - ax, bz - az), ang = Math.atan2(-(bz - az), bx - ax), dy = by - ay;
+        if (L < 1e-6) continue;
+        const seg = new THREE.Group(); seg.position.set(ax, ay, az); seg.rotation.y = ang; g.add(seg);
+        if (Math.abs(dy) > 1e-6) {   // sloped: rails follow the slope, balusters stay vertical
+          const tagRail = (m) => { m.userData = { kind: 'railing', data: rl }; pickables.push(m); return m; };
+          const S = Math.hypot(L, dy), tilt = Math.atan2(dy, L);
+          const top = tagRail(box(S + 0.06, 0.06, 0.1, mats.wood)); top.position.set(L / 2, dy / 2 + rl.height - 0.03, 0); top.rotation.z = tilt; seg.add(top);
+          if (rl.style === 'handrail') continue;
+          const bot = tagRail(box(S, 0.05, 0.06, mats.wood)); bot.position.set(L / 2, dy / 2 + 0.1, 0); bot.rotation.z = tilt; seg.add(bot);
+          const n = Math.max(1, Math.floor(L / 0.11)), h = rl.height - 0.12;
+          const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(0.075, h, 0.022), mats.wood, n), mtx = new THREE.Matrix4();
+          for (let j = 0; j < n; j++) { const u = (j + 0.5) / n; mtx.makeTranslation(u * L, u * dy + h / 2 + 0.06, 0); inst.setMatrixAt(j, mtx); }
+          inst.castShadow = true; inst.userData = { kind: 'railing', data: rl }; seg.add(inst); pickables.push(inst);
+          continue;
+        }
         const tagRail = (m) => { m.userData = { kind: 'railing', data: rl }; pickables.push(m); return m; };
         if (rl.style === 'glass') {
           const pane = tagRail(box(L, rl.height - 0.05, 0.02, railGlass)); pane.position.set(L / 2, (rl.height - 0.05) / 2, 0); seg.add(pane);
@@ -1040,6 +1164,7 @@ export async function mountViewer(host, opts) {
           continue;
         }
         const top = box(L + 0.06, 0.06, 0.1, mats.wood); top.position.set(L / 2, rl.height - 0.03, 0); seg.add(top);
+        if (rl.style === 'handrail') { top.userData = { kind: 'railing', data: rl }; pickables.push(top); continue; }
         const bot = box(L, 0.05, 0.06, mats.wood); bot.position.set(L / 2, 0.1, 0); seg.add(bot);
         const n = Math.max(1, Math.floor(L / 0.11));
         const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(0.075, rl.height - 0.12, 0.022), mats.wood, n);
@@ -1055,11 +1180,22 @@ export async function mountViewer(host, opts) {
       const m = box(L, b.top - b.bottom, b.width, mats.plaster); m.position.set((ax + bx) / 2, (b.top + b.bottom) / 2, (az + bz) / 2); m.rotation.y = Math.atan2(-(bz - az), bx - ax);
       m.userData = { kind: 'beam', data: b }; groups[b.level].add(m); pickables.push(m);
     }
-    // louvred pergolas (D.pergolas: {level, x:[x0,x1], z:[z0,z1], base, top, post, frame, louvreAxis 'x'|'z', louvreAngle°, color, screens:[{side, drop 0..1}]})
+    // inclined braces / Kopfbänder (D.braces: {id, level, from:[x,z,y], to:[x,z,y], size, material})
+    for (const br of D.braces || []) {
+      const a = new THREE.Vector3(br.from[0], br.from[2], br.from[1]), b = new THREE.Vector3(br.to[0], br.to[2], br.to[1]), dir = b.clone().sub(a), L = dir.length(), s = br.size ?? 0.12;
+      const m = box(s, L, s, br.material === 'steel' ? steel : mats[br.material] || mats.wood);
+      m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+      m.userData = { kind: 'brace', data: br }; groups[br.level].add(m); pickables.push(m);
+    }
+    // louvred pergolas (D.pergolas: {level, x:[x0,x1], z:[z0,z1], base, top, post, frame, wall?, louvreAxis 'x'|'z', louvreAngle°, color, screens:[{side, drop 0..1}]})
     for (const pg of D.pergolas || []) {
       const g = groups[pg.level], ps = pg.post ?? 0.15, fh = pg.frame ?? 0.22, col = mat(new THREE.Color(pg.color || '#383e42').getHex(), { roughness: 0.45, metalness: 0.3 });
       const [x0, x1] = pg.x, [z0, z1] = pg.z, yb = pg.base ?? 0, yt = pg.top, tag = m => { m.userData = { kind: 'pergola', data: pg }; g.add(m); pickables.push(m); return m; };
-      for (const px of [x0 + ps / 2, x1 - ps / 2]) for (const pz of [z0 + ps / 2, z1 - ps / 2]) { const m = tag(box(ps, yt - fh - yb, ps, col)); m.position.set(px, yb + (yt - fh - yb) / 2, pz); }
+      // pg.wall ('-x'|'+x'|'-z'|'+z'): side fixed to the house wall, no posts there (the frame rests on wall brackets)
+      for (const px of [x0 + ps / 2, x1 - ps / 2]) for (const pz of [z0 + ps / 2, z1 - ps / 2]) {
+        const onWall = { '-x': px < (x0 + x1) / 2, '+x': px > (x0 + x1) / 2, '-z': pz < (z0 + z1) / 2, '+z': pz > (z0 + z1) / 2 }[pg.wall];
+        if (onWall) continue;
+        const m = tag(box(ps, yt - fh - yb, ps, col)); m.position.set(px, yb + (yt - fh - yb) / 2, pz); }
       for (const [cx, cz, w, d] of [[(x0 + x1) / 2, z0 + ps / 2, x1 - x0, ps], [(x0 + x1) / 2, z1 - ps / 2, x1 - x0, ps], [x0 + ps / 2, (z0 + z1) / 2, ps, z1 - z0 - 2 * ps], [x1 - ps / 2, (z0 + z1) / 2, ps, z1 - z0 - 2 * ps]]) {
         const m = tag(box(w, fh, d, col)); m.position.set(cx, yt - fh / 2, cz); addEdges(m, g); }
       const alongX = pg.louvreAxis !== 'z', span = alongX ? x1 - x0 - 2 * ps : z1 - z0 - 2 * ps, run = alongX ? z1 - z0 - 2 * ps : x1 - x0 - 2 * ps, lw = 0.2;
@@ -1086,11 +1222,13 @@ export async function mountViewer(host, opts) {
       const poly = T.cutout;
       const inside = (x, z) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, zi] = poly[i], [xj, zj] = poly[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; } return c; };
       const dist = (x, z) => { let d = Infinity; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [ax, az] = poly[j], [bx, bz] = poly[i]; const vx = bx - ax, vz = bz - az; const t = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / (vx * vx + vz * vz))); d = Math.min(d, Math.hypot(x - ax - t * vx, z - az - t * vz)); } return d; };
-      const axis = (a0, a1) => { const out = [], cuts = [...new Set([a0, -64, -16, 16, 64, a1].filter(v => v >= a0 && v <= a1))].sort((p, q) => p - q);
-        for (let i = 0; i + 1 < cuts.length; i++) { const m = Math.abs((cuts[i] + cuts[i + 1]) / 2), st = m < 16 ? (PHONE ? 0.5 : 0.25) : m < 64 ? 1 : (PHONE ? 8 : 4);
+      // fine mesh near the house and wherever the terrain is edited (so brush strokes and Böschungen show), coarser further out
+      const fineBox = gradingBox(D.grading, 4)?.map((v, i) => (i % 2 ? Math.ceil(v) : Math.floor(v)));
+      const axis = (a0, a1, lo, hi) => { const out = [], cuts = [...new Set([a0, -64, -16, 16, 64, a1, lo, hi].filter(v => Number.isFinite(v) && v >= a0 && v <= a1))].sort((p, q) => p - q);
+        for (let i = 0; i + 1 < cuts.length; i++) { const c = (cuts[i] + cuts[i + 1]) / 2, m = Math.abs(c), st = m < 16 || (c > lo && c < hi) ? (PHONE ? 0.5 : 0.25) : m < 64 ? 1 : (PHONE ? 8 : 4);
           for (let v = cuts[i]; v < cuts[i + 1] - 1e-9; v += st) out.push(+v.toFixed(4)); }
         out.push(a1); return out; };
-      const xs = axis(ext[0], ext[1]), zs = axis(ext[2], ext[3]), nx = xs.length, nz = zs.length;
+      const xs = axis(ext[0], ext[1], fineBox?.[0], fineBox?.[1]), zs = axis(ext[2], ext[3], fineBox?.[2], fineBox?.[3]), nx = xs.length, nz = zs.length;
       const pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
       for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
         const x = xs[i], z = zs[j], k = j * nx + i;
@@ -1108,15 +1246,14 @@ export async function mountViewer(host, opts) {
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
       geo.setIndex(idx); geo.computeVertexNormals();
       const m = new THREE.Mesh(geo, mats.terrain); m.receiveShadow = true; m.userData = { kind: 'terrain', data: { note: T.note } }; g.add(m);
-      terrainMesh = m; contourGroup = null;
+      m.userData.xs = xs; m.userData.zs = zs;
+      terrainMesh = m; contourGroup = null; grid = null;
 
       // cut/fill: overlay on the terrain (red = Abtrag, blue = Auftrag) and volumes on a 0.25 m grid
       cutfillGroup = null; cutfillVol = null;
-      const G = (D.grading || []).filter(e => e.outline || e.points);
-      if (G.length) {
-        const pts = G.flatMap(e => e.outline || e.points);
-        const R = 12;
-        const bx0 = Math.min(...pts.map(p => p[0])) - R, bx1 = Math.max(...pts.map(p => p[0])) + R, bz0 = Math.min(...pts.map(p => p[1])) - R, bz1 = Math.max(...pts.map(p => p[1])) + R;
+      const cb = gradingBox(D.grading, 12);
+      if (cb) {
+        const [bx0, bx1, bz0, bz1] = cb;
         const st = 0.25; let cut = 0, fill = 0;
         const cx = [], cz = []; for (let x = bx0; x <= bx1 + 1e-9; x += st) cx.push(x); for (let z = bz0; z <= bz1 + 1e-9; z += st) cz.push(z);
         const diff = new Float32Array(cx.length * cz.length);
@@ -1249,9 +1386,28 @@ export async function mountViewer(host, opts) {
             add(bw * 0.7, h * 0.38, 0.01, fire, 0, 0.3 + h * 0.19, bd / 2 + 0.005);
             if (f.flue) cyl(0.075, f.flue - h, steel, 0, h + (f.flue - h) / 2, -0.03);
             break; }
-          case 'bench': {   // bench seat with backrest on the back (-z local) side
-            add(W, 0.4, Dp, fm.oak, 0, 0.2, 0); add(W - 0.02, 0.06, Dp - 0.08, fm.fabric, 0, 0.43, 0.04);
-            add(W, 0.5, 0.08, fm.oak, 0, 0.65, -Dp / 2 + 0.04); break; }
+          case 'bench': {   // bench seat with backrest on the back (-z local) side; back: false leaves it out, open: true = seat on legs, open below
+            if (f.stone) {   // stone stove bench (Ofenbank) in the stove's cladding colour, no cushion; logs: true = open log niche below the seat
+              const h = H ?? 0.45, clad = new THREE.MeshStandardMaterial({ color: 0xe6e1d8, roughness: 0.8 });
+              if (!f.logs) { add(W, h, Dp, clad, 0, h / 2, 0); break; }
+              const top = 0.06, base = 0.05, side = 0.05, nh = h - top - base;
+              add(W, top, Dp, clad, 0, h - top / 2, 0); add(W, base, Dp, clad, 0, base / 2, 0);
+              add(W, nh, 0.03, clad, 0, base + nh / 2, -Dp / 2 + 0.015);
+              for (const sx of [-1, 1]) add(side, nh, Dp, clad, sx * (W / 2 - side / 2), base + nh / 2, 0);
+              const log = mat(0x8a6845), r = 0.045, cols = Math.max(1, Math.floor((W - 2 * side) / (2 * r + 0.01))), rows = Math.max(1, Math.floor(nh / (2 * r)));
+              for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+                const x = -W / 2 + side + r + 0.005 + i * (2 * r + 0.01) + (j % 2 ? r : 0); if (x > W / 2 - side - r) continue;
+                cyl(r, Dp - 0.1, log, x, base + r + j * 2 * r * 0.9, 0.02).rotation.x = Math.PI / 2;
+              }
+              break;
+            }
+            if (f.open) {
+              add(W, 0.05, Dp, fm.oak, 0, 0.375, 0);
+              const lx = W / 2 - 0.05, lz = Dp / 2 - 0.05, legs = Math.max(2, Math.ceil(W / 1.2) + 1);
+              for (let i = 0; i < legs; i++) { const x = -lx + (2 * lx * i) / (legs - 1); add(0.05, 0.35, 0.05, fm.oak, x, 0.175, -lz); add(0.05, 0.35, 0.05, fm.oak, x, 0.175, lz); }
+            } else add(W, 0.4, Dp, fm.oak, 0, 0.2, 0);
+            add(W - 0.02, 0.06, Dp - 0.08, fm.fabric, 0, 0.43, 0.04);
+            if (f.back !== false) add(W, 0.5, 0.08, fm.oak, 0, 0.65, -Dp / 2 + 0.04); break; }
           case 'counter': case 'island': {
             const h = H ?? 0.9, oh = f.overhang ?? 0, cd = Dp - oh, cz = oh / 2;   // overhang: open bar top on the back (local -z) side
             add(W, h - 0.14, cd - 0.05, fm.front, 0, 0.1 + (h - 0.14) / 2, cz + 0.025 * (f.type === 'island' || oh ? 0 : -1)); add(W - 0.02, 0.1, cd - 0.1, fm.dark, 0, 0.05, cz);
@@ -1262,6 +1418,15 @@ export async function mountViewer(host, opts) {
             break; }
           case 'wardrobe': case 'cabinet': case 'sideboard': case 'nightstand': {
             const h = H ?? { wardrobe: 2.2, cabinet: 2.2, sideboard: 0.55, nightstand: 0.5 }[f.type];
+            if (f.glass) {   // glass front: open carcass with shelves behind a glass pane on the front (+z local)
+              const t = 0.02, c = f.type === 'wardrobe' || f.type === 'cabinet' ? fm.front : fm.oak;
+              add(W, h, t, c, 0, h / 2, -Dp / 2 + t / 2);
+              for (const sx of [-1, 1]) add(t, h, Dp - 0.02, c, sx * (W / 2 - t / 2), h / 2, -0.01);
+              const n = Math.max(1, Math.round(h / 0.35)); for (let i = 0; i <= n; i++) add(W - 2 * t, t, Dp - 0.04, c, 0, Math.min(h - t / 2, t / 2 + i * (h - t) / n), -0.02);
+              add(W - 0.01, h - 0.01, 0.006, fm.glass, 0, h / 2, Dp / 2 - 0.01);
+              const m = Math.max(1, Math.round(W / 0.5)); for (let i = 1; i < m; i++) add(0.02, h, 0.02, c, -W / 2 + i * W / m, h / 2, Dp / 2 - 0.01);
+              break;
+            }
             add(W, h, Dp - 0.02, f.type === 'wardrobe' || f.type === 'cabinet' ? fm.front : fm.oak, 0, h / 2, -0.01);
             const n = Math.max(1, Math.round(W / 0.5)); for (let i = 1; i < n; i++) add(0.008, h - 0.06, 0.02, fm.dark, -W / 2 + i * W / n, h / 2, Dp / 2 - 0.01);
             break; }
@@ -1299,6 +1464,13 @@ export async function mountViewer(host, opts) {
     { const cb = $('t-cutfill'), cn = $('cutfillnote'); if (cb) cb.hidden = !cutfillGroup;
       if (cn) { cn.hidden = !cutfillVol; if (cutfillVol) cn.textContent = `Geländeänderung: Abtrag ${cutfillVol.cut.toFixed(1)} m³ · Auftrag ${cutfillVol.fill.toFixed(1)} m³`; } }
     { const fb = $('t-furn'); if (fb) fb.hidden = !D.furniture?.length; }
+    // light fittings (optional, model.lights)
+    if (D.lights?.length) {
+      lightSet = buildLights(D, levels);
+      for (const [lv, g] of Object.entries(lightSet.groups)) { groups[lv]?.add(g); lightGroups.push(g); }
+      pickables.push(...lightSet.pickables);
+    }
+    { const b = $('t-lights'); if (b) b.hidden = !D.lights?.length; }
     buildGardenGroup(D);
     // room labels
     for (const r of D.rooms) {
@@ -1319,7 +1491,7 @@ export async function mountViewer(host, opts) {
   }
 
   // ---------- UI state ----------
-  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, garden: true, cutfill: false, contours: false };
+  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, lights: true, garden: true, cutfill: false, contours: false, grid: false };
   const ORDER = ['KG', 'EG', 'DG'];
   function applyVisibility() {
     if (!root) return;
@@ -1332,9 +1504,14 @@ export async function mountViewer(host, opts) {
     for (const s of labelSprites) s.visible = state.labels && state.level !== 'all' && s.userData.level === state.level;
     for (const l of edgeLines) l.visible = state.edges;
     for (const g of furnGroups) g.visible = state.furniture;
+    for (const g of lightGroups) g.visible = state.lights;
+    applySun();
     if (cutfillGroup) cutfillGroup.visible = state.cutfill && state.terrain;
     if (state.contours && !contourGroup && terrainMesh) buildContours();
     if (contourGroup) contourGroup.visible = state.contours && state.terrain;
+    if (state.grid && !grid && terrainMesh) { grid = buildGrid({ H: groundAt, cutout: DATA.terrain?.cutout, extent: gridExtent(DATA), phone: PHONE }); terrainMesh.parent.add(grid.group); }
+    if (grid) grid.group.visible = state.grid && state.terrain;
+    for (const id of ['t-grid', 'ggrid']) $(id)?.setAttribute('aria-pressed', String(state.grid));
     kick(800);
     ctxGroups.buildings.visible = state.neighbors; ctxGroups.power.visible = state.power; ctxGroups.addresses.visible = state.addresses; ctxGroups.trees.visible = state.trees;
     renderer.clippingPlanes = clipPlanes();
@@ -1358,7 +1535,7 @@ export async function mountViewer(host, opts) {
     applyVisibility();
   }
   for (const id of ['all', 'DG', 'EG', 'KG']) $('lv-' + id).addEventListener('click', () => setLevel(id));
-  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-garden', 'garden'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
+  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-lights', 'lights'], ['t-garden', 'garden'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['t-grid', 'grid'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
     const b = $(id); if (!b) continue;
     b.setAttribute('aria-pressed', String(state[key]));
     b.addEventListener('click', () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); if (key === 'roads') paintTerrain(); applyVisibility(); });
@@ -1421,17 +1598,40 @@ export async function mountViewer(host, opts) {
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const planes = clipPlanes();
-    const hits = ray.intersectObjects(pickables.concat(ctxPickables).filter(o => { let p = o; while (p) { if (!p.visible) return false; p = p.parent; } return true; }), false)
+    const visible = o => { let p = o; while (p) { if (!p.visible) return false; p = p.parent; } return true; };
+    const hits = ray.intersectObjects(pickables.concat(ctxPickables, terrainMesh && visible(terrainMesh) ? [terrainMesh] : []).filter(visible), false)
       .filter(h => planes.every(pl => pl.distanceToPoint(h.point) >= 0));
-    select(hits[0]?.object || null, hits[0]?.instanceId);
+    select(hits[0]?.object || null, hits[0]?.instanceId, hits[0]?.point);
   });
-  function select(obj, inst) {
+  // where the finger landed: a small pin, and its coordinates under the description (with a button to copy them)
+  const pinMat = new THREE.MeshBasicMaterial({ color: 0xd4572a, depthTest: false, transparent: true });
+  const pin = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), pinMat); pin.renderOrder = 22; pin.visible = false; scene.add(pin);
+  const pinStem = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 1, 8).translate(0, 0.5, 0), pinMat); pinStem.renderOrder = 22; pin.add(pinStem);
+  const pinSize = () => { if (pin.visible) pin.scale.setScalar(Math.max(0.06, camera.position.distanceTo(controls.target) * (PHONE ? 0.006 : 0.004))); };
+  controls.addEventListener('change', pinSize);
+  function pointHtml(pt, terrain) {
+    const y = terrain ? groundAt(pt.x, pt.z) : pt.y, y0 = groundAt0(pt.x, pt.z);
+    const base = CONTEXT?.neighborhood?.meta?.georef?.egFloorAbsoluteM;
+    const rows = terrain ? dl([['x', f2(pt.x) + ' m'], ['z', f2(pt.z) + ' m'], ['Höhe', f2(y) + ' m'],
+      ['Bestand', Number.isFinite(y0) && Math.abs(y0 - y) > 0.005 ? f2(y0) + ' m' : null],
+      ['Auf-/Abtrag', Number.isFinite(y0) && Math.abs(y0 - y) > 0.005 ? (y > y0 ? '+' : '') + f2(y - y0) + ' m' : null],
+      ['Meereshöhe', Number.isFinite(base) ? (y + base).toFixed(1) + ' m ü. A.' : null]]) : `<p class="ptline">Angetippt: ${esc(pointText(pt.x, pt.z, y))}</p>`;
+    return rows + `<div class="ptrow"><button type="button" class="btn" data-copy="${esc(pointPlain(pt.x, pt.z, y))}">Koordinaten kopieren</button></div>`;
+  }
+  $('info').addEventListener('click', async e => {
+    const b = e.target.closest('[data-copy]'); if (!b) return;
+    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'Kopiert ✓'; }
+    catch { b.textContent = b.dataset.copy; }   // no clipboard: show the text so it can be copied by hand
+  });
+  function select(obj, inst, pt) {
     if (selected) { selected.material = selMat; selected = null; }
     const info = $('info');
+    pin.visible = !!(obj && pt); if (pin.visible) { pin.position.copy(pt); pinSize(); } kick(300);
     $('panel').classList.toggle('has-sel', !!obj); $('infoclose').hidden = !obj;
-    if (!obj) { info.innerHTML = '<span class="empty">Wand, Fenster oder Bauteil antippen, um Maße und ID zu sehen.</span>'; return; }
+    if (!obj) { info.innerHTML = '<span class="empty">Wand, Fenster, Bauteil oder Gelände antippen, um Maße, Koordinaten und Höhe zu sehen.</span>'; return; }
+    if (obj.userData.kind === 'terrain') { info.innerHTML = '<h3>Punkt im Gelände</h3>' + pointHtml(pt, true); return; }
     if (obj.isMesh && !obj.isInstancedMesh) { selected = obj; selMat = obj.material; obj.material = obj.material.clone(); obj.material.emissive = new THREE.Color(cssVar('--accent') || '#2d6a55'); obj.material.emissiveIntensity = 0.45; }
-    info.innerHTML = describe(obj.userData.items && inst != null ? { kind: obj.userData.kind, data: obj.userData.items[inst] } : obj.userData);
+    info.innerHTML = describe(obj.userData.items && inst != null ? { kind: obj.userData.kind, data: obj.userData.items[inst] } : obj.userData) + (pt ? pointHtml(pt, false) : '');
   }
   const f2 = v => (typeof v === 'number' ? v.toFixed(2) : v);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1450,7 +1650,7 @@ export async function mountViewer(host, opts) {
       }
       case 'opening': return `<h3>${d.type === 'door' ? 'Tür' : 'Fenster'} ${esc(d.label ?? '')}</h3>` + dl([
         ['In Wand', u.wall.id], ['Breite', f2(d.width) + ' m'], ['Höhe', f2(d.height) + ' m'], ['Brüstung', f2(d.sill) + ' m'],
-        ['Position', f2(d.at) + ' m ab Wandanfang'], ['Unterteil fix', d.fixedLower ? f2(d.fixedLower) + ' m' : null], ['Läden', d.shutters ? 'ja' : null]]) + (d.note ? `<p class="note">${esc(d.note)}</p>` : '');
+        ['Position', f2(d.at) + ' m ab Wandanfang'], ['Unterteil fix', d.fixedLower ? f2(d.fixedLower) + ' m' : null], ['Läden', d.shutters ? 'ja' : null], ['Türblatt', d.leaf === 'sliding' ? 'Schiebetür' : d.leaf === 'hinged' ? 'Drehtür' : null]]) + (d.note ? `<p class="note">${esc(d.note)}</p>` : '');
       case 'facade': return `<h3>Fassadengestaltung</h3>` + dl([['Stil', d.name || ''], ['Faschen', d.surrounds ? 'ja' : 'nein'], ['Gesimsbänder', String(d.bands?.length || 0)], ['Eckquader', d.quoins ? 'ja' : 'nein'], ['Sockel', d.socle === 'stone' ? 'Naturstein' : 'Putz'], ['Dach', d.roofTiles === 'coppi' ? 'Mönch-Nonne (Coppi)' : 'Ziegel']]);
       case 'insulation': return `<h3>${esc(d.name || 'Fassadendämmung')}</h3>` + dl([['Geschoss', d.level], ['Stärke', f2(d.thickness) + ' m'], ['Aufbau', d.note || '']]);
       case 'slab': return `<h3>${esc(d.name)}</h3>` + dl([['ID', d.id], ['OK', f2(d.top)], ['Stärke', f2(d.thickness) + ' m']]);
@@ -1468,8 +1668,10 @@ export async function mountViewer(host, opts) {
       case 'post': return `<h3>Stütze ${esc(d.id)}</h3>` + dl([['Querschnitt', `${d.size * 100}/${d.size * 100} cm`], ['Höhe', f2(d.top - d.base) + ' m']]);
       case 'pool': return `<h3>${esc(d.name || 'Pool')}</h3>` + dl([['Maße', `${f2(Math.max(...d.outline.map(p => p[0])) - Math.min(...d.outline.map(p => p[0])))} × ${f2(Math.max(...d.outline.map(p => p[1])) - Math.min(...d.outline.map(p => p[1])))} m`], ['Tiefe', f2(d.depth) + ' m'], ['Beckenrand', f2(d.top)], ['Hinweis', d.note]]);
       case 'gradewall': return `<h3>${esc(d.name || 'Stützmauer')}</h3>` + dl([['ID', d.id], ['Höhe über Gelände', f2(d._h) + ' m'], ['OK', f2(d._top)], ['Stärke', f2(d.thickness ?? 0.25) + ' m'], ['Hinweis', d.note]]);
+      case 'light': return `<h3>${esc(d.name || LIGHT_TYPES[d.type] || 'Leuchte')}</h3>` + dl([['Art', LIGHT_TYPES[d.type]], ['Raum', d.room], ['Hinweis', d.note]]);
       case 'furniture': return `<h3>${esc(d.name || d.type)}</h3>` + dl([['Raum', d.room], ['Maße', `${f2(Math.abs(d.x[1] - d.x[0]))} × ${f2(Math.abs(d.z[1] - d.z[0]))} m`], ['Hinweis', d.note]]);
       case 'garden': { const g = gardenInfo(d); return `<h3>${esc(g.title)}</h3>` + dl(g.rows) + (g.note ? `<p class="note">${esc(g.note)}</p>` : ''); }
+      case 'brace': return `<h3>Schrägstütze ${esc(d.id)}</h3>` + dl([['Querschnitt', `${Math.round((d.size ?? 0.12) * 100)}/${Math.round((d.size ?? 0.12) * 100)} cm`], ['Länge', f2(Math.hypot(d.to[0] - d.from[0], d.to[1] - d.from[1], d.to[2] - d.from[2])) + ' m'], ['Hinweis', d.note]]);
       case 'beam': return `<h3>Unterzug ${esc(d.id)}</h3>` + dl([['Breite', f2(d.width) + ' m'], ['UK', f2(d.bottom)]]);
       default: return '<span class="empty">Kein Bauteil.</span>';
     }
@@ -1548,6 +1750,7 @@ export async function mountViewer(host, opts) {
     if (curEl) vlistEl.scrollTop = curEl.offsetTop - vlistEl.offsetTop - 4;
     const cur = versions.find(v => v.id === currentId);
     $('state').textContent = cur ? cur.name : 'Version';
+    opts.onVersion?.(cur ?? null);
     $('dirty').hidden = READ_ONLY || !isDirty();
     if (sharePanel && !vsetEl.hidden) sharePanel.refresh();
     vdelBtn.hidden = !cur || cur.is_current || cur.locked || sharedIds.has(cur.id); vdelBtn.textContent = delArmed ? 'Wirklich löschen?' : 'Version löschen';
@@ -1570,6 +1773,18 @@ export async function mountViewer(host, opts) {
     DATA = d; currentId = id; currentJson = JSON.stringify(d); fillEditor(); setLevel(state.level); select(null);
     renderVersions();
   }
+  // For the Haus chat: open a version Claude saved or changed. reload: fetch
+  // its model again (Claude changed it in place); a new id reloads the list.
+  dispose.openVersion = async (id, { reload = false } = {}) => {
+    const dropped = reload && id === currentId && isDirty();
+    if (reload) models.delete(id);
+    if (!versions.some(v => v.id === id) && store.list) {
+      try { versions = await store.list(); } catch (e) { setVmsg(e.message, true); return; }
+      if (disposed) return;
+    }
+    await openVersion(id);
+    if (dropped && !disposed) setVmsg('Claude hat diese Version geändert; deine ungespeicherte Vorschau wurde verworfen.');
+  };
   $('vsavebtn').addEventListener('click', async () => {
     const name = vnameIn.value.trim();
     if (!name) { setVmsg('Bitte einen Namen für die Version eingeben.', true); vnameIn.focus(); return; }
@@ -1654,7 +1869,7 @@ export async function mountViewer(host, opts) {
   const walk = { active: false, pending: false, yaw: 0, pitch: 0, feet: 0, vy: 0, keys: new Set(), joy: [0, 0], look: null, saved: null, last: 0, dirty: false, root: null, ground: [], block: [] };
   const walkHud = $('walkhud'), walkMsg = $('walkmsg'), walkBtn = $('walkbtn');
   const joyEl = $('joy'), joyKnob = joyEl.querySelector('i'), wray = new THREE.Raycaster();
-  const GROUND_KINDS = new Set(['slab', 'floor', 'stair']), BLOCK_KINDS = new Set(['wall', 'opening', 'furniture', 'railing', 'post', 'pergola', 'insulation', 'facade', 'chimney', 'gradewall']);
+  const GROUND_KINDS = new Set(['slab', 'floor', 'stair']), BLOCK_KINDS = new Set(['wall', 'opening', 'furniture', 'railing', 'post', 'brace', 'pergola', 'insulation', 'facade', 'chimney', 'gradewall']);
   const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight']);
   const shown = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
   function walkLists() {   // meshes to stand on and meshes that stop you (doors are walked through, rugs ignored); world bounding spheres for a cheap near-filter
@@ -1823,13 +2038,25 @@ export async function mountViewer(host, opts) {
       const animating = !!anim; if (anim) anim(now);
       const moved = walk.active ? walkStep(now) : controls.update();
       if (!(animating || moved || now < renderUntil)) return;
-      updCompass(); cullTrees(); renderer.render(scene, camera); frameErrors = 0;
+      updCompass(); cullTrees(); if (grid?.group.visible) updateGridLabels(grid.labels, camera, controls.target, renderer.domElement.clientHeight);
+      renderer.render(scene, camera); frameErrors = 0;
     } catch (e) { console.error(e); if (++frameErrors > 30) fail('Beim Zeichnen ist ein Fehler aufgetreten.', e.message); }
   }
 
-  // sun from the south-east-ish, high
-  const south = north.clone().multiplyScalar(-1);
-  sun.position.copy(south.clone().multiplyScalar(30).add(new THREE.Vector3(10, 34, 8)));
+  // sun for the picked date and time, at the site's place (Austria if the site data has none)
+  {
+    const [lon, lat] = GEO?.originLonLat ?? [14.5, 47.5];
+    const east = new THREE.Vector3().crossVectors(north, new THREE.Vector3(0, 1, 0)).normalize();
+    const place = (date) => {
+      const { altitude, azimuth } = sunPosition(date, lat, lon);
+      const a = altitude * Math.PI / 180, z = azimuth * Math.PI / 180;
+      sunAlt = altitude;
+      sunDir = new THREE.Vector3().addScaledVector(east, Math.sin(z) * Math.cos(a)).addScaledVector(north, Math.cos(z) * Math.cos(a)).setY(Math.sin(a)).normalize();
+      applySun();
+    };
+    const sunUi = mountSunPanel($('sunbtn'), $('suncard'), { lat, lon, onChange: place });
+    place(sunUi.get());
+  }
 
   applyTheme();
   $('title').textContent = DATA.meta.name;
@@ -1854,6 +2081,25 @@ export async function mountViewer(host, opts) {
       gradingMeshes: () => pickables.filter(o => o.userData?.kind === 'gradewall' || o.userData?.kind === 'pool'),
       gradingHit: ndc => { const h = firstHit(ndc, pickables.filter(o => (o.userData?.kind === 'gradewall' || o.userData?.kind === 'pool') && shown(o))); return h ? h.object.userData.ref ?? h.object.userData.data : null; },
       setCutfill: on => { state.cutfill = on || cutfillBefore; $('t-cutfill')?.setAttribute('aria-pressed', String(state.cutfill)); applyVisibility(); },
+      grid: on => { if (on !== undefined) { state.grid = on; applyVisibility(); } return state.grid; },
+      // a brush stroke changed the ground in [x0, x1] × [z0, z1]: move those terrain points now (overlays catch up with rebuildAll)
+      updateTerrain: (x0, x1, z0, z1) => {
+        if (!terrainMesh) return;
+        groundAt = gradeFn(groundAt0, DATA.grading);
+        const { xs, zs } = terrainMesh.userData, nx = xs.length, nz = zs.length, geo = terrainMesh.geometry, P = geo.attributes.position.array, N = geo.attributes.normal.array;
+        const lb = (a, v) => { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; } return lo; };
+        const i0 = Math.max(0, lb(xs, x0) - 1), i1 = Math.min(nx - 1, lb(xs, x1)), j0 = Math.max(0, lb(zs, z0) - 1), j1 = Math.min(nz - 1, lb(zs, z1));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) P[(j * nx + i) * 3 + 1] = groundAt(xs[i], zs[j]);
+        const y = (i, j) => P[(j * nx + i) * 3 + 1];
+        for (let j = Math.max(0, j0 - 1); j <= Math.min(nz - 1, j1 + 1); j++) for (let i = Math.max(0, i0 - 1); i <= Math.min(nx - 1, i1 + 1); i++) {
+          const l = Math.max(0, i - 1), r = Math.min(nx - 1, i + 1), d = Math.max(0, j - 1), u = Math.min(nz - 1, j + 1);
+          const gx = (y(r, j) - y(l, j)) / (xs[r] - xs[l]), gz = (y(i, u) - y(i, d)) / (zs[u] - zs[d]), L = Math.hypot(gx, 1, gz), k = (j * nx + i) * 3;
+          N[k] = -gx / L; N[k + 1] = 1 / L; N[k + 2] = -gz / L;
+        }
+        geo.attributes.position.needsUpdate = true; geo.attributes.normal.needsUpdate = true;
+        for (const grp of [cutfillGroup, grid?.group, contourGroup]) if (grp) grp.visible = false;
+        kick(300);
+      },
       terrainHit: ndc => (terrainMesh ? firstHit(ndc, [terrainMesh])?.point ?? null : null),
       gardenHit: ndc => { const list = []; groups.garden.traverse(o => { if (o.isMesh) list.push(o); }); return firstHit(ndc, list)?.object.userData.data ?? null; },
       onEnter: () => {

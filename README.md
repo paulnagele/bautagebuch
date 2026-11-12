@@ -52,11 +52,10 @@ there are four tabs:
 - **Photos and files**: uploaded to a shared Google Drive folder (e.g.
   "Haus") with the signed-in person's own Google account, into a folder
   per entry kind and creation date, e.g. `Haus/Mangel/2026_10_02`.
-  The database only keeps the Drive file IDs. The folders stay private;
-  each photo is shared as "Anyone with the link" when it is uploaded, so
-  photos load for every member without any Google Drive prompt, while
-  nobody can browse the folders. Files are not shared by link; members
-  open them through the folder's sharing.
+  The database only keeps the Drive file IDs. Nothing is shared by link:
+  members load photos with their own Drive access (one tap to connect
+  Google Drive when it has run out) and each device keeps the photos it
+  has shown, so they then load instantly and offline.
 - **Timetable**: the project's Google Calendar, embedded
   (`src/tabs/Timetable.jsx`). Saving a diary "Termin" adds or updates
   its event in the calendar; an "Aufgabe" or "Mangel" with a due date
@@ -105,11 +104,9 @@ diary entry's photos and files into `<entry kind>/<creation date>` inside
 it (e.g. `Status/2026_10_02`, `Mangel/2026_10_02`) and creates these
 folders on upload.
 
-Keep the folder itself restricted (not "Anyone with the link"). The app
-shares each new photo by link on upload. Photos uploaded before that
-change load once a member taps them (the app then shares them), or share
-them all at once: open the folder, select all files, **Share → General
-access → Anyone with the link (Viewer)**.
+Keep the folder and its files restricted (not "Anyone with the link").
+Older versions of the app shared each photo by link; the app takes that
+back once per device as soon as a member connects Google Drive.
 
 ### 2b. Google Calendar
 
@@ -209,6 +206,13 @@ nothing else and can't change, delete or pick the current version.
    `.haus/` (ignored by git), `render` takes pictures of a model with the
    app's viewer in headless Chromium, `save` adds a version named
    "Claude: …". See the comment at the top of the script.
+
+### Claude chat in the Haus tab
+
+The **Claude** button in the Haus tab sends requests to a Claude Code
+scheduled task on the owner's Claude account, which changes the model with
+the login above and answers in the chat. Setup (scheduled task with an API
+trigger, two Supabase secrets) and the task's prompt: `docs/haus-chat.md`.
 
 ## Changing the database
 

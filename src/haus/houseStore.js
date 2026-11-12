@@ -223,3 +223,75 @@ export async function revokeShare(id) {
   const { error } = await supabase.from('house_shares').delete().eq('id', id)
   if (error) throw failed(error)
 }
+
+// ---------- Haus chat (table house_chat, Edge Function haus-chat) ----------
+
+const CHAT_COLUMNS = 'id, created_at, role, text, version_id, reply_to, status, session_url, error, backup_id'
+
+// The whole chat, oldest first (it stays short: one line per request).
+export async function listChat() {
+  const { data, error } = await supabase.from('house_chat').select(CHAT_COLUMNS).order('created_at')
+  if (error) throw failed(error)
+  return data
+}
+
+// Saves a request and starts Claude for it. The row stays (status
+// 'failed' with the reason) if Claude can't be started.
+export async function sendChat({ text, versionId }) {
+  const { data: row, error } = await supabase
+    .from('house_chat')
+    .insert({ role: 'user', text, version_id: versionId ?? null, status: 'queued' })
+    .select(CHAT_COLUMNS)
+    .single()
+  if (error) throw failed(error)
+  const { error: startError } = await supabase.functions.invoke('haus-chat', { body: { id: row.id } })
+  if (startError) {
+    let message = 'Claude ließ sich nicht starten.'
+    try {
+      message = (await startError.context.json()).error ?? message
+    } catch {
+      // keep the general message (function missing or offline)
+    }
+    await supabase.from('house_chat').update({ status: 'failed', error: message }).eq('id', row.id)
+    throw new Error(message)
+  }
+  return row
+}
+
+// Undoes a change Claude made in place (puts the backup back).
+export async function undoChange(backupId) {
+  const { error } = await supabase.rpc('restore_house_backup', { backup_id: backupId })
+  if (error) throw failed(error)
+}
+
+// Deletes the whole chat (versions Claude saved stay).
+export async function clearChat() {
+  const { error } = await supabase.from('house_chat').delete().not('id', 'is', null)
+  if (error) throw failed(error)
+}
+
+// Calls onChange() whenever the chat may have changed; returns a function
+// that stops it. Phones drop the live connection while the app is in the
+// background, so it also reloads when the connection is back, when the
+// page becomes visible again, and every 20 s while Claude is working
+// (isWaiting()).
+export function watchChat(onChange, isWaiting = () => false) {
+  const channel = supabase
+    .channel('live:house_chat')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'house_chat' }, () => onChange())
+    .subscribe((state) => {
+      if (state === 'SUBSCRIBED') onChange()
+    })
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') onChange()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+  const timer = setInterval(() => {
+    if (isWaiting() && document.visibilityState === 'visible') onChange()
+  }, 20000)
+  return () => {
+    clearInterval(timer)
+    document.removeEventListener('visibilitychange', onVisible)
+    supabase.removeChannel(channel)
+  }
+}
