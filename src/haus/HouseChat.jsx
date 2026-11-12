@@ -41,7 +41,9 @@ export default function HouseChat({ open, onClose, version, onOpenVersion }) {
   }, [open])
 
   const waiting = messages?.some((m) => m.role === 'user' && isOpen(m.status))
-  waitingRef.current = Boolean(waiting)
+  useEffect(() => {
+    waitingRef.current = Boolean(waiting)
+  }, [waiting])
 
   // The "seit …" counter of a running request.
   useEffect(() => {
