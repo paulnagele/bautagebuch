@@ -14,8 +14,8 @@
 //   opts.onChat     optional, shows the "Claude" button and is called on a click
 //   opts.onVersion  optional, called with the open version's list row (or null)
 //                   whenever the version list is drawn
-// Returns dispose(); dispose.openVersion(id) opens a version, also one
-// added since (the Haus chat uses it for versions Claude saved).
+// Returns dispose(); dispose.openVersion(id, { reload }) opens a version, also
+// one added since, and with reload fetches its model again (Haus chat).
 //   opts.shares     { list, create, add, remove, revoke } for "Teilen" (houseStore.js), optional
 //   opts.readOnly   true on the shared page (haus.html): the shared versions,
 //                   display options open, nothing can be saved or changed
@@ -1773,13 +1773,17 @@ export async function mountViewer(host, opts) {
     DATA = d; currentId = id; currentJson = JSON.stringify(d); fillEditor(); setLevel(state.level); select(null);
     renderVersions();
   }
-  // For the Haus chat: open a version Claude just saved (reloads the list first).
-  dispose.openVersion = async (id) => {
+  // For the Haus chat: open a version Claude saved or changed. reload: fetch
+  // its model again (Claude changed it in place); a new id reloads the list.
+  dispose.openVersion = async (id, { reload = false } = {}) => {
+    const dropped = reload && id === currentId && isDirty();
+    if (reload) models.delete(id);
     if (!versions.some(v => v.id === id) && store.list) {
       try { versions = await store.list(); } catch (e) { setVmsg(e.message, true); return; }
       if (disposed) return;
     }
     await openVersion(id);
+    if (dropped && !disposed) setVmsg('Claude hat diese Version geändert; deine ungespeicherte Vorschau wurde verworfen.');
   };
   $('vsavebtn').addEventListener('click', async () => {
     const name = vnameIn.value.trim();

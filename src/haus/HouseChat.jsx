@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useDialogs } from '../dialogs.js'
-import { clearChat, listChat, sendChat, watchChat } from './houseStore.js'
+import { clearChat, listChat, sendChat, undoChange, watchChat } from './houseStore.js'
 
 // The Claude chat of the Haus tab. A request starts a Claude Code session
 // on the owner's Claude account (Edge Function haus-chat); it changes the
-// model, saves a new version and answers here, usually after a few
-// minutes. Opened with the "Claude" button in the viewer's corner; full
+// open version in place (or saves a new one when asked) and answers here,
+// usually after a few minutes. When an answer comes in, the changed
+// version is shown right away, also with the chat closed. Opened with the "Claude" button in the viewer's corner; full
 // screen on phones, a side panel on wide screens. Lives in document.body
 // so it also covers the Vollbild view.
 export default function HouseChat({ open, onClose, version, onOpenVersion }) {
@@ -19,15 +20,26 @@ export default function HouseChat({ open, onClose, version, onOpenVersion }) {
   const listRef = useRef(null)
   const inputRef = useRef(null)
   const waitingRef = useRef(false)
-
-  // Loaded once the chat is first opened, then kept up to date live.
+  const seenRef = useRef(null)
+  const openVersionRef = useRef(onOpenVersion)
   useEffect(() => {
-    if (!open) return undefined
+    openVersionRef.current = onOpenVersion
+  }, [onOpenVersion])
+
+  // Loaded with the Haus tab and kept up to date live, so new answers show
+  // the changed model even while the chat is closed.
+  useEffect(() => {
     let left = false
     const load = () =>
       listChat()
         .then((rows) => {
-          if (!left) setMessages(rows)
+          if (left) return
+          setMessages(rows)
+          const answers = rows.filter((m) => m.role === 'claude')
+          const fresh = seenRef.current ? answers.filter((m) => !seenRef.current.has(m.id)) : []
+          seenRef.current = new Set(answers.map((m) => m.id))
+          const last = fresh.filter((m) => m.version_id).at(-1)
+          if (last) openVersionRef.current(last.version_id, { reload: true })
         })
         .catch((loadError) => {
           if (!left) setError(loadError.message)
@@ -38,7 +50,7 @@ export default function HouseChat({ open, onClose, version, onOpenVersion }) {
       left = true
       stop()
     }
-  }, [open])
+  }, [])
 
   const waiting = messages?.some((m) => m.role === 'user' && isOpen(m.status))
   useEffect(() => {
@@ -87,7 +99,7 @@ export default function HouseChat({ open, onClose, version, onOpenVersion }) {
   }
 
   async function clear() {
-    const question = 'Den ganzen Chat löschen? Die Versionen, die Claude gespeichert hat, bleiben.'
+    const question = 'Den ganzen Chat löschen? Claudes Änderungen am Modell bleiben.'
     if (!(await dialogs.confirm(question, { confirmLabel: 'Löschen', danger: true }))) return
     try {
       await clearChat()
@@ -123,9 +135,10 @@ export default function HouseChat({ open, onClose, version, onOpenVersion }) {
               20 cm breiter“ oder „Wie groß ist die Terrasse?“.
             </p>
             <p>
-              Claude arbeitet mit deinem Claude-Konto und speichert jede Änderung als neue Version
-              („Claude: …“). Die offene Version bleibt, wie sie ist. Eine Antwort dauert meist ein paar
-              Minuten; du kannst den Chat so lange schließen.
+              Claude arbeitet mit deinem Claude-Konto und ändert die offene Version direkt (eine neue
+              Version nur, wenn du darum bittest). Jede Änderung lässt sich mit „Rückgängig“ zurücknehmen.
+              Eine Antwort dauert meist ein paar Minuten; du kannst den Chat so lange schließen, das
+              Modell zeigt die Änderung von selbst.
             </p>
           </div>
         )}
@@ -136,8 +149,21 @@ export default function HouseChat({ open, onClose, version, onOpenVersion }) {
             answer={answers.get(request.id)}
             now={now}
             onOpenVersion={(id) => {
-              onOpenVersion(id)
+              onOpenVersion(id, { reload: true })
               onClose()
+            }}
+            onUndo={async (answer) => {
+              const question = 'Diese Änderung von Claude rückgängig machen?'
+              if (!(await dialogs.confirm(question, { confirmLabel: 'Rückgängig' }))) return
+              try {
+                await undoChange(answer.backup_id)
+                onOpenVersion(answer.version_id, { reload: true })
+                setMessages((current) =>
+                  current?.map((m) => (m.id === answer.id ? { ...m, backup_id: null, undone: true } : m)),
+                )
+              } catch (undoError) {
+                setError(undoError.message)
+              }
             }}
           />
         ))}
@@ -180,7 +206,7 @@ const STATUS_TEXT = {
   working: 'Claude arbeitet am Modell…',
 }
 
-function Exchange({ request, answer, now, onOpenVersion }) {
+function Exchange({ request, answer, now, onOpenVersion, onUndo }) {
   const minutes = Math.floor((now - new Date(request.created_at).getTime()) / 60000)
   return (
     <div className="haus-chat-exchange">
@@ -194,9 +220,15 @@ function Exchange({ request, answer, now, onOpenVersion }) {
           <div className="haus-chat-actions">
             {answer.version_id && (
               <button type="button" onClick={() => onOpenVersion(answer.version_id)}>
-                Neue Version öffnen
+                Ansehen
               </button>
             )}
+            {answer.backup_id && (
+              <button type="button" className="secondary" onClick={() => onUndo(answer)}>
+                Rückgängig
+              </button>
+            )}
+            {answer.undone && <span className="haus-chat-note">Rückgängig gemacht</span>}
             {request.session_url && (
               <a href={request.session_url} target="_blank" rel="noopener noreferrer">
                 In Claude weiterreden
