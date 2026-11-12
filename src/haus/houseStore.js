@@ -64,7 +64,16 @@ export async function renameVersion(id, { name, note }) {
 export async function deleteVersion(id) {
   const { data, error } = await supabase.from('house_versions').delete().eq('id', id).select('id')
   if (error) throw failed(error)
-  if (data.length === 0) throw new Error('Diese Version kann nicht gelöscht werden.')
+  if (data.length === 0) {
+    const { count } = await supabase
+      .from('house_share_versions')
+      .select('share_id', { count: 'exact', head: true })
+      .eq('version_id', id)
+    if (count > 0) {
+      throw new Error('Diese Version wird geteilt. Widerrufe zuerst ihre Links (unter „Teilen“).')
+    }
+    throw new Error('Diese Version kann nicht gelöscht werden.')
+  }
 }
 
 export async function setCurrentVersion(id) {
@@ -115,4 +124,102 @@ export async function importHouse({ versions, currentId, context }) {
     if (contextError) throw failed(contextError)
   }
   await setCurrentVersion(ids.has(currentId) ? currentId : versions[0].id)
+}
+
+// ---------- share links (table house_shares, page haus.html) ----------
+// A link is haus.html#k=<token>. Only the token's SHA-256 hash is stored,
+// so the whole link can be shown only right after it is made.
+
+// A link can show several versions (table house_share_versions); each
+// share comes back as { id, label, created_at, versionIds } in the order
+// they were added.
+const SHARE_COLUMNS = 'id, label, created_at, house_share_versions(version_id, position, added_at)'
+
+function toShare(row) {
+  const { house_share_versions: links = [], ...share } = row
+  const versionIds = [...links]
+    .sort((a, b) => (a.added_at < b.added_at ? -1 : a.added_at > b.added_at ? 1 : a.position - b.position))
+    .map((link) => link.version_id)
+  return { ...share, versionIds }
+}
+
+export async function listShares() {
+  const { data, error } = await supabase
+    .from('house_shares')
+    .select(SHARE_COLUMNS)
+    .order('created_at', { ascending: true })
+  if (error) throw failed(error)
+  return data.map(toShare)
+}
+
+// 128 random bits, base64url (22 characters).
+function newToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+// The address of the public page for a token, next to the app's page.
+export function shareUrl(token) {
+  const url = new URL('haus.html', window.location.origin + window.location.pathname)
+  url.hash = `k=${token}`
+  return url.href
+}
+
+// Makes a link that shows one version; more can be added. Returns { share, url }.
+export async function createShare({ label, versionId }) {
+  const token = newToken()
+  const { data, error } = await supabase
+    .from('house_shares')
+    .insert({ label, token_hash: await sha256Hex(token) })
+    .select('id')
+    .single()
+  if (error) throw failed(error)
+  const { error: linkError } = await supabase
+    .from('house_share_versions')
+    .insert({ share_id: data.id, version_id: versionId })
+  if (linkError) {
+    await supabase.from('house_shares').delete().eq('id', data.id)
+    throw failed(linkError)
+  }
+  return { share: await loadShare(data.id), url: shareUrl(token) }
+}
+
+async function loadShare(id) {
+  const { data, error } = await supabase.from('house_shares').select(SHARE_COLUMNS).eq('id', id).single()
+  if (error) throw failed(error)
+  return toShare(data)
+}
+
+// Adds a version to a link (shown after the others); the link stays the same.
+export async function addShareVersion(share, versionId) {
+  const { error } = await supabase
+    .from('house_share_versions')
+    .insert({ share_id: share.id, version_id: versionId })
+  if (error) throw failed(error)
+  return loadShare(share.id)
+}
+
+// Takes a version off a link. The last one stays: revoke the link instead.
+export async function removeShareVersion(share, versionId) {
+  const { error } = await supabase
+    .from('house_share_versions')
+    .delete()
+    .eq('share_id', share.id)
+    .eq('version_id', versionId)
+  if (error) throw failed(error)
+  return loadShare(share.id)
+}
+
+// Revoking deletes the link; opening it afterwards shows a notice.
+export async function revokeShare(id) {
+  const { error } = await supabase.from('house_shares').delete().eq('id', id)
+  if (error) throw failed(error)
 }

@@ -15,7 +15,7 @@
 //   node scripts/haus/house.mjs render <model.json> --out shot.png
 //       [--context .haus/context.json] [--view persp|NW|NO|SO|SW|top|site]
 //       [--level all|DG|EG|KG] [--off roof,terrain,labels,furn,neighbors,…]
-//       [--on edges,contours,…] [--cut x|z:<metres>] [--panel] [--size 1400x900]
+//       [--on edges,contours,grid,…] [--cut x|z:<metres>] [--panel] [--size 1400x900]
 import { createClient } from '@supabase/supabase-js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -140,7 +140,7 @@ async function render(file, options) {
     const button = (key) => page.locator(`#host [data-h="${key}"]`)
     const setChip = async (key, on) => {
       const chip = button(key)
-      if ((await chip.getAttribute('aria-pressed')) !== String(on)) await chip.click({ force: true })
+      if ((await chip.getAttribute('aria-pressed')) !== String(on)) await chip.evaluate((el) => el.click())
     }
     const chips = (list) => (list ? list.split(',').map((name) => name.trim()).filter(Boolean) : [])
     // House toggles are t-<name>, site toggles c-<name> (see viewer.js).

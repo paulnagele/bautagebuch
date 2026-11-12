@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- The shared house page: shows one version of the house model to
+     whoever has a share link (haus.html#k=…), without signing in.
+     See src/haus/publicPage.js and supabase/migrations/…_house_shares.sql. -->
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Haus</title>
+  </head>
+  <body>
+    <div id="host" class="haus3d public" hidden></div>
+    <p id="msg" class="haus-public-msg" role="status">Das Haus wird geladen…</p>
+    <script type="module" src="/src/haus/publicPage.js"></script>
+  </body>
+</html>

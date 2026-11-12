@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  addShareVersion,
+  createShare,
   deleteVersion,
   importHouse,
   listVersions,
   loadContext,
+  listShares,
   loadModel,
   readImportFile,
+  removeShareVersion,
   renameVersion,
+  revokeShare,
   saveVersion,
   setCurrentVersion,
 } from '../haus/houseStore.js'
 import { mountViewer, showFailure } from '../haus/viewer.js'
+import { takeFullStart } from '../startLink.js'
 
 const store = {
   load: loadModel,
@@ -18,6 +24,15 @@ const store = {
   rename: renameVersion,
   remove: deleteVersion,
   setCurrent: setCurrentVersion,
+}
+
+// Share links for the public page haus.html ("Teilen" behind the gear).
+const shares = {
+  list: listShares,
+  create: createShare,
+  add: addShareVersion,
+  remove: removeShareVersion,
+  revoke: revokeShare,
 }
 
 // The Haus tab: the 3D model of the house with its versions. Like
@@ -95,7 +110,7 @@ function HouseViewer({ view }) {
       }
       setLite(true)
     }
-    mountViewer(host, { ...view, store, lite, onLost })
+    mountViewer(host, { ...view, store, shares, lite, onLost, full: takeFullStart() })
       .then((done) => {
         if (left) done?.()
         else dispose = done
