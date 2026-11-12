@@ -18,6 +18,7 @@ export default function HouseChat({ open, onClose, version, onOpenVersion }) {
   const [now, setNow] = useState(() => Date.now())
   const listRef = useRef(null)
   const inputRef = useRef(null)
+  const waitingRef = useRef(false)
 
   // Loaded once the chat is first opened, then kept up to date live.
   useEffect(() => {
@@ -32,7 +33,7 @@ export default function HouseChat({ open, onClose, version, onOpenVersion }) {
           if (!left) setError(loadError.message)
         })
     load()
-    const stop = watchChat(load)
+    const stop = watchChat(load, () => waitingRef.current)
     return () => {
       left = true
       stop()
@@ -40,6 +41,7 @@ export default function HouseChat({ open, onClose, version, onOpenVersion }) {
   }, [open])
 
   const waiting = messages?.some((m) => m.role === 'user' && isOpen(m.status))
+  waitingRef.current = Boolean(waiting)
 
   // The "seit …" counter of a running request.
   useEffect(() => {

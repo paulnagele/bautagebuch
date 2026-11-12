@@ -264,11 +264,28 @@ export async function clearChat() {
   if (error) throw failed(error)
 }
 
-// Calls onChange() whenever the chat changes; returns a function that stops it.
-export function watchChat(onChange) {
+// Calls onChange() whenever the chat may have changed; returns a function
+// that stops it. Phones drop the live connection while the app is in the
+// background, so it also reloads when the connection is back, when the
+// page becomes visible again, and every 20 s while Claude is working
+// (isWaiting()).
+export function watchChat(onChange, isWaiting = () => false) {
   const channel = supabase
-    .channel('house_chat')
+    .channel('live:house_chat')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'house_chat' }, () => onChange())
-    .subscribe()
-  return () => supabase.removeChannel(channel)
+    .subscribe((state) => {
+      if (state === 'SUBSCRIBED') onChange()
+    })
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') onChange()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+  const timer = setInterval(() => {
+    if (isWaiting() && document.visibilityState === 'visible') onChange()
+  }, 20000)
+  return () => {
+    clearInterval(timer)
+    document.removeEventListener('visibilitychange', onVisible)
+    supabase.removeChannel(channel)
+  }
 }
