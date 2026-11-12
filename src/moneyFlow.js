@@ -75,7 +75,8 @@ export function flowSources(sourceNames, funding, unfunded) {
   return nodes
 }
 
-// Expense categories, largest first, then what is left over. A category
+// Expense categories in list order (as set on Finanzen; any no longer in
+// the list after them, largest first), then what is left over. A category
 // with a plan it has not used up yet also gets the open rest of that plan
 // (`planned`), drawn hatched next to what was spent.
 export function flowTargets(expenses, categories, funding) {
@@ -83,6 +84,7 @@ export function flowTargets(expenses, categories, funding) {
   const plans = new Map(
     categories.filter((c) => c.plannedAmount != null).map((c) => [c.name, c.plannedAmount]),
   )
+  const order = new Map(categories.map((c, i) => [c.name, i]))
   const names = [...new Set([...groups.keys(), ...plans.keys()])]
   const nodes = names
     .map((name) => {
@@ -92,7 +94,10 @@ export function flowTargets(expenses, categories, funding) {
       return { name, value: spent + planned, spent, planned, details: entryDetails(items) }
     })
     .filter((node) => node.value > 0)
-    .sort((a, b) => b.value - a.value)
+    .sort(
+      (a, b) =>
+        (order.get(a.name) ?? Infinity) - (order.get(b.name) ?? Infinity) || b.value - a.value,
+    )
   const used = nodes.reduce((sum, node) => sum + node.value, 0)
   if (funding > used) {
     nodes.push({

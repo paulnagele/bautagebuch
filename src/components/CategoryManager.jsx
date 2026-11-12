@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useDialogs } from '../dialogs.js'
 
-// Add, rename and delete the categories of one type (expense or funding).
+// Add, rename, reorder and delete the categories of one type (expense or
+// funding). `onMove(id, step)` moves a category one place up (-1) or down (1).
 // `usage` maps a category name to the number of transactions using it,
 // `itemCounts` a category ID to its number of budget items (Posten).
 // `checkDelete(category)`, if given, resolves to { blocked } with why the
@@ -14,6 +15,7 @@ function CategoryList({
   checkDelete,
   onAdd,
   onRename,
+  onMove,
   onDelete,
 }) {
   const [newName, setNewName] = useState('')
@@ -81,7 +83,7 @@ function CategoryList({
     <div className="category-list">
       <h3>{title}</h3>
       <ul>
-        {categories.map((category) => {
+        {categories.map((category, index) => {
           const used = usage.get(category.name) ?? 0
           if (editing?.id === category.id) {
             return (
@@ -113,6 +115,28 @@ function CategoryList({
             <li key={category.id} className="category-row">
               <span className="category-name">{category.name}</span>
               <span className="muted category-count">{used > 0 ? used : ''}</span>
+              <span className="category-move">
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`${category.name} nach oben`}
+                  title="Nach oben"
+                  onClick={() => run(() => onMove(category.id, -1))}
+                  disabled={busy || index === 0}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`${category.name} nach unten`}
+                  title="Nach unten"
+                  onClick={() => run(() => onMove(category.id, 1))}
+                  disabled={busy || index === categories.length - 1}
+                >
+                  ↓
+                </button>
+              </span>
               <button
                 type="button"
                 className="link"
@@ -166,6 +190,7 @@ function CategoryManager({
   checkDelete,
   onAdd,
   onRename,
+  onMove,
   onDelete,
 }) {
   return (
@@ -178,7 +203,8 @@ function CategoryManager({
       )}
       <p className="muted category-hint">
         Die Zahl neben einer Kategorie zeigt, wie viele Buchungen sie verwenden. Beim Umbenennen
-        wird die Kategorie auch in diesen Buchungen umbenannt.
+        wird die Kategorie auch in diesen Buchungen umbenannt. Mit ↑ und ↓ legst du die Reihenfolge
+        fest, in der die Kategorien überall in der App erscheinen.
       </p>
       <div className="category-columns">
         <CategoryList
@@ -189,6 +215,7 @@ function CategoryManager({
           checkDelete={checkDelete}
           onAdd={(name) => onAdd('expense', name)}
           onRename={onRename}
+          onMove={onMove}
           onDelete={onDelete}
         />
         <CategoryList
@@ -197,6 +224,7 @@ function CategoryManager({
           usage={usage.funding}
           onAdd={(name) => onAdd('funding', name)}
           onRename={onRename}
+          onMove={onMove}
           onDelete={onDelete}
         />
       </div>
