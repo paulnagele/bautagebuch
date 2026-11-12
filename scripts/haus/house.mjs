@@ -16,6 +16,8 @@
 //       [--context .haus/context.json] [--view persp|NW|NO|SO|SW|top|site]
 //       [--level all|DG|EG|KG] [--off roof,terrain,labels,furn,neighbors,…]
 //       [--on edges,contours,grid,…] [--cut x|z:<metres>] [--panel] [--size 1400x900]
+//       [--time 2026-06-21T18:30]  sun for that local date and time (default today 12:00;
+//                                   after sunset the lamps are on)
 import { createClient } from '@supabase/supabase-js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -130,7 +132,7 @@ async function render(file, options) {
   })
   try {
     const [width, height] = (options.size ?? '1400x900').split('x').map(Number)
-    const page = await browser.newPage({ viewport: { width, height } })
+    const page = await browser.newPage({ viewport: { width, height }, locale: 'de-DE', timezoneId: 'Europe/Vienna' })
     page.on('pageerror', (error) => console.error('page error:', error.message))
     await page.goto(`${server.resolvedUrls.local[0]}scripts/haus/render.html`)
     await page.waitForFunction(() => window.__hausReady || window.__hausError, null, { timeout: 120000 })
@@ -152,6 +154,16 @@ async function render(file, options) {
       const [mode, position] = options.cut.split(':')
       await button('cutmode').selectOption(mode)
       if (position !== undefined) await button('cutpos').fill(position)
+    }
+    if (options.time) {
+      const [date, clock = '12:00'] = options.time.split('T')
+      const [h, m] = clock.split(':').map(Number)
+      await page.evaluate(([date, minutes]) => {
+        const card = document.querySelector('#host [data-h="suncard"]')
+        const dateIn = card.querySelector('[data-s="date"]'), timeIn = card.querySelector('[data-s="time"]')
+        dateIn.value = date; dateIn.dispatchEvent(new Event('change'))
+        timeIn.value = String(minutes); timeIn.dispatchEvent(new Event('input'))
+      }, [date, h * 60 + (m || 0)])
     }
     if (options.view) await page.locator(`#host [data-view="${options.view}"]`).click({ force: true })
     if (!options.panel) await page.evaluate(() => document.body.classList.add('no-panel'))
@@ -179,6 +191,7 @@ const { positionals, values } = parseArgs({
     cut: { type: 'string' },
     panel: { type: 'boolean' },
     size: { type: 'string' },
+    time: { type: 'string' },
   },
 })
 const [command, file] = positionals
