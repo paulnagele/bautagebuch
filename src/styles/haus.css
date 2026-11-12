@@ -298,3 +298,32 @@ html.haus-full {
   text-align: center;
   color: var(--text);
 }
+
+/* Datum & Uhrzeit (sunPanel.js): button in the corner, card below it */
+.haus3d .sunbtn .ico { display: inline-flex; }
+.haus3d .sunbtn .short { display: none; }
+.haus3d .sunbtn[aria-expanded="true"] { border-color: var(--h-accent); color: var(--h-accent); }
+.haus3d .suncard { position: absolute; right: 12px; top: 84px; z-index: 6; width: 320px; max-width: calc(100% - 24px); box-sizing: border-box; display: grid; gap: 10px; padding: 12px 14px 10px; background: var(--h-panel); border: 1px solid var(--h-line); border-radius: 10px; box-shadow: 0 4px 18px rgb(0 0 0 / 0.16); color: var(--h-ink); }
+.haus3d .suncard[hidden] { display: none; }
+.haus3d .suncard header { display: flex; align-items: center; justify-content: space-between; }
+.haus3d .suncard .x { font: inherit; font-size: 22px; line-height: 1; width: 36px; height: 36px; margin: -8px -8px -8px 0; border: 0; background: transparent; color: var(--h-muted); cursor: pointer; }
+.haus3d .suncard .srow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.haus3d .suncard input[type="date"] { flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 6px 8px; border: 1px solid var(--h-line); border-radius: 6px; background: transparent; color: var(--h-ink); color-scheme: light dark; }
+.haus3d .suncard .picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.haus3d .suncard .picks.three { grid-template-columns: repeat(3, 1fr); }
+.haus3d .suncard .picks .chip { padding-left: 4px; padding-right: 4px; text-align: center; white-space: nowrap; }
+.haus3d .suncard .picks .chip b { display: block; font-weight: 600; font-variant-numeric: tabular-nums; }
+.haus3d .suncard .chip:disabled { opacity: .4; cursor: default; }
+.haus3d .suncard .stime { display: flex; align-items: center; gap: 10px; }
+.haus3d .suncard .sclock { font-size: 20px; font-weight: 600; min-width: 3.2em; }
+.haus3d .suncard .stime input { flex: 1; min-width: 0; accent-color: var(--h-accent); }
+.haus3d .suncard .note { margin: 0; }
+.haus3d.walking .suncard, .haus3d.designing .suncard { display: none; }
+.haus3d.full .suncard { top: calc(84px + env(safe-area-inset-top, 0px)); }
+@media (max-width: 700px) {
+  .haus3d .sunbtn { width: auto !important; padding: 0 12px 0 10px !important; gap: 6px; }
+  .haus3d .sunbtn .short { display: inline; font-size: 13px; }
+  .haus3d .suncard { left: 12px; right: 12px; width: auto; max-width: none; top: 66px; }
+  .haus3d.full .suncard { top: calc(66px + env(safe-area-inset-top, 0px)); }
+  .haus3d .suncard .stime input[type="range"] { height: 40px; }
+}

@@ -24,6 +24,8 @@ import { brushFn, brushBounds } from './terrainBrush.js'
 import { buildFacade, wallSkin } from './facade.js'
 import { buildGrid, gridExtent, updateGridLabels, pointText, pointPlain } from './grid.js'
 import { rotateSite } from './siteRotation.js'
+import { sunPosition } from './sun.js'
+import { mountSunPanel } from './sunPanel.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
@@ -78,7 +80,6 @@ const VIEW_HTML = `
           <button type="button" class="chip" data-h="t-edges" aria-pressed="false">Kanten</button>
           <button type="button" class="chip" data-h="t-furn" aria-pressed="true">Möbel</button>
           <button type="button" class="chip" data-h="t-lights" aria-pressed="true" hidden>Leuchten</button>
-          <button type="button" class="chip" data-h="t-evening" aria-pressed="false" hidden>Abend</button>
           <button type="button" class="chip" data-h="t-garden" aria-pressed="true" hidden>Garten</button>
           <button type="button" class="chip" data-h="t-cutfill" aria-pressed="false" hidden>Auf-/Abtrag</button>
           <button type="button" class="chip" data-h="t-contours" aria-pressed="false">Höhenlinien</button>
@@ -168,11 +169,13 @@ const VIEW_HTML = `
   <svg viewBox="-32 -32 64 64"><circle r="30"/><g data-h="needle"><path d="M0,-24 L6,4 L0,0 L-6,4 Z"/><text x="0" y="-8" text-anchor="middle" dy="-18">N</text></g></svg>
 </div>
 <div class="corner">
+  <button type="button" class="fullbtn sunbtn" data-h="sunbtn" aria-expanded="false" aria-haspopup="dialog"><span class="ico"></span><span class="txt"></span><span class="short mono"></span></button>
   <button type="button" class="fullbtn" data-h="fullbtn" aria-pressed="false" title="Vollbild">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="txt">Vollbild</span></button>
   <a class="earth" data-h="earth" href="https://earth.google.com/web/" target="_blank" rel="noopener" title="Diese Ansicht in Google Earth öffnen" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9M12 3c-2.6 2.6-3.8 5.6-3.8 9s1.2 6.4 3.8 9"/></svg><span class="txt">Google Earth</span></a>
 </div>
+<div class="suncard" data-h="suncard" role="dialog" aria-label="Datum und Uhrzeit für den Sonnenstand" hidden></div>
 <div class="scalebar">Ziehen: drehen · Rechts/zwei Finger: verschieben · Rad: zoomen</div>
 `
 
@@ -307,18 +310,33 @@ export async function mountViewer(host, opts) {
   function cssVar(n) { return getComputedStyle(host).getPropertyValue(n.replace(/^--/, '--h-')).trim(); }
   function applyTheme() {
     const bg = new THREE.Color(cssVar('--scene') || '#e2e6e0');
-    if (eveningOn) bg.lerp(new THREE.Color(0x0d1420), 0.97);
+    if (darkness > 0) bg.lerp(new THREE.Color(0x0d1420), 0.97 * darkness);
     scene.background = bg;
     scene.fog = new THREE.Fog(bg, 220, 950);
     if (edgeMat) edgeMat.color.set(cssVar('--edge') || '#27302b');
   }
-  let edgeMat = null, eveningOn = false;
-  // "Abend": dim the daylight and switch the modelled light fittings on
-  function applyEvening() {
-    const on = Boolean(state.evening && lightSet && state.lights);
-    lightSet?.setEvening(on);
-    if (on === eveningOn) return;
-    eveningOn = on; hemi.intensity = on ? 0.12 : 1.15; sun.intensity = on ? 0.05 : 2.1; applyTheme();
+  let edgeMat = null, darkness = 0;
+  // Sun and sky for the date and time picked in the upper right corner
+  // (sunPanel.js): the sun comes from where it really stands at the site,
+  // the daylight fades in the twilight, and after sunset the modelled
+  // light fittings switch on.
+  const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const SUN_LOW = new THREE.Color(0xffa860), SUN_HIGH = new THREE.Color(0xfff3e0);
+  let sunAlt = 45, sunDir = null;
+  function applySun() {
+    const day = smooth(-7, 6, sunAlt);
+    hemi.intensity = 0.12 + 1.03 * day;
+    sun.intensity = 2.1 * smooth(-0.5, 8, sunAlt);
+    sun.color.copy(SUN_LOW).lerp(SUN_HIGH, smooth(2, 25, sunAlt));
+    if (sunDir) {
+      // below the horizon the light is off anyway; keep it above so nothing is lit from beneath
+      const d = sunDir.clone(); if (d.y < 0.05) { d.y = 0.05; d.normalize(); }
+      sun.position.copy(sun.target.position).addScaledVector(d, 60);
+    }
+    lightSet?.setEvening(Boolean(lightSet && state.lights && sunAlt < 3));
+    const dk = Math.round((1 - day) * 100) / 100;
+    if (dk !== darkness) { darkness = dk; applyTheme(); }
+    kick(300);
   }
   on(matchMedia('(prefers-color-scheme: dark)'), 'change', applyTheme);
 
@@ -1439,7 +1457,7 @@ export async function mountViewer(host, opts) {
       for (const [lv, g] of Object.entries(lightSet.groups)) { groups[lv]?.add(g); lightGroups.push(g); }
       pickables.push(...lightSet.pickables);
     }
-    for (const id of ['t-lights', 't-evening']) { const b = $(id); if (b) b.hidden = !D.lights?.length; }
+    { const b = $('t-lights'); if (b) b.hidden = !D.lights?.length; }
     buildGardenGroup(D);
     // room labels
     for (const r of D.rooms) {
@@ -1460,7 +1478,7 @@ export async function mountViewer(host, opts) {
   }
 
   // ---------- UI state ----------
-  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, lights: true, evening: false, garden: true, cutfill: false, contours: false, grid: false };
+  const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, lights: true, garden: true, cutfill: false, contours: false, grid: false };
   const ORDER = ['KG', 'EG', 'DG'];
   function applyVisibility() {
     if (!root) return;
@@ -1474,7 +1492,7 @@ export async function mountViewer(host, opts) {
     for (const l of edgeLines) l.visible = state.edges;
     for (const g of furnGroups) g.visible = state.furniture;
     for (const g of lightGroups) g.visible = state.lights;
-    applyEvening();
+    applySun();
     if (cutfillGroup) cutfillGroup.visible = state.cutfill && state.terrain;
     if (state.contours && !contourGroup && terrainMesh) buildContours();
     if (contourGroup) contourGroup.visible = state.contours && state.terrain;
@@ -1504,7 +1522,7 @@ export async function mountViewer(host, opts) {
     applyVisibility();
   }
   for (const id of ['all', 'DG', 'EG', 'KG']) $('lv-' + id).addEventListener('click', () => setLevel(id));
-  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-lights', 'lights'], ['t-evening', 'evening'], ['t-garden', 'garden'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['t-grid', 'grid'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
+  for (const [id, key] of [['t-roof', 'roof'], ['t-terrain', 'terrain'], ['t-labels', 'labels'], ['t-edges', 'edges'], ['t-furn', 'furniture'], ['t-lights', 'lights'], ['t-garden', 'garden'], ['t-cutfill', 'cutfill'], ['t-contours', 'contours'], ['t-grid', 'grid'], ['c-neighbors', 'neighbors'], ['c-roads', 'roads'], ['c-power', 'power'], ['c-addr', 'addresses'], ['c-trees', 'trees']]) {
     const b = $(id); if (!b) continue;
     b.setAttribute('aria-pressed', String(state[key]));
     b.addEventListener('click', () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); if (key === 'roads') paintTerrain(); applyVisibility(); });
@@ -1999,9 +2017,20 @@ export async function mountViewer(host, opts) {
     } catch (e) { console.error(e); if (++frameErrors > 30) fail('Beim Zeichnen ist ein Fehler aufgetreten.', e.message); }
   }
 
-  // sun from the south-east-ish, high
-  const south = north.clone().multiplyScalar(-1);
-  sun.position.copy(south.clone().multiplyScalar(30).add(new THREE.Vector3(10, 34, 8)));
+  // sun for the picked date and time, at the site's place (Austria if the site data has none)
+  {
+    const [lon, lat] = GEO?.originLonLat ?? [14.5, 47.5];
+    const east = new THREE.Vector3().crossVectors(north, new THREE.Vector3(0, 1, 0)).normalize();
+    const place = (date) => {
+      const { altitude, azimuth } = sunPosition(date, lat, lon);
+      const a = altitude * Math.PI / 180, z = azimuth * Math.PI / 180;
+      sunAlt = altitude;
+      sunDir = new THREE.Vector3().addScaledVector(east, Math.sin(z) * Math.cos(a)).addScaledVector(north, Math.cos(z) * Math.cos(a)).setY(Math.sin(a)).normalize();
+      applySun();
+    };
+    const sunUi = mountSunPanel($('sunbtn'), $('suncard'), { lat, lon, onChange: place });
+    place(sunUi.get());
+  }
 
   applyTheme();
   $('title').textContent = DATA.meta.name;

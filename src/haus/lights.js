@@ -7,7 +7,7 @@
 //   wall     wall light at height `y` (default 1.8)
 //   step     small step light at height `y` (default 0.3)
 // `y` is always metres above the level's floor; spots, tracks and pendants default to the ceiling.
-// The "Abend" view dims the daylight and lets the fittings glow, with one soft fill light per room.
+// After sunset (date and time picked in the viewer) the fittings glow, with one soft fill light per room.
 import * as THREE from 'three'
 
 export const LIGHT_TYPES = { pendant: 'Pendelleuchte', spot: 'Spot / Deckenleuchte', track: 'Stromschiene', strip: 'LED-Linie', wall: 'Wandleuchte', step: 'Stufenlicht' }
