@@ -90,6 +90,7 @@ html.haus-full {
 .haus3d .chip[hidden] { display: none; }
 .haus3d .btn { font: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--h-line); background: transparent; color: var(--h-ink); cursor: pointer; }
 .haus3d .btn[hidden] { display: none; }
+.haus3d .fullbtn[hidden] { display: none; }
 .haus3d .btn.primary, .haus3d .btn.primary:hover,
 .haus3d #walkbtn[aria-pressed="true"], .haus3d #walkbtn[aria-pressed="true"]:hover { background: var(--h-accent); border-color: var(--h-accent); color: var(--h-accent-ink); }
 /* The app colours every button on hover; the viewer's buttons keep their look. */
@@ -335,4 +336,120 @@ html.haus-full {
   .haus3d.full.walking .corner { top: calc(70px + env(safe-area-inset-top, 0px)); }
   .haus3d.full.walking .suncard { top: calc(120px + env(safe-area-inset-top, 0px)); }
   .haus3d .suncard .stime input[type="range"] { height: 40px; }
+}
+
+/* Claude chat (src/haus/HouseChat.jsx): full screen on phones, a panel on
+   the right on wide screens; above the Vollbild view (z-index 50). */
+.haus-chat {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+@media (min-width: 760px) {
+  .haus-chat {
+    left: auto;
+    width: 420px;
+    border-left: 1px solid var(--border);
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.12);
+  }
+}
+.haus-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.haus-chat-head h2 { margin: 0; font-size: 1.1rem; flex: 1; }
+.haus-chat-head .link-button {
+  background: none;
+  color: var(--muted);
+  padding: 6px 8px;
+  font-size: 0.9rem;
+}
+.haus-chat-head .link-button:hover:not(:disabled) { background: none; color: var(--text); }
+.haus-chat-close {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 1.6rem;
+  line-height: 1;
+  background: transparent;
+  color: var(--text);
+}
+.haus-chat-close:hover:not(:disabled) { background: var(--border); }
+.haus-chat-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overscroll-behavior: contain;
+}
+.haus-chat-intro { color: var(--muted); font-size: 0.95rem; }
+.haus-chat-intro p { margin: 0 0 10px; }
+.haus-chat-exchange { display: flex; flex-direction: column; gap: 8px; }
+.haus-chat-msg {
+  max-width: 85%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.haus-chat-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.haus-chat-msg.mine {
+  align-self: flex-end;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.haus-chat-msg.claude { align-self: flex-start; border-bottom-left-radius: 4px; }
+.haus-chat-msg.pending p { color: var(--muted); font-style: italic; }
+.haus-chat-msg.failed { border-color: #d1242f; }
+.haus-chat-time { display: block; margin-top: 4px; font-size: 0.75rem; opacity: 0.8; text-align: right; }
+.haus-chat-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 10px; }
+.haus-chat-actions button { padding: 0.45rem 0.8rem; font-size: 0.9rem; }
+.haus-chat-msg a { display: inline-block; margin-top: 6px; color: var(--accent); font-size: 0.9rem; }
+.haus-chat-actions a { margin-top: 0; }
+.haus-chat-error { margin: 0 16px 8px; }
+.haus-chat-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 8px;
+  align-items: end;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.haus-chat-form textarea {
+  font: inherit;
+  font-size: 16px; /* no zoom on iPhone */
+  resize: none;
+  min-height: 44px;
+  max-height: 30vh;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  field-sizing: content;
+}
+.haus-chat-form button { min-height: 44px; }
+.haus-chat-on {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

@@ -208,6 +208,13 @@ nothing else and can't change, delete or pick the current version.
    app's viewer in headless Chromium, `save` adds a version named
    "Claude: …". See the comment at the top of the script.
 
+### Claude chat in the Haus tab
+
+The **Claude** button in the Haus tab sends requests to a Claude Code
+scheduled task on the owner's Claude account, which changes the model with
+the login above and answers in the chat. Setup (scheduled task with an API
+trigger, two Supabase secrets) and the task's prompt: `docs/haus-chat.md`.
+
 ## Changing the database
 
 Schema changes live in `supabase/migrations/` as SQL files that each run

@@ -223,3 +223,52 @@ export async function revokeShare(id) {
   const { error } = await supabase.from('house_shares').delete().eq('id', id)
   if (error) throw failed(error)
 }
+
+// ---------- Haus chat (table house_chat, Edge Function haus-chat) ----------
+
+const CHAT_COLUMNS = 'id, created_at, role, text, version_id, reply_to, status, session_url, error'
+
+// The whole chat, oldest first (it stays short: one line per request).
+export async function listChat() {
+  const { data, error } = await supabase.from('house_chat').select(CHAT_COLUMNS).order('created_at')
+  if (error) throw failed(error)
+  return data
+}
+
+// Saves a request and starts Claude for it. The row stays (status
+// 'failed' with the reason) if Claude can't be started.
+export async function sendChat({ text, versionId }) {
+  const { data: row, error } = await supabase
+    .from('house_chat')
+    .insert({ role: 'user', text, version_id: versionId ?? null, status: 'queued' })
+    .select(CHAT_COLUMNS)
+    .single()
+  if (error) throw failed(error)
+  const { error: startError } = await supabase.functions.invoke('haus-chat', { body: { id: row.id } })
+  if (startError) {
+    let message = 'Claude ließ sich nicht starten.'
+    try {
+      message = (await startError.context.json()).error ?? message
+    } catch {
+      // keep the general message (function missing or offline)
+    }
+    await supabase.from('house_chat').update({ status: 'failed', error: message }).eq('id', row.id)
+    throw new Error(message)
+  }
+  return row
+}
+
+// Deletes the whole chat (versions Claude saved stay).
+export async function clearChat() {
+  const { error } = await supabase.from('house_chat').delete().not('id', 'is', null)
+  if (error) throw failed(error)
+}
+
+// Calls onChange() whenever the chat changes; returns a function that stops it.
+export function watchChat(onChange) {
+  const channel = supabase
+    .channel('house_chat')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'house_chat' }, () => onChange())
+    .subscribe()
+  return () => supabase.removeChannel(channel)
+}

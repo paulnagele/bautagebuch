@@ -18,6 +18,13 @@
 //       [--on edges,contours,grid,…] [--cut x|z:<metres>] [--panel] [--size 1400x900]
 //       [--time 2026-06-21T18:30]  sun for that local date and time (default today 12:00;
 //                                   after sunset the lamps are on)
+//
+// Haus chat (requests written in the Haus tab, see docs/haus-chat.md):
+//   node scripts/haus/house.mjs chat [<request id>]
+//       takes the request (or the oldest open one): marks it as being worked
+//       on and prints it with the version it was asked on and the chat so far
+//   node scripts/haus/house.mjs chat-reply <request id> --text "…" [--version <id>] [--failed]
+//       writes Claude's answer (with the saved version, if any) and closes the request
 import { createClient } from '@supabase/supabase-js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -96,6 +103,62 @@ async function save(file, { name, note, parent }) {
       .single(),
   )
   console.log(`Saved version ${row.id} "${row.name}"`)
+}
+
+async function takeRequest(id) {
+  const supabase = await signIn()
+  let query = supabase.from('house_chat').select('id, text, version_id, status, created_at').eq('role', 'user')
+  query = id ? query.eq('id', id) : query.in('status', ['queued', 'started']).order('created_at').limit(1)
+  const request = check(await query.maybeSingle())
+  if (!request) {
+    console.log(id ? `No request ${id}.` : 'No open requests.')
+    return
+  }
+  if (request.status === 'done' || request.status === 'failed') {
+    console.log(`Request ${request.id} is already ${request.status}.`)
+    return
+  }
+  check(await supabase.from('house_chat').update({ status: 'working' }).eq('id', request.id))
+  const history = check(
+    await supabase
+      .from('house_chat')
+      .select('role, text, version_id, created_at')
+      .lt('created_at', request.created_at)
+      .order('created_at', { ascending: false })
+      .limit(20),
+  ).reverse()
+  const names = new Map(
+    check(await supabase.from('house_versions').select('id, name, is_current')).map((v) => [v.id, v]),
+  )
+  const label = (versionId) => {
+    const version = names.get(versionId)
+    return version ? `${versionId} "${version.name}"${version.is_current ? ' (Standard)' : ''}` : 'none'
+  }
+  console.log('Earlier chat (oldest first):')
+  if (history.length === 0) console.log('  (none)')
+  for (const message of history) {
+    const version = message.version_id ? ` [version ${label(message.version_id)}]` : ''
+    console.log(`  ${message.role === 'user' ? 'Member' : 'Claude'}${version}: ${message.text}`)
+  }
+  console.log('')
+  console.log(`Request ${request.id}`)
+  console.log(`Asked on version: ${label(request.version_id)}`)
+  console.log(`Text: ${request.text}`)
+}
+
+async function replyRequest(id, { text, version, failed }) {
+  if (!text) throw new Error('--text is required.')
+  const supabase = await signIn()
+  check(
+    await supabase.from('house_chat').insert({
+      role: 'claude',
+      text,
+      reply_to: id,
+      version_id: version ?? null,
+    }),
+  )
+  check(await supabase.from('house_chat').update({ status: failed ? 'failed' : 'done' }).eq('id', id))
+  console.log(`Answered request ${id}${version ? ` with version ${version}` : ''}.`)
 }
 
 async function render(file, options) {
@@ -192,6 +255,9 @@ const { positionals, values } = parseArgs({
     panel: { type: 'boolean' },
     size: { type: 'string' },
     time: { type: 'string' },
+    text: { type: 'string' },
+    version: { type: 'string' },
+    failed: { type: 'boolean' },
   },
 })
 const [command, file] = positionals
@@ -202,8 +268,12 @@ try {
   else if (command === 'render' && file) {
     if (!values.out) throw new Error('--out is required.')
     await render(file, values)
-  } else {
-    console.error('Usage: house.mjs pull | save <model.json> --name … | render <model.json> --out …')
+  } else if (command === 'chat') await takeRequest(file)
+  else if (command === 'chat-reply' && file) await replyRequest(file, values)
+  else {
+    console.error(
+      'Usage: house.mjs pull | save <model.json> --name … | render <model.json> --out … | chat [<id>] | chat-reply <id> --text …',
+    )
     process.exitCode = 2
   }
 } catch (error) {
