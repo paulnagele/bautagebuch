@@ -23,6 +23,7 @@ import { mountGardenEditor } from './gardenEditor.js'
 import { brushFn, brushBounds } from './terrainBrush.js'
 import { buildFacade, wallSkin } from './facade.js'
 import { buildGrid, gridExtent, updateGridLabels, pointText, pointPlain } from './grid.js'
+import { rotateSite } from './siteRotation.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
@@ -202,7 +203,7 @@ export function showFailure(host, error) {
 export async function mountViewer(host, opts) {
   const { store } = opts
   const ORIGINAL = opts.model
-  const CONTEXT = opts.context ?? null
+  const CONTEXT = rotateSite(opts.context ?? null)
   // Own wrapper (no box of its own), so a second viewer in the same host
   // (React mounts effects twice in development) never touches this one.
   const view = document.createElement('div')
