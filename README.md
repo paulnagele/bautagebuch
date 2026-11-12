@@ -90,8 +90,8 @@ database (see step 4).
    `https://www.googleapis.com/auth/calendar.events`.
 6. **Clients → Create client**, type *Web application*. Under
    **Authorized JavaScript origins** add the address of every site
-   (e.g. `https://bautagebuch.pages.dev`, see [Deployment](#deployment);
-   `https://paulnagele.github.io` while GitHub Pages runs) and
+   (`https://paulnagele.github.io` and the second site's
+   `https://….pages.dev`, see [Deployment](#deployment)) and
    `http://localhost:5173` for local development. No redirect URIs
    are needed. Note the **Client ID** and **Client secret**.
 
@@ -249,21 +249,21 @@ Then open http://localhost:5173.
 ## Deployment
 
 Every push to `main` deploys every site (`.github/workflows/deploy.yml`).
-There are two sites on Cloudflare Pages, each with its own Supabase
-database and its own settings in a GitHub **environment**:
+Each site has its own Supabase database and its own settings in a GitHub
+**environment**:
 
-| Site | Environment | Cloudflare Pages project | Address |
+| Site | Environment | Hosted on | Address |
 | --- | --- | --- | --- |
-| Production | `production` | `bautagebuch` | https://bautagebuch.pages.dev |
-| Second | `second` | `bautagebuch-second` | https://bautagebuch-second.pages.dev |
+| Production | `production` | GitHub Pages | https://paulnagele.github.io/bautagebuch/ |
+| Second | `second` | Cloudflare Pages, project `bautagebuch-second` | https://bautagebuch-second.pages.dev |
 
 Each site is deployed on its own (`deploy-target.yml`): first its database
-migrations, then the app. If one site fails, the other is still updated.
-A site other than production refuses to run if any of its settings point
-to the production database (`scripts/check-target.mjs`).
+migrations and Edge Functions, then the app. If one site fails, the other
+is still updated. The second site refuses to run if any of its settings
+point to the production database (`scripts/check-target.mjs`).
 
-GitHub Pages (https://paulnagele.github.io/bautagebuch/) still gets the
-production build until it is switched off.
+One-time GitHub Pages setup: in the repository go to **Settings → Pages**
+and set **Source** to **GitHub Actions**.
 
 ### One-time Cloudflare setup
 
@@ -276,12 +276,12 @@ production build until it is switched off.
    Permission: *Account · Cloudflare Pages · Edit*; Account Resources:
    your account. Add it as the repository **secret**
    `CLOUDFLARE_API_TOKEN`.
-4. Run *Actions → Deploy → Run workflow*. The first run creates the Pages
-   project. If the name `bautagebuch` is already taken on pages.dev,
+4. Set up [the second site](#the-second-site) below; its first deploy
+   creates the Pages project. If the name is already taken on pages.dev,
    Cloudflare adds a suffix; the address is shown at the end of the
    "Deploy to Cloudflare Pages" step and in the dashboard. A different
    project name can be set with the variable `CLOUDFLARE_PROJECT` in the
-   site's environment.
+   `second` environment.
 5. Google Cloud → *Clients → Web client → Authorized JavaScript origins*:
    add the site's address (no trailing slash).
 
@@ -292,7 +292,8 @@ Optional: a custom domain is added in Cloudflare under the Pages project →
 
 1. Create a second Supabase project and set it up like
    [step 3](#3-supabase-database) (Google provider with the same Client ID
-   and secret, members), but don't add repository secrets.
+   and secret, members), but don't add repository secrets. Edge Function
+   secrets (e.g. for the Haus chat) are set in that project too.
 2. GitHub → *Settings → Environments → New environment* `second`:
    - Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD` (and
      `SUPABASE_ACCESS_TOKEN` if the project belongs to another Supabase

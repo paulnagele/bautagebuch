@@ -5,8 +5,8 @@ name: Deploy one site
 # version that matches its database. Called by deploy.yml once per site.
 #
 # Each site's settings live in the GitHub environment of the same name:
-#   production  the repository-wide secrets and .env.production
-#   second      its own Supabase project (see README, "Deployment")
+#   production  GitHub Pages; the repository-wide secrets and .env.production
+#   second      Cloudflare Pages; its own Supabase project (README, "Deployment")
 on:
   workflow_call:
     inputs:
@@ -37,9 +37,9 @@ jobs:
       DEPLOY_TARGET: ${{ inputs.target }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
-      # Cloudflare Pages project, one per site. The site is served at
+      # Cloudflare Pages project. The site is served at
       # https://<project>.pages.dev unless that name is taken.
-      CLOUDFLARE_PROJECT: ${{ vars.CLOUDFLARE_PROJECT || (inputs.target == 'production' && 'bautagebuch' || format('bautagebuch-{0}', inputs.target)) }}
+      CLOUDFLARE_PROJECT: ${{ vars.CLOUDFLARE_PROJECT || format('bautagebuch-{0}', inputs.target) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,7 +63,9 @@ jobs:
           CFG_SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
           CFG_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
 
+      # Production stays on GitHub Pages; every other site goes to Cloudflare.
       - name: Check Cloudflare settings
+        if: inputs.target != 'production'
         id: cloudflare
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
@@ -89,7 +91,7 @@ jobs:
           # Shows the site's address (Project Domains) in the log.
           $wrangler pages project list
 
-      # GitHub Pages keeps serving production until it is switched off.
+      # Production is served by GitHub Pages.
       - if: inputs.target == 'production'
         uses: actions/configure-pages@v5
         with:
