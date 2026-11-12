@@ -1152,6 +1152,13 @@ export async function mountViewer(host, opts) {
       const m = box(L, b.top - b.bottom, b.width, mats.plaster); m.position.set((ax + bx) / 2, (b.top + b.bottom) / 2, (az + bz) / 2); m.rotation.y = Math.atan2(-(bz - az), bx - ax);
       m.userData = { kind: 'beam', data: b }; groups[b.level].add(m); pickables.push(m);
     }
+    // inclined braces / Kopfbänder (D.braces: {id, level, from:[x,z,y], to:[x,z,y], size, material})
+    for (const br of D.braces || []) {
+      const a = new THREE.Vector3(br.from[0], br.from[2], br.from[1]), b = new THREE.Vector3(br.to[0], br.to[2], br.to[1]), dir = b.clone().sub(a), L = dir.length(), s = br.size ?? 0.12;
+      const m = box(s, L, s, br.material === 'steel' ? steel : mats[br.material] || mats.wood);
+      m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+      m.userData = { kind: 'brace', data: br }; groups[br.level].add(m); pickables.push(m);
+    }
     // louvred pergolas (D.pergolas: {level, x:[x0,x1], z:[z0,z1], base, top, post, frame, louvreAxis 'x'|'z', louvreAngle°, color, screens:[{side, drop 0..1}]})
     for (const pg of D.pergolas || []) {
       const g = groups[pg.level], ps = pg.post ?? 0.15, fh = pg.frame ?? 0.22, col = mat(new THREE.Color(pg.color || '#383e42').getHex(), { roughness: 0.45, metalness: 0.3 });
@@ -1632,6 +1639,7 @@ export async function mountViewer(host, opts) {
       case 'light': return `<h3>${esc(d.name || LIGHT_TYPES[d.type] || 'Leuchte')}</h3>` + dl([['Art', LIGHT_TYPES[d.type]], ['Raum', d.room], ['Hinweis', d.note]]);
       case 'furniture': return `<h3>${esc(d.name || d.type)}</h3>` + dl([['Raum', d.room], ['Maße', `${f2(Math.abs(d.x[1] - d.x[0]))} × ${f2(Math.abs(d.z[1] - d.z[0]))} m`], ['Hinweis', d.note]]);
       case 'garden': { const g = gardenInfo(d); return `<h3>${esc(g.title)}</h3>` + dl(g.rows) + (g.note ? `<p class="note">${esc(g.note)}</p>` : ''); }
+      case 'brace': return `<h3>Schrägstütze ${esc(d.id)}</h3>` + dl([['Querschnitt', `${Math.round((d.size ?? 0.12) * 100)}/${Math.round((d.size ?? 0.12) * 100)} cm`], ['Länge', f2(Math.hypot(d.to[0] - d.from[0], d.to[1] - d.from[1], d.to[2] - d.from[2])) + ' m'], ['Hinweis', d.note]]);
       case 'beam': return `<h3>Unterzug ${esc(d.id)}</h3>` + dl([['Breite', f2(d.width) + ' m'], ['UK', f2(d.bottom)]]);
       default: return '<span class="empty">Kein Bauteil.</span>';
     }
@@ -1816,7 +1824,7 @@ export async function mountViewer(host, opts) {
   const walk = { active: false, pending: false, yaw: 0, pitch: 0, feet: 0, vy: 0, keys: new Set(), joy: [0, 0], look: null, saved: null, last: 0, dirty: false, root: null, ground: [], block: [] };
   const walkHud = $('walkhud'), walkMsg = $('walkmsg'), walkBtn = $('walkbtn');
   const joyEl = $('joy'), joyKnob = joyEl.querySelector('i'), wray = new THREE.Raycaster();
-  const GROUND_KINDS = new Set(['slab', 'floor', 'stair']), BLOCK_KINDS = new Set(['wall', 'opening', 'furniture', 'railing', 'post', 'pergola', 'insulation', 'facade', 'chimney', 'gradewall']);
+  const GROUND_KINDS = new Set(['slab', 'floor', 'stair']), BLOCK_KINDS = new Set(['wall', 'opening', 'furniture', 'railing', 'post', 'brace', 'pergola', 'insulation', 'facade', 'chimney', 'gradewall']);
   const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight']);
   const shown = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
   function walkLists() {   // meshes to stand on and meshes that stop you (doors are walked through, rugs ignored); world bounding spheres for a cheap near-filter
