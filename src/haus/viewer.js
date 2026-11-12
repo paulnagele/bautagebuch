@@ -1178,11 +1178,15 @@ export async function mountViewer(host, opts) {
       m.position.copy(a).add(b).multiplyScalar(0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
       m.userData = { kind: 'brace', data: br }; groups[br.level].add(m); pickables.push(m);
     }
-    // louvred pergolas (D.pergolas: {level, x:[x0,x1], z:[z0,z1], base, top, post, frame, louvreAxis 'x'|'z', louvreAngle°, color, screens:[{side, drop 0..1}]})
+    // louvred pergolas (D.pergolas: {level, x:[x0,x1], z:[z0,z1], base, top, post, frame, wall?, louvreAxis 'x'|'z', louvreAngle°, color, screens:[{side, drop 0..1}]})
     for (const pg of D.pergolas || []) {
       const g = groups[pg.level], ps = pg.post ?? 0.15, fh = pg.frame ?? 0.22, col = mat(new THREE.Color(pg.color || '#383e42').getHex(), { roughness: 0.45, metalness: 0.3 });
       const [x0, x1] = pg.x, [z0, z1] = pg.z, yb = pg.base ?? 0, yt = pg.top, tag = m => { m.userData = { kind: 'pergola', data: pg }; g.add(m); pickables.push(m); return m; };
-      for (const px of [x0 + ps / 2, x1 - ps / 2]) for (const pz of [z0 + ps / 2, z1 - ps / 2]) { const m = tag(box(ps, yt - fh - yb, ps, col)); m.position.set(px, yb + (yt - fh - yb) / 2, pz); }
+      // pg.wall ('-x'|'+x'|'-z'|'+z'): side fixed to the house wall, no posts there (the frame rests on wall brackets)
+      for (const px of [x0 + ps / 2, x1 - ps / 2]) for (const pz of [z0 + ps / 2, z1 - ps / 2]) {
+        const onWall = { '-x': px < (x0 + x1) / 2, '+x': px > (x0 + x1) / 2, '-z': pz < (z0 + z1) / 2, '+z': pz > (z0 + z1) / 2 }[pg.wall];
+        if (onWall) continue;
+        const m = tag(box(ps, yt - fh - yb, ps, col)); m.position.set(px, yb + (yt - fh - yb) / 2, pz); }
       for (const [cx, cz, w, d] of [[(x0 + x1) / 2, z0 + ps / 2, x1 - x0, ps], [(x0 + x1) / 2, z1 - ps / 2, x1 - x0, ps], [x0 + ps / 2, (z0 + z1) / 2, ps, z1 - z0 - 2 * ps], [x1 - ps / 2, (z0 + z1) / 2, ps, z1 - z0 - 2 * ps]]) {
         const m = tag(box(w, fh, d, col)); m.position.set(cx, yt - fh / 2, cz); addEdges(m, g); }
       const alongX = pg.louvreAxis !== 'z', span = alongX ? x1 - x0 - 2 * ps : z1 - z0 - 2 * ps, run = alongX ? z1 - z0 - 2 * ps : x1 - x0 - 2 * ps, lw = 0.2;
