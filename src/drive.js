@@ -1,12 +1,14 @@
 // Diary photos are stored in a shared Google Drive folder. Each family
 // member uploads them with their own Google account, so the folder must be
-// shared with everyone (as Editor). The folder itself stays private; each
-// photo is shared as "Anyone with the link", so it loads without any
-// Google permission while the folder cannot be browsed.
+// shared with everyone (as Editor). Nothing is shared by link: photos load
+// with the member's own Drive access and are then kept on the device.
+// (Older versions shared each photo as "Anyone with the link";
+// makePhotosPrivate takes that back.)
 
 import { config } from './config.js'
 import { createGoogleAccess } from './google.js'
 import { getSetting } from './settings.js'
+import { supabase } from './supabase.js'
 
 const PHOTO_CACHE = 'bautagebuch-photos-v1'
 const API = 'https://www.googleapis.com/drive/v3/files'
@@ -96,15 +98,35 @@ export function connectDrive(email) {
   return drive.connect(email)
 }
 
+// Runs listener whenever Drive access is granted (e.g. so photos waiting
+// for it load); returns an unsubscribe function.
+export function onDriveConnected(listener) {
+  return drive.onConnect(listener)
+}
+
 // ---- API calls ------------------------------------------------------------
 
-// Makes one photo viewable by anyone with its link (not the folder).
-function shareByLink(fileId) {
-  return driveFetch(`${API}/${encodeURIComponent(fileId)}/permissions?supportsAllDrives=true`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ role: 'reader', type: 'anyone' }),
-  })
+// Takes back "Anyone with the link" from one file, if it has it.
+async function unshareByLink(fileId) {
+  const id = encodeURIComponent(fileId)
+  let permissions
+  try {
+    const response = await driveFetch(
+      `${API}/${id}/permissions?fields=permissions(id,type)&supportsAllDrives=true`,
+    )
+    permissions = (await response.json()).permissions ?? []
+  } catch (err) {
+    if (err.status === 404) return // deleted, or not visible to this member
+    throw err
+  }
+  for (const permission of permissions.filter((p) => p.type === 'anyone')) {
+    await driveFetch(
+      `${API}/${id}/permissions/${encodeURIComponent(permission.id)}?supportsAllDrives=true`,
+      { method: 'DELETE' },
+    ).catch((err) => {
+      if (err.status !== 404) throw err
+    })
+  }
 }
 
 // Resumable upload, so full-size photos and large files go through
@@ -154,7 +176,6 @@ export function uploadFile(file, name, folderId, onBytes) {
 
 export async function uploadPhoto(blob, name, folderId, onBytes) {
   const id = await upload(blob, name, blob.type || 'image/jpeg', folderId, onBytes)
-  await shareByLink(id).catch(() => {}) // still viewable via the fallback
   // The uploader already has the photo: keep it so it shows right away.
   photoCache.set(id, Promise.resolve(URL.createObjectURL(blob)))
   return id
@@ -224,15 +245,7 @@ async function limited(task) {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-// Public link for a photo shared by link. Plain <img> loading,
-// no Google sign-in or permission needed.
-export function publicPhotoUrl(fileId) {
-  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w2000`
-}
-
-// Fallback when the public link fails (e.g. an older photo not shared by
-// link yet): download with the person's own Drive access, and share it by
-// link so it loads for everyone from then on.
+// Downloads a photo with the person's own Drive access.
 async function download(fileId) {
   for (let attempt = 0; ; attempt += 1) {
     if (!validToken()) throw new NeedsDriveError()
@@ -240,7 +253,6 @@ async function download(fileId) {
       const response = await driveFetch(
         `${API}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
       )
-      shareByLink(fileId).catch(() => {})
       return await response.blob()
     } catch (err) {
       if (!validToken()) throw new NeedsDriveError() // token expired meanwhile
@@ -272,3 +284,77 @@ export function loadPhoto(fileId) {
   }
   return photoCache.get(fileId)
 }
+
+// ---- taking back old photo links -------------------------------------------
+//
+// Older versions shared every diary photo as "Anyone with the link". Once
+// per device, as soon as Drive is connected, this removes that sharing from
+// all photos of the diary. Photos already private cost one request each.
+const PRIVATE_KEY = 'bautagebuch.photosPrivate'
+let sweep = null
+
+async function allPhotoIds() {
+  // Without a session the diary reads as empty, which would look "done".
+  const { data: auth } = await supabase.auth.getSession()
+  if (!auth.session) throw new Error('Nicht angemeldet.')
+  const ids = new Set()
+  const PAGE = 1000
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('diary_entries')
+      .select('id, photo_ids')
+      .order('id')
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    for (const row of data) for (const id of row.photo_ids ?? []) ids.add(id)
+    if (data.length < PAGE) return [...ids]
+  }
+}
+
+function sweepDone() {
+  try {
+    return localStorage.getItem(PRIVATE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function makePhotosPrivate() {
+  if (sweep || sweepDone() || !supabase || !validToken()) return sweep
+  sweep = (async () => {
+    const ids = await allPhotoIds()
+    let failed = 0
+    let next = 0
+    const worker = async () => {
+      while (next < ids.length) {
+        const id = ids[next++]
+        await unshareByLink(id).catch(() => {
+          failed += 1
+        })
+      }
+    }
+    await Promise.all(Array.from({ length: MAX_DOWNLOADS }, worker))
+    if (failed === 0) {
+      try {
+        localStorage.setItem(PRIVATE_KEY, '1')
+      } catch {
+        // Storage unavailable: it runs again next time, which is harmless.
+      }
+    }
+    return { total: ids.length, failed }
+  })()
+  // Not remembered when it failed or stopped part-way, so it runs again.
+  sweep.then(
+    (result) => {
+      if (result.failed) sweep = null
+    },
+    () => {
+      sweep = null
+    },
+  )
+  return sweep
+}
+
+drive.onConnect(() => {
+  makePhotosPrivate()?.catch(() => {})
+})
