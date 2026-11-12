@@ -36,6 +36,7 @@ export function loadGoogleScript() {
 // `name` is used in messages, e.g. "Google Drive".
 export function createGoogleAccess({ scope, storageKey, name, clientId }) {
   let token = readStoredToken()
+  const connectListeners = new Set()
 
   function readStoredToken() {
     try {
@@ -56,6 +57,7 @@ export function createGoogleAccess({ scope, storageKey, name, clientId }) {
     } catch {
       // Storage unavailable: keep the token in memory only.
     }
+    if (next) connectListeners.forEach((listener) => listener())
   }
 
   function validToken() {
@@ -151,6 +153,11 @@ export function createGoogleAccess({ scope, storageKey, name, clientId }) {
     fetch: apiFetch,
     connected: () => Boolean(validToken()),
     disconnect: () => setToken(null),
+    // Runs listener whenever access is granted; returns an unsubscribe.
+    onConnect(listener) {
+      connectListeners.add(listener)
+      return () => connectListeners.delete(listener)
+    },
   }
 }
 

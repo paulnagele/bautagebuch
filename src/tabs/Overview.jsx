@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { formatDate, today } from '../storage.js'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
@@ -6,7 +6,7 @@ import DrivePhoto from '../components/DrivePhoto.jsx'
 import { fromRow, toRow } from '../diaryEntries.js'
 import { itemFromRow, itemToRow } from '../budgetItems.js'
 import { quoteFromRow, quoteToRow } from '../planning.js'
-import { driveFileUrl, publicPhotoUrl } from '../drive.js'
+import { driveFileUrl, loadPhoto } from '../drive.js'
 import {
   UNSORTED,
   assignmentFromRow,
@@ -48,28 +48,31 @@ function dueDate(entry) {
   return entry.details[entryType(entry.type).progress?.due] || ''
 }
 
-// A small preview of a picture document, from its public link. Pictures
-// not shared by link (attached image files) fall back to the file icon;
+// A small preview of a picture document, from the copy on this device or
+// with Drive access if it is connected. Otherwise the file icon shows;
 // no Drive sign-in on the start page.
 function DocumentIcon({ document }) {
-  const [failed, setFailed] = useState(false)
-  if (!document.image || failed) {
+  const [preview, setPreview] = useState({ fileId: null, src: null })
+  const fileId = document.image ? document.fileId : null
+  useEffect(() => {
+    if (!fileId) return
+    let cancelled = false
+    loadPhoto(fileId).then(
+      (src) => !cancelled && setPreview({ fileId, src }),
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [fileId])
+  if (!fileId || preview.fileId !== fileId) {
     return (
       <span className="overview-doc-icon" aria-hidden="true">
         📄
       </span>
     )
   }
-  return (
-    <img
-      className="overview-doc-thumb"
-      src={publicPhotoUrl(document.fileId)}
-      alt=""
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-    />
-  )
+  return <img className="overview-doc-thumb" src={preview.src} alt="" />
 }
 
 // The start page: what comes next, what is still open, and the newest
