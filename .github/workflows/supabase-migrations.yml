@@ -40,3 +40,6 @@ jobs:
       - run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
       # Runs only the migrations the database has not seen yet.
       - run: supabase db push
+      # Edge Functions (supabase/functions), e.g. haus-chat for the Claude
+      # chat in the Haus tab. Bundled by Supabase, no Docker needed.
+      - run: supabase functions deploy --use-api --project-ref "$SUPABASE_PROJECT_REF"

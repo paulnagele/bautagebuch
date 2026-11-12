@@ -16,9 +16,11 @@ import {
   setCurrentVersion,
 } from '../haus/houseStore.js'
 import { mountViewer, showFailure } from '../haus/viewer.js'
+import HouseChat from '../haus/HouseChat.jsx'
 import { takeFullStart } from '../startLink.js'
 
 const store = {
+  list: listVersions,
   load: loadModel,
   save: saveVersion,
   rename: renameVersion,
@@ -97,6 +99,10 @@ function readLite() {
 function HouseViewer({ view }) {
   const hostRef = useRef(null)
   const [lite, setLite] = useState(readLite)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [version, setVersion] = useState(null)
+  const viewerRef = useRef(null)
+  const closeChat = useCallback(() => setChatOpen(false), [])
 
   useEffect(() => {
     const host = hostRef.current
@@ -110,10 +116,12 @@ function HouseViewer({ view }) {
       }
       setLite(true)
     }
-    mountViewer(host, { ...view, store, shares, lite, onLost, full: takeFullStart() })
+    const onChat = () => setChatOpen(true)
+    const onVersion = (row) => setVersion(row ? { id: row.id, name: row.name } : null)
+    mountViewer(host, { ...view, store, shares, lite, onLost, onChat, onVersion, full: takeFullStart() })
       .then((done) => {
         if (left) done?.()
-        else dispose = done
+        else viewerRef.current = dispose = done
       })
       .catch((error) => {
         console.error(error)
@@ -122,12 +130,23 @@ function HouseViewer({ view }) {
       })
     return () => {
       left = true
+      viewerRef.current = null
       dispose?.()
     }
   }, [view, lite])
 
   // data-no-swipe: dragging turns the model instead of switching tabs.
-  return <div ref={hostRef} className="haus3d" data-no-swipe />
+  return (
+    <>
+      <div ref={hostRef} className="haus3d" data-no-swipe />
+      <HouseChat
+        open={chatOpen}
+        onClose={closeChat}
+        version={version}
+        onOpenVersion={(id) => viewerRef.current?.openVersion?.(id)}
+      />
+    </>
+  )
 }
 
 // No model yet: import the export file of the Haus3D page once.

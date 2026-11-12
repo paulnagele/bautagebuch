@@ -10,7 +10,12 @@
 //   opts.context    site data ({ terrain, neighborhood }) or null
 //   opts.versions   version list (houseStore.listVersions)
 //   opts.currentId  id of opts.model
-//   opts.store      { load, save, rename, remove, setCurrent } (houseStore.js)
+//   opts.store      { list, load, save, rename, remove, setCurrent } (houseStore.js)
+//   opts.onChat     optional, shows the "Claude" button and is called on a click
+//   opts.onVersion  optional, called with the open version's list row (or null)
+//                   whenever the version list is drawn
+// Returns dispose(); dispose.openVersion(id) opens a version, also one
+// added since (the Haus chat uses it for versions Claude saved).
 //   opts.shares     { list, create, add, remove, revoke } for "Teilen" (houseStore.js), optional
 //   opts.readOnly   true on the shared page (haus.html): the shared versions,
 //                   display options open, nothing can be saved or changed
@@ -169,6 +174,8 @@ const VIEW_HTML = `
   <svg viewBox="-32 -32 64 64"><circle r="30"/><g data-h="needle"><path d="M0,-24 L6,4 L0,0 L-6,4 Z"/><text x="0" y="-8" text-anchor="middle" dy="-18">N</text></g></svg>
 </div>
 <div class="corner">
+  <button type="button" class="fullbtn chatbtn" data-h="chatbtn" title="Claude fragen" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span class="txt">Claude</span></button>
   <button type="button" class="fullbtn sunbtn" data-h="sunbtn" aria-expanded="false" aria-haspopup="dialog"><span class="ico"></span><span class="txt"></span><span class="short mono"></span></button>
   <button type="button" class="fullbtn" data-h="fullbtn" aria-pressed="false" title="Vollbild">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="txt">Vollbild</span></button>
@@ -233,6 +240,8 @@ export async function mountViewer(host, opts) {
   }
   $('fullbtn').addEventListener('click', () => setFull(!host.classList.contains('full')))
   if (opts.full) setFull(true)   // opened by a "vollbild" link (src/startLink.js)
+  // Haus chat (src/haus/HouseChat.jsx): the button sits with the others in the corner.
+  if (opts.onChat) { $('chatbtn').hidden = false; $('chatbtn').addEventListener('click', () => opts.onChat()); }
   function dispose() {
     if (disposed) return
     disposed = true
@@ -1741,6 +1750,7 @@ export async function mountViewer(host, opts) {
     if (curEl) vlistEl.scrollTop = curEl.offsetTop - vlistEl.offsetTop - 4;
     const cur = versions.find(v => v.id === currentId);
     $('state').textContent = cur ? cur.name : 'Version';
+    opts.onVersion?.(cur ?? null);
     $('dirty').hidden = READ_ONLY || !isDirty();
     if (sharePanel && !vsetEl.hidden) sharePanel.refresh();
     vdelBtn.hidden = !cur || cur.is_current || cur.locked || sharedIds.has(cur.id); vdelBtn.textContent = delArmed ? 'Wirklich löschen?' : 'Version löschen';
@@ -1763,6 +1773,14 @@ export async function mountViewer(host, opts) {
     DATA = d; currentId = id; currentJson = JSON.stringify(d); fillEditor(); setLevel(state.level); select(null);
     renderVersions();
   }
+  // For the Haus chat: open a version Claude just saved (reloads the list first).
+  dispose.openVersion = async (id) => {
+    if (!versions.some(v => v.id === id) && store.list) {
+      try { versions = await store.list(); } catch (e) { setVmsg(e.message, true); return; }
+      if (disposed) return;
+    }
+    await openVersion(id);
+  };
   $('vsavebtn').addEventListener('click', async () => {
     const name = vnameIn.value.trim();
     if (!name) { setVmsg('Bitte einen Namen für die Version eingeben.', true); vnameIn.focus(); return; }
