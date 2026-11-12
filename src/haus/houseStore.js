@@ -226,7 +226,7 @@ export async function revokeShare(id) {
 
 // ---------- Haus chat (table house_chat, Edge Function haus-chat) ----------
 
-const CHAT_COLUMNS = 'id, created_at, role, text, version_id, reply_to, status, session_url, error'
+const CHAT_COLUMNS = 'id, created_at, role, text, version_id, reply_to, status, session_url, error, backup_id'
 
 // The whole chat, oldest first (it stays short: one line per request).
 export async function listChat() {
@@ -256,6 +256,12 @@ export async function sendChat({ text, versionId }) {
     throw new Error(message)
   }
   return row
+}
+
+// Undoes a change Claude made in place (puts the backup back).
+export async function undoChange(backupId) {
+  const { error } = await supabase.rpc('restore_house_backup', { backup_id: backupId })
+  if (error) throw failed(error)
 }
 
 // Deletes the whole chat (versions Claude saved stay).

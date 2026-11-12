@@ -12,6 +12,9 @@
 //       context.json (site data)
 //   node scripts/haus/house.mjs save <model.json> --name "…" [--note "…"] [--parent <id>]
 //       adds a version named "Claude: …"; members pick it in the Haus tab
+//   node scripts/haus/house.mjs update <model.json> --version <id>
+//       replaces that version's model in place (not locked ones); the old
+//       model is kept as a backup and its id printed (for chat-reply --backup)
 //   node scripts/haus/house.mjs render <model.json> --out shot.png
 //       [--context .haus/context.json] [--view persp|NW|NO|SO|SW|top|site]
 //       [--level all|DG|EG|KG] [--off roof,terrain,labels,furn,neighbors,…]
@@ -23,8 +26,9 @@
 //   node scripts/haus/house.mjs chat [<request id>]
 //       takes the request (or the oldest open one): marks it as being worked
 //       on and prints it with the version it was asked on and the chat so far
-//   node scripts/haus/house.mjs chat-reply <request id> --text "…" [--version <id>] [--failed]
-//       writes Claude's answer (with the saved version, if any) and closes the request
+//   node scripts/haus/house.mjs chat-reply <request id> --text "…" [--version <id>] [--backup <id>] [--failed]
+//       writes Claude's answer and closes the request; --version: the version
+//       changed or saved, --backup: the backup from `update` (enables "Rückgängig")
 import { createClient } from '@supabase/supabase-js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -146,7 +150,7 @@ async function takeRequest(id) {
   console.log(`Text: ${request.text}`)
 }
 
-async function replyRequest(id, { text, version, failed }) {
+async function replyRequest(id, { text, version, backup, failed }) {
   if (!text) throw new Error('--text is required.')
   const supabase = await signIn()
   check(
@@ -155,10 +159,20 @@ async function replyRequest(id, { text, version, failed }) {
       text,
       reply_to: id,
       version_id: version ?? null,
+      backup_id: backup ?? null,
     }),
   )
   check(await supabase.from('house_chat').update({ status: failed ? 'failed' : 'done' }).eq('id', id))
   console.log(`Answered request ${id}${version ? ` with version ${version}` : ''}.`)
+}
+
+async function update(file, { version }) {
+  if (!version) throw new Error('--version is required.')
+  const model = JSON.parse(await readFile(file, 'utf8'))
+  if (!Array.isArray(model.walls)) throw new Error(`${file} is not a house model (no walls).`)
+  const supabase = await signIn()
+  const backup = check(await supabase.rpc('update_house_model', { version_id: version, model }))
+  console.log(`Updated version ${version} in place. Backup ${backup}`)
 }
 
 async function render(file, options) {
@@ -257,6 +271,7 @@ const { positionals, values } = parseArgs({
     time: { type: 'string' },
     text: { type: 'string' },
     version: { type: 'string' },
+    backup: { type: 'string' },
     failed: { type: 'boolean' },
   },
 })
@@ -265,6 +280,7 @@ const [command, file] = positionals
 try {
   if (command === 'pull') await pull({ out: values.out ?? path.join(root, '.haus') })
   else if (command === 'save' && file) await save(file, values)
+  else if (command === 'update' && file) await update(file, values)
   else if (command === 'render' && file) {
     if (!values.out) throw new Error('--out is required.')
     await render(file, values)
@@ -272,7 +288,7 @@ try {
   else if (command === 'chat-reply' && file) await replyRequest(file, values)
   else {
     console.error(
-      'Usage: house.mjs pull | save <model.json> --name … | render <model.json> --out … | chat [<id>] | chat-reply <id> --text …',
+      'Usage: house.mjs pull | save <model.json> --name … | update <model.json> --version … | render <model.json> --out … | chat [<id>] | chat-reply <id> --text …',
     )
     process.exitCode = 2
   }

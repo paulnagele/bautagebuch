@@ -453,3 +453,5 @@ html.haus-full {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.haus-chat-actions button.secondary { border: 1px solid var(--border); }
+.haus-chat-note { font-size: 0.85rem; color: var(--muted); }
