@@ -167,7 +167,12 @@ html.haus-full {
 .haus3d .earth:hover, .haus3d .fullbtn:hover { border-color: var(--h-accent); color: var(--h-accent); background: var(--h-panel); }
 .haus3d .earth svg, .haus3d .fullbtn svg { width: 18px; height: 18px; }
 .haus3d .earth[hidden] { display: none; }
-.haus3d.walking .corner { display: none; }
+/* Begehen: only the Datum & Uhrzeit button stays, under the compass (the hint bar takes the top row) */
+.haus3d.walking .corner > :not(.sunbtn) { display: none; }
+.haus3d.walking .corner { right: 12px; top: 88px; }
+.haus3d.walking .suncard { top: 140px; }
+.haus3d.full.walking .corner { top: calc(88px + env(safe-area-inset-top, 0px)); }
+.haus3d.full.walking .suncard { top: calc(140px + env(safe-area-inset-top, 0px)); }
 
 /* walk mode: first person HUD + touch joystick */
 .haus3d .walkhud { position: absolute; left: 50%; transform: translateX(-50%); top: 12px; z-index: 5; display: flex; align-items: center; gap: 12px;
@@ -318,12 +323,16 @@ html.haus-full {
 .haus3d .suncard .sclock { font-size: 20px; font-weight: 600; min-width: 3.2em; }
 .haus3d .suncard .stime input { flex: 1; min-width: 0; accent-color: var(--h-accent); }
 .haus3d .suncard .note { margin: 0; }
-.haus3d.walking .suncard, .haus3d.designing .suncard { display: none; }
+.haus3d.designing .suncard { display: none; }
 .haus3d.full .suncard { top: calc(84px + env(safe-area-inset-top, 0px)); }
 @media (max-width: 700px) {
   .haus3d .sunbtn { width: auto !important; padding: 0 12px 0 10px !important; gap: 6px; }
   .haus3d .sunbtn .short { display: inline; font-size: 13px; }
   .haus3d .suncard { left: 12px; right: 12px; width: auto; max-width: none; top: 66px; }
   .haus3d.full .suncard { top: calc(66px + env(safe-area-inset-top, 0px)); }
+  .haus3d.walking .corner { right: 12px; top: 70px; }
+  .haus3d.walking .suncard { top: 120px; }
+  .haus3d.full.walking .corner { top: calc(70px + env(safe-area-inset-top, 0px)); }
+  .haus3d.full.walking .suncard { top: calc(120px + env(safe-area-inset-top, 0px)); }
   .haus3d .suncard .stime input[type="range"] { height: 40px; }
 }
