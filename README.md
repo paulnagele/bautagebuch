@@ -237,18 +237,42 @@ Every push to `main` deploys every site (`.github/workflows/deploy.yml`).
 Each site has its own Supabase database and its own settings in a GitHub
 **environment**:
 
-| Site | Environment | Hosted on | Address |
+| Site | Environment | Cloudflare Pages project | Address |
 | --- | --- | --- | --- |
-| Production | `production` | GitHub Pages | https://paulnagele.github.io/bautagebuch/ |
-| Second | `second` | Cloudflare Pages, project `bautagebuch-second` | https://bautagebuch-second.pages.dev |
+| Main | `production` | `bautagebuch` | own domain, set in Cloudflare |
+| Second | `second` | `bautagebuch-second` | own domain, set in Cloudflare |
 
 Each site is deployed on its own (`deploy-target.yml`): first its database
 migrations and Edge Functions, then the app. If one site fails, the other
 is still updated. The second site refuses to run if any of its settings
 point to the production database (`scripts/check-target.mjs`).
 
-One-time GitHub Pages setup: in the repository go to **Settings → Pages**
-and set **Source** to **GitHub Actions**.
+The main app is also published to GitHub Pages, at the old address
+https://paulnagele.github.io/bautagebuch/ (one-time setup: **Settings →
+Pages → Source: GitHub Actions**). See [Moving the main app](#moving-the-main-app).
+
+### Moving the main app
+
+Old links (shared house links `haus.html#k=…`, start links `?tab=…`,
+bookmarks) keep working through the old address:
+
+1. Merge; the next deploy also puts the main app on Cloudflare (project
+   `bautagebuch`). GitHub Pages still serves the app as before.
+2. Cloudflare → *Workers & Pages → bautagebuch → Custom domains*: add the
+   new address (e.g. `bau.example.com`).
+3. Google Cloud → *Clients → Web client → Authorized JavaScript origins*:
+   add the new address. Keep `https://paulnagele.github.io`.
+4. Open the new address and check that sign-in works.
+5. Repository variable `MAIN_URL` = the new address (e.g.
+   `https://bau.example.com`), then *Actions → Deploy → Run workflow*. From
+   then on GitHub Pages only serves a page that forwards every old link to
+   the same page at the new address, with `?…` and `#…` unchanged
+   (`scripts/make-forwarder.mjs`). Deleting `MAIN_URL` brings the app back
+   there.
+
+The installed phone app belongs to its address: install it again from the
+new one (otherwise "Teilen → Bautagebuch" opens the forwarding page). Unsent
+diary drafts are kept per address, so send them before switching.
 
 ### One-time Cloudflare setup
 
@@ -261,12 +285,11 @@ and set **Source** to **GitHub Actions**.
    Permission: *Account · Cloudflare Pages · Edit*; Account Resources:
    your account. Add it as the repository **secret**
    `CLOUDFLARE_API_TOKEN`.
-4. Set up [the second site](#the-second-site) below; its first deploy
-   creates the Pages project. If the name is already taken on pages.dev,
+4. The first deploy of each site creates its Pages project. If the name is already taken on pages.dev,
    Cloudflare adds a suffix; the address is shown at the end of the
    "Deploy to Cloudflare Pages" step and in the dashboard. A different
    project name can be set with the variable `CLOUDFLARE_PROJECT` in the
-   `second` environment.
+   site's environment.
 5. Google Cloud → *Clients → Web client → Authorized JavaScript origins*:
    add the site's address (no trailing slash).
 
