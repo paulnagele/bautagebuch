@@ -2033,6 +2033,33 @@ export async function mountViewer(host, opts) {
     startWalkPick();
     if (spec.room) walkMsg.textContent = `„${spec.room}“ gibt es in dieser Version nicht. ${PHONE ? 'Tippe' : 'Klicke'} in einen Raum, um dort zu stehen.`;
   }
+  // Windows and doors visible in the current view, left to right, as short English phrases
+  // ("a floor-to-ceiling window on the left, 1.60 m wide") for the KI-Entwurf prompt
+  function openingsInView() {
+    const parts = new Map();
+    for (const o of pickables) { const u = o.userData; if (u?.kind !== 'opening' || !o.isMesh || !shown(o)) continue; if (!parts.has(u.data)) parts.set(u.data, []); parts.get(u.data).push(o); }
+    const cam = camera.position, list = [], oray = new THREE.Raycaster(); oray.camera = camera;
+    for (const [op, meshes] of parts) {
+      const box = new THREE.Box3(); for (const m of meshes) box.expandByObject(m);
+      // visible if the centre or a point a quarter in from a corner is in the picture and not hidden
+      const lo = box.min, hi = box.max, at = (a, b) => new THREE.Vector3(lo.x + (hi.x - lo.x) * a, lo.y + (hi.y - lo.y) * b, lo.z + (hi.z - lo.z) * a);
+      let v = null;
+      for (const pt of [at(0.5, 0.5), at(0.25, 0.25), at(0.75, 0.25), at(0.25, 0.75), at(0.75, 0.75)]) {
+        const q = pt.clone().project(camera); if (q.z > 1 || Math.abs(q.x) > 0.98 || Math.abs(q.y) > 0.98) continue;
+        const dist = cam.distanceTo(pt); if (dist > 14) continue;
+        oray.set(cam, pt.clone().sub(cam).normalize()); oray.far = dist + 0.5;
+        const hit = oray.intersectObject(root, true).find(h => h.object.isMesh && !h.object.isSprite && shown(h.object) && h.object.userData?.kind !== 'light');
+        if (hit && hit.object.userData?.data !== op && hit.distance < dist - 0.35) continue;   // behind a wall or furniture
+        v = box.getCenter(new THREE.Vector3()).project(camera); break;
+      }
+      if (!v) continue;
+      const glazed = op.type === 'window' || op.style === 'glazed', tall = (op.sill ?? 0) < 0.3 && op.height >= 2;
+      const what = op.type === 'window' ? (tall ? 'floor-to-ceiling window' : 'window') : glazed ? (op.width >= 1.8 ? 'large glass sliding door' : 'glass door') : op.style === 'entrance' ? 'front door' : 'door';
+      const side = v.x < -0.33 ? 'on the left' : v.x > 0.33 ? 'on the right' : 'in the middle';
+      list.push({ x: v.x, text: `a ${what} ${side}, ${op.width.toFixed(2)} m wide${op.type === 'window' && !tall ? ` (sill ${op.sill.toFixed(2)} m above the floor)` : ''}` });
+    }
+    return list.sort((a, b) => a.x - b.x).map(e => e.text);
+  }
   // "Aufnehmen": the view as a picture, sharper than the screen where the device allows it
   const shotBtn = $('walkshot');
   if (opts.onCapture && !READ_ONLY) { shotBtn.hidden = false; walkHud.classList.add('shoot'); }
@@ -2053,6 +2080,7 @@ export async function mountViewer(host, opts) {
     for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
     const p = camera.position, r3 = v => Math.round(v * 1000) / 1000;
     const spot = { x: r3(p.x), feet: r3(walk.feet), z: r3(p.z), yaw: r3(walk.yaw), pitch: r3(walk.pitch), fov: camera.fov };
+    const seen = openingsInView(); if (seen.length) spot.openings = seen;
     stage.classList.remove('flash'); void stage.offsetWidth; stage.classList.add('flash');
     opts.onCapture({ blob: new Blob([arr], { type: 'image/jpeg' }), spot, room: roomAt(DATA, p.x, walk.feet, p.z)?.name ?? null, version: versions.find(v => v.id === currentId)?.name ?? DATA.meta?.name ?? '' });
   });
