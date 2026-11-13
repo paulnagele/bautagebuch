@@ -5,8 +5,11 @@ name: Deploy one site
 # version that matches its database. Called by deploy.yml once per site.
 #
 # Each site's settings live in the GitHub environment of the same name:
-#   production  GitHub Pages; the repository-wide secrets and .env.production
-#   second      Cloudflare Pages; its own Supabase project (README, "Deployment")
+#   production  the repository-wide secrets and .env.production
+#   second      its own Supabase project (README, "Deployment")
+# Both go to Cloudflare Pages. Production also goes to GitHub Pages: the
+# app itself, or, once the repository variable MAIN_URL is set, a page
+# that forwards every old link to MAIN_URL.
 on:
   workflow_call:
     inputs:
@@ -39,7 +42,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
       # Cloudflare Pages project. The site is served at
       # https://<project>.pages.dev unless that name is taken.
-      CLOUDFLARE_PROJECT: ${{ vars.CLOUDFLARE_PROJECT || format('bautagebuch-{0}', inputs.target) }}
+      CLOUDFLARE_PROJECT: ${{ vars.CLOUDFLARE_PROJECT || (inputs.target == 'production' && 'bautagebuch' || format('bautagebuch-{0}', inputs.target)) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,9 +66,7 @@ jobs:
           CFG_SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
           CFG_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
 
-      # Production stays on GitHub Pages; every other site goes to Cloudflare.
       - name: Check Cloudflare settings
-        if: inputs.target != 'production'
         id: cloudflare
         run: |
           if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
@@ -91,7 +92,18 @@ jobs:
           # Shows the site's address (Project Domains) in the log.
           $wrangler pages project list
 
-      # Production is served by GitHub Pages.
+      # GitHub Pages (old address): the app, or the forwarding page once
+      # MAIN_URL is set, so links to the old address keep working.
+      - name: Prepare GitHub Pages
+        if: inputs.target == 'production'
+        env:
+          MAIN_URL: ${{ vars.MAIN_URL }}
+        run: |
+          if [ -n "$MAIN_URL" ]; then
+            node scripts/make-forwarder.mjs "$MAIN_URL" "/${GITHUB_REPOSITORY#*/}" forward
+          else
+            cp -r dist forward
+          fi
       - if: inputs.target == 'production'
         uses: actions/configure-pages@v5
         with:
@@ -99,7 +111,7 @@ jobs:
       - if: inputs.target == 'production'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: forward
 
   github-pages:
     if: inputs.target == 'production'
