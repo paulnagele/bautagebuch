@@ -8,6 +8,10 @@
 // or as Edge Function secrets OPENROUTER_API_KEY / OPENROUTER_MODEL, which
 // win. Never in the repo.
 //
+// Image models that also write text go through chat completions; pure
+// image models (e.g. Qwen Image) through the Image API (/api/v1/images,
+// pictures as input_references), used when OpenRouter asks for it.
+//
 // Body { check: true } only answers { configured, model }.
 // Body { base, refs, note } with images as data URLs (JPEG/PNG) answers
 // { image } (a data URL) or { error }.
@@ -82,6 +86,17 @@ function findImage(body: any): string | null {
   return null
 }
 
+// The first image of an Image API answer ({ data: [{ b64_json, media_type }] }) as a data URL.
+function findApiImage(body: any): string | null {
+  for (const item of body?.data ?? []) {
+    if (typeof item?.b64_json === 'string' && item.b64_json) {
+      return `data:${item.media_type || 'image/png'};base64,${item.b64_json}`
+    }
+    if (typeof item?.url === 'string' && item.url.startsWith('data:image/')) return item.url
+  }
+  return null
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (request.method !== 'POST') return reply(405, { error: 'Nur POST.' })
@@ -109,29 +124,39 @@ Deno.serve(async (request) => {
   const note = typeof input.note === 'string' ? input.note.trim().slice(0, 1000) : ''
   if (!isImage(base)) return reply(400, { error: 'Das Raumbild fehlt.' })
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const headers = {
+    Authorization: `Bearer ${key}`,
+    'Content-Type': 'application/json',
+    'X-Title': 'Bautagebuch Einrichtung',
+  }
+  const text = prompt(refs.length, note)
+  const images = [base, ...refs].map((url) => ({ type: 'image_url', image_url: { url } }))
+
+  // Models that also write text (Gemini, GPT-5 image, …) answer on chat
+  // completions; pure image models (Qwen Image, Flux, …) only on the
+  // Image API. Try chat first and switch when OpenRouter says so.
+  let response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      'X-Title': 'Bautagebuch Einrichtung',
-    },
+    headers,
     body: JSON.stringify({
       model,
       modalities: ['image', 'text'],
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt(refs.length, note) },
-            { type: 'image_url', image_url: { url: base } },
-            ...refs.map((url) => ({ type: 'image_url', image_url: { url } })),
-          ],
-        },
-      ],
+      messages: [{ role: 'user', content: [{ type: 'text', text }, ...images] }],
     }),
   })
-  const body = await response.json().catch(() => ({}))
+  let body = await response.json().catch(() => ({}))
+  let image: string | null = null
+  if (!response.ok && /api\/v1\/images|image generation model/i.test(String(body?.error?.message ?? ''))) {
+    response = await fetch('https://openrouter.ai/api/v1/images', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model, prompt: text, input_references: images }),
+    })
+    body = await response.json().catch(() => ({}))
+    if (response.ok) image = findApiImage(body)
+  } else if (response.ok) {
+    image = findImage(body)
+  }
   if (!response.ok) {
     const detail = body?.error?.message ? `: ${String(body.error.message).slice(0, 300)}` : ''
     const message =
@@ -144,11 +169,10 @@ Deno.serve(async (request) => {
             : `OpenRouter-Fehler (${response.status})${detail}`
     return reply(502, { error: message })
   }
-  const image = findImage(body)
   if (!image) {
-    const text = body?.choices?.[0]?.message?.content
+    const said = body?.choices?.[0]?.message?.content
     return reply(502, {
-      error: `Das Modell ${model} hat kein Bild geliefert${typeof text === 'string' && text ? `: ${text.slice(0, 300)}` : '.'}`,
+      error: `Das Modell ${model} hat kein Bild geliefert${typeof said === 'string' && said ? `: ${said.slice(0, 300)}` : '.'}`,
     })
   }
   return reply(200, { image, model })
