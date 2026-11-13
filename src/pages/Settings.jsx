@@ -12,6 +12,7 @@ import {
 } from '../drive.js'
 import { calendarAccess, checkCalendar, connectCalendar } from '../calendar.js'
 import { findPlace } from '../weather.js'
+import { chatConfigured, saveChatTrigger } from '../haus/houseStore.js'
 import CategorySettings from '../components/CategorySettings.jsx'
 import DocumentTypeSettings from '../components/DocumentTypeSettings.jsx'
 
@@ -25,6 +26,7 @@ const SECTIONS = [
   { id: 'project', title: 'Projekt' },
   { id: 'members', title: 'Mitglieder' },
   { id: 'lists', title: 'Listen' },
+  { id: 'chat', title: 'Haus-Chat' },
   { id: 'device', title: 'Dieses Gerät' },
   { id: 'info', title: 'Info' },
 ]
@@ -494,6 +496,117 @@ function ListsSection() {
   )
 }
 
+// ---- Haus-Chat ---------------------------------------------------------------------
+
+function ChatSection() {
+  const [configured, setConfigured] = useState(null) // null = checking
+  const [url, setUrl] = useState('')
+  const [token, setToken] = useState('')
+  const { busy, error, done, run } = useAction()
+  const dialogs = useDialogs()
+
+  useEffect(() => {
+    let cancelled = false
+    chatConfigured().then((ok) => !cancelled && setConfigured(ok))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function save(e) {
+    e.preventDefault()
+    await run(async () => {
+      await saveChatTrigger(url, token)
+      setUrl('')
+      setToken('')
+      setConfigured(await chatConfigured())
+    }, 'Haus-Chat gespeichert.')
+  }
+
+  async function turnOff() {
+    const ok = await dialogs.confirm(
+      'Den Haus-Chat für diese Seite ausschalten? Der Verlauf bleibt erhalten.',
+      { confirmLabel: 'Ausschalten', danger: true },
+    )
+    if (!ok) return
+    await run(async () => {
+      await saveChatTrigger('', '')
+      const still = await chatConfigured()
+      setConfigured(still)
+      if (still) {
+        throw new Error(
+          'Für diese Seite sind URL und Token auch als Secrets in Supabase gesetzt; die gelten weiter. Lösche sie dort (Edge Functions → Secrets), um den Chat auszuschalten.',
+        )
+      }
+    }, 'Haus-Chat ausgeschaltet.')
+  }
+
+  return (
+    <>
+      <div className="settings-item">
+        <h3>Status</h3>
+        <p className="settings-current">
+          {configured === null && <span className="muted">Wird geprüft…</span>}
+          {configured === true && <span className="settings-done">Eingerichtet. Der Claude-Knopf erscheint im Haus-Tab.</span>}
+          {configured === false && (
+            <span className="settings-missing">Nicht eingerichtet. Der Claude-Knopf im Haus-Tab ist ausgeblendet.</span>
+          )}
+        </p>
+        {configured && (
+          <button type="button" className="link danger" onClick={turnOff} disabled={busy}>
+            Chat ausschalten
+          </button>
+        )}
+      </div>
+      <div className="settings-item">
+        <h3>{configured ? 'Neue Aufgabe verbinden' : 'Einrichten'}</h3>
+        <ol className="settings-steps">
+          <li>
+            Unter{' '}
+            <a href="https://claude.ai/code/routines" target="_blank" rel="noreferrer">
+              claude.ai/code/routines
+            </a>{' '}
+            eine Aufgabe „Haus-Chat“ anlegen (Schritte und Text in <code>docs/haus-chat.md</code>), mit
+            einer Umgebung, in der diese Werte gesetzt sind:
+            <pre className="settings-code">
+              {`SUPABASE_URL=${config.supabaseUrl}\nSUPABASE_ANON_KEY=${config.supabaseAnonKey}\nHAUS_BOT_EMAIL=…\nHAUS_BOT_PASSWORD=…`}
+            </pre>
+            Der Haus-Login muss in dieser Datenbank existieren und unter Mitglieder → Haus-Logins
+            stehen.
+          </li>
+          <li>Als Auslöser nur „API“ wählen und hier URL und Token eintragen:</li>
+        </ol>
+        <form className="settings-form settings-form-stack" onSubmit={save}>
+          <input
+            aria-label="URL des API-Auslösers"
+            placeholder="https://api.anthropic.com/v1/claude_code/routines/trig_…/fire"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={busy}
+            autoComplete="off"
+          />
+          <input
+            type="password"
+            aria-label="Token des API-Auslösers"
+            placeholder="Token"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            disabled={busy}
+            autoComplete="new-password"
+          />
+          <button type="submit" disabled={busy || !url.trim() || !token.trim()}>
+            Speichern
+          </button>
+        </form>
+        <p className="muted settings-hint">
+          Der Token wird nur gespeichert, nie wieder angezeigt, und nur der Server liest ihn.
+        </p>
+        <Messages error={error} done={done} />
+      </div>
+    </>
+  )
+}
+
 // ---- Dieses Gerät -----------------------------------------------------------------
 
 function GoogleConnection({ title, access, connect, user, note }) {
@@ -614,6 +727,7 @@ function Settings({ user, section, onClose, onLogout }) {
     project: <ProjectSection user={user} />,
     members: <MembersSection user={user} />,
     lists: <ListsSection />,
+    chat: <ChatSection />,
     device: <DeviceSection user={user} onLogout={onLogout} />,
     info: <InfoSection />,
   }

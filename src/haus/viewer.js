@@ -12,6 +12,7 @@
 //   opts.currentId  id of opts.model
 //   opts.store      { list, load, save, rename, remove, setCurrent } (houseStore.js)
 //   opts.onChat     optional, shows the "Claude" button and is called on a click
+//   opts.chatReady  optional promise; the button only shows if it resolves true
 //   opts.onVersion  optional, called with the open version's list row (or null)
 //                   whenever the version list is drawn
 // Returns dispose(); dispose.openVersion(id, { reload }) opens a version, also
@@ -241,7 +242,11 @@ export async function mountViewer(host, opts) {
   $('fullbtn').addEventListener('click', () => setFull(!host.classList.contains('full')))
   if (opts.full) setFull(true)   // opened by a "vollbild" link (src/startLink.js)
   // Haus chat (src/haus/HouseChat.jsx): the button sits with the others in the corner.
-  if (opts.onChat) { $('chatbtn').hidden = false; $('chatbtn').addEventListener('click', () => opts.onChat()); }
+  // The button only shows once opts.chatReady (if given) says the chat is set up.
+  if (opts.onChat) {
+    $('chatbtn').addEventListener('click', () => opts.onChat())
+    Promise.resolve(opts.chatReady ?? true).then((ok) => { if (ok && !disposed) $('chatbtn').hidden = false })
+  }
   function dispose() {
     if (disposed) return
     disposed = true
