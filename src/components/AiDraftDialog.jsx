@@ -48,8 +48,10 @@ function AiDraftDialog({ user, room, items, itemStore, model, onClose }) {
     }
     setStep('working')
     try {
-      const pictures = items.filter((item) => refs.includes(item.id)).map((item) => item.photoId)
-      setResult(await createDraft({ baseId: base.photoId, refIds: pictures, note: note.trim() }))
+      const pictures = items
+        .filter((item) => refs.includes(item.id))
+        .map((item) => ({ photoId: item.photoId, title: item.title, note: item.note }))
+      setResult(await createDraft({ baseId: base.photoId, refs: pictures, note: note.trim() }))
       setStep('result')
     } catch (err) {
       setError(err.message)
@@ -136,7 +138,7 @@ function AiDraftDialog({ user, room, items, itemStore, model, onClose }) {
                   />
                 </label>
                 <p className="full muted interior-hint">
-                  Die Bilder gehen an OpenRouter ({model || 'Bildmodell'}). Ein Entwurf kostet ein paar Cent
+                  Die Bilder samt Titel und Notiz gehen an OpenRouter ({model || 'Bildmodell'}). Ein Entwurf kostet ein paar Cent
                   und dauert bis zu einer Minute. Die KI hält den Raum ungefähr, nicht maßgenau.
                 </p>
               </>
