@@ -399,3 +399,71 @@ button.interior-star.on {
 .share-choice-box .form-actions button {
   flex: 1;
 }
+
+/* KI-Entwurf */
+.ai-draft .ai-label {
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ai-picks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 0.4rem;
+}
+
+button.ai-pick {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  overflow: hidden;
+  opacity: 0.6;
+}
+
+button.ai-pick:hover:not(:disabled) {
+  background: transparent;
+}
+
+button.ai-pick.chosen {
+  border-color: var(--accent);
+  opacity: 1;
+}
+
+.ai-pick-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--bg);
+}
+
+.ai-check {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.8rem;
+  display: grid;
+  place-items: center;
+}
+
+.ai-working {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 0;
+  text-align: center;
+}

@@ -13,6 +13,7 @@ import {
 import { calendarAccess, checkCalendar, connectCalendar } from '../calendar.js'
 import { findPlace } from '../weather.js'
 import { chatConfigured, saveChatTrigger } from '../haus/houseStore.js'
+import { aiStatus, saveAiSettings } from '../interiorAi.js'
 import CategorySettings from '../components/CategorySettings.jsx'
 import DocumentTypeSettings from '../components/DocumentTypeSettings.jsx'
 
@@ -27,6 +28,7 @@ const SECTIONS = [
   { id: 'members', title: 'Mitglieder' },
   { id: 'lists', title: 'Listen' },
   { id: 'chat', title: 'Haus-Chat' },
+  { id: 'ki', title: 'KI-Entwürfe' },
   { id: 'device', title: 'Dieses Gerät' },
   { id: 'info', title: 'Info' },
 ]
@@ -607,6 +609,117 @@ function ChatSection() {
   )
 }
 
+// ---- KI-Entwürfe (Einrichtung) ------------------------------------------------------
+
+const AI_MODEL_HINT = 'google/gemini-2.5-flash-image'
+
+function AiSection() {
+  const [status, setStatus] = useState(null) // null = checking, else { configured, model }
+  const [key, setKey] = useState('')
+  const [model, setModel] = useState('')
+  const { busy, error, done, run } = useAction()
+  const dialogs = useDialogs()
+
+  useEffect(() => {
+    let cancelled = false
+    aiStatus().then((s) => !cancelled && setStatus(s))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function save(e) {
+    e.preventDefault()
+    await run(async () => {
+      setStatus(await saveAiSettings(key, model))
+      setKey('')
+      setModel('')
+    }, 'Gespeichert.')
+  }
+
+  async function turnOff() {
+    const ok = await dialogs.confirm('KI-Entwürfe für diese Seite ausschalten? Schlüssel und Modell werden gelöscht.', {
+      confirmLabel: 'Ausschalten',
+      danger: true,
+    })
+    if (!ok) return
+    await run(async () => {
+      const next = await saveAiSettings('', '')
+      setStatus(next)
+      if (next.configured) {
+        throw new Error('Für diese Seite ist der Schlüssel auch als Secret in Supabase gesetzt (OPENROUTER_API_KEY); der gilt weiter.')
+      }
+    }, 'KI-Entwürfe ausgeschaltet.')
+  }
+
+  return (
+    <>
+      <div className="settings-item">
+        <h3>Status</h3>
+        <p className="settings-current">
+          {status === null && <span className="muted">Wird geprüft…</span>}
+          {status?.configured === true && (
+            <span className="settings-done">
+              Eingerichtet, Modell <code>{status.model}</code>. In der Einrichtung erscheint „KI-Entwurf“.
+            </span>
+          )}
+          {status?.configured === false && (
+            <span className="settings-missing">Nicht eingerichtet. „KI-Entwurf“ ist ausgeblendet.</span>
+          )}
+        </p>
+        {status?.configured && (
+          <button type="button" className="link danger" onClick={turnOff} disabled={busy}>
+            Ausschalten
+          </button>
+        )}
+      </div>
+      <div className="settings-item">
+        <h3>{status?.configured ? 'Schlüssel oder Modell ändern' : 'Einrichten'}</h3>
+        <ol className="settings-steps">
+          <li>
+            Bei{' '}
+            <a href="https://openrouter.ai" target="_blank" rel="noreferrer">
+              openrouter.ai
+            </a>{' '}
+            anmelden, Guthaben aufladen und unter Keys einen Schlüssel anlegen.
+          </li>
+          <li>
+            Schlüssel hier eintragen. Das Modell ist optional (ohne Angabe: <code>{AI_MODEL_HINT}</code>); es muss
+            Bilder lesen und erzeugen können.
+          </li>
+        </ol>
+        <form className="settings-form settings-form-stack" onSubmit={save}>
+          <input
+            type="password"
+            aria-label="OpenRouter-Schlüssel"
+            placeholder={status?.configured ? 'Neuer Schlüssel (leer lassen = bleibt)' : 'sk-or-…'}
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            disabled={busy}
+            autoComplete="new-password"
+          />
+          <input
+            aria-label="Bildmodell"
+            placeholder={status?.model || AI_MODEL_HINT}
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            disabled={busy}
+            autoComplete="off"
+          />
+          <button type="submit" disabled={busy || (!key.trim() && !model.trim()) || (!status?.configured && !key.trim())}>
+            Speichern
+          </button>
+        </form>
+        <p className="muted settings-hint">
+          Der Schlüssel wird nur gespeichert, nie wieder angezeigt, und nur der Server liest ihn. Bilder gehen nur an
+          OpenRouter, wenn jemand „Entwurf erstellen“ tippt.
+        </p>
+        <Messages error={error} done={done} />
+      </div>
+    </>
+  )
+}
+
 // ---- Dieses Gerät -----------------------------------------------------------------
 
 function GoogleConnection({ title, access, connect, user, note }) {
@@ -728,6 +841,7 @@ function Settings({ user, section, onClose, onLogout }) {
     members: <MembersSection user={user} />,
     lists: <ListsSection />,
     chat: <ChatSection />,
+    ki: <AiSection />,
     device: <DeviceSection user={user} onLogout={onLogout} />,
     info: <InfoSection />,
   }

@@ -20,6 +20,8 @@ import {
 import DrivePhoto from '../components/DrivePhoto.jsx'
 import Lightbox from '../components/Lightbox.jsx'
 import BusyOverlay from '../components/BusyOverlay.jsx'
+import AiDraftDialog from '../components/AiDraftDialog.jsx'
+import { aiStatus } from '../interiorAi.js'
 
 // Einrichtung: a mood board per room. Pictures of things the members want
 // in a room (photos, screenshots, renders of the house model), each with
@@ -370,6 +372,16 @@ function RoomBoard({ user, room, rooms, itemStore, tray, setTray, onBack, onOpen
   const openItem = items.find((item) => item.id === openItemId) ?? null
   const galleryInput = useRef(null)
   const cameraInput = useRef(null)
+  // "KI-Entwurf" shows once OpenRouter is set up (Einstellungen → KI-Entwürfe).
+  const [ai, setAi] = useState(null)
+  const [aiOpen, setAiOpen] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    aiStatus().then((status) => !cancelled && setAi(status))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function addFiles(fileList) {
     const files = [...fileList].filter((file) => file.type.startsWith('image/'))
@@ -443,6 +455,11 @@ function RoomBoard({ user, room, rooms, itemStore, tray, setTray, onBack, onOpen
         <button type="button" className="secondary" onClick={() => onOpenHouse({ roomId: room.id, room: room.name })}>
           Ansicht aus Modell
         </button>
+        {ai?.configured && (
+          <button type="button" className="secondary" onClick={() => setAiOpen(true)}>
+            KI-Entwurf
+          </button>
+        )}
       </div>
       {error && (
         <p className="error" role="alert">
@@ -513,6 +530,16 @@ function RoomBoard({ user, room, rooms, itemStore, tray, setTray, onBack, onOpen
           onRender={() =>
             onOpenHouse({ roomId: room.id, room: room.name, spot: openItem.view, title: openItem.title })
           }
+        />
+      )}
+      {aiOpen && (
+        <AiDraftDialog
+          user={user}
+          room={room}
+          items={items}
+          itemStore={itemStore}
+          model={ai?.model}
+          onClose={() => setAiOpen(false)}
         />
       )}
       {busy && <BusyOverlay message={busy} progress={progress} />}

@@ -40,6 +40,11 @@ there are four tabs:
   render keeps where the camera stood as plain numbers, so "Neu rendern"
   shows the same view from the current version. Pictures go to
   `Haus/Einrichtung/<room>/` in Drive (`interior_items`).
+  "KI-Entwurf" (once set up in Einstellungen → KI-Entwürfe) sends a view
+  of the room and the pictures picked for it to an image model on
+  OpenRouter (Edge Function `einrichtung-ki`; key and model per site in
+  `secret_settings`, never in the browser) and saves the furnished room
+  as a new picture when kept.
 - **Heizwärme** – an estimate of the heating demand (HWB, kWh/m²a) and
   heating load (`src/tabs/Energy.jsx`, `src/energy/`): a simplified
   monthly balance in the style of ÖNORM B 8110-6 / OIB-RL 6 from the
