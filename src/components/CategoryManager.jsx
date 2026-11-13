@@ -194,8 +194,7 @@ function CategoryManager({
   onDelete,
 }) {
   return (
-    <details className="card category-manager">
-      <summary>Kategorien verwalten</summary>
+    <div className="category-manager">
       {notice && (
         <p className="error" role="alert">
           {notice}
@@ -228,7 +227,7 @@ function CategoryManager({
           onDelete={onDelete}
         />
       </div>
-    </details>
+    </div>
   )
 }
 

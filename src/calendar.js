@@ -41,6 +41,28 @@ export function connectCalendar(email) {
   return calendar.connect(email)
 }
 
+// Checks with the member's calendar access that the calendar exists and
+// they may add events. Resolves to { name }; throws with a German message.
+export async function checkCalendar(calendarId) {
+  let list
+  try {
+    list = await calendar
+      .fetch(`${API}/${encodeURIComponent(calendarId)}/events?maxResults=1`)
+      .then((r) => r.json())
+  } catch (err) {
+    if (err.status === 404) {
+      throw new Error('Diesen Kalender gibt es nicht, oder er ist nicht mit dir geteilt.')
+    }
+    throw err
+  }
+  if (list.accessRole !== 'writer' && list.accessRole !== 'owner') {
+    throw new Error(
+      `Du darfst im Kalender „${list.summary}“ keine Termine eintragen. Er muss mit dir mit „Änderungen an Terminen vornehmen“ geteilt sein.`,
+    )
+  }
+  return { name: list.summary }
+}
+
 // Called on sign-out.
 export function disconnectCalendar() {
   calendar.disconnect()

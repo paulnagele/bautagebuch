@@ -57,8 +57,7 @@ function DocumentTypeManager({ types, counts, onAdd, onRename, onDelete }) {
   }
 
   return (
-    <details className="card category-manager">
-      <summary>Typen verwalten</summary>
+    <div className="category-manager">
       <p className="muted category-hint">
         Die Zahl neben einem Typ zeigt, wie viele Dokumente ihn haben. Belege von Ausgaben und
         Angebote landen von selbst im markierten Typ, alle anderen Dokumente unter Unsortiert.
@@ -141,7 +140,7 @@ function DocumentTypeManager({ types, counts, onAdd, onRename, onDelete }) {
           </p>
         )}
       </div>
-    </details>
+    </div>
   )
 }
 

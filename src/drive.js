@@ -7,7 +7,7 @@
 
 import { config } from './config.js'
 import { createGoogleAccess } from './google.js'
-import { getSetting } from './settings.js'
+import { getSetting, onSettingChange } from './settings.js'
 import { supabase } from './supabase.js'
 
 const PHOTO_CACHE = 'bautagebuch-photos-v1'
@@ -61,12 +61,50 @@ export function getEntryFolderId(path) {
   return subfolderRequests.get(key)
 }
 
+// A new folder in Einstellungen: find the subfolders there from now on.
+onSettingChange((key) => {
+  if (key === 'drive_folder_id') subfolderRequests.clear()
+})
+
+// The folder ID from a pasted Drive link (…/folders/<ID>, ?id=<ID>) or
+// the bare ID; null if none is found.
+export function folderIdFromText(text) {
+  const value = text.trim()
+  const fromPath = /\/folders\/([\w-]{10,})/.exec(value)
+  if (fromPath) return fromPath[1]
+  const fromQuery = /[?&]id=([\w-]{10,})/.exec(value)
+  if (fromQuery) return fromQuery[1]
+  return /^[\w-]{10,}$/.test(value) ? value : null
+}
+
+// Checks with the member's Drive access that the ID is a folder they can
+// add files to. Resolves to { name }; throws with a German message.
+export async function checkDriveFolder(folderId) {
+  let file
+  try {
+    file = await driveFetch(
+      `${API}/${encodeURIComponent(folderId)}?fields=name,mimeType,trashed,capabilities(canAddChildren)&supportsAllDrives=true`,
+    ).then((r) => r.json())
+  } catch (err) {
+    if (err.status === 404) {
+      throw new Error('Diesen Ordner gibt es nicht, oder er ist nicht mit dir geteilt.')
+    }
+    throw err
+  }
+  if (file.mimeType !== FOLDER_TYPE) throw new Error(`„${file.name}“ ist kein Ordner.`)
+  if (file.trashed) throw new Error(`Der Ordner „${file.name}“ liegt im Papierkorb.`)
+  if (!file.capabilities?.canAddChildren) {
+    throw new Error(`Du darfst im Ordner „${file.name}“ nichts ablegen. Er muss mit dir als Bearbeiter geteilt sein.`)
+  }
+  return { name: file.name }
+}
+
 export function driveFileUrl(fileId) {
   return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`
 }
 
 export function driveFolderUrl(folderId) {
-  return `https://drive.google.com/drive/folders/${folderId}`
+  return `https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}`
 }
 
 // ---- access token ---------------------------------------------------------

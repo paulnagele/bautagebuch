@@ -4,6 +4,8 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // Shown under Einstellungen → Info, to tell builds apart.
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   // Relative asset paths so the build works under a subpath,
   // e.g. GitHub Pages at /bautagebuch/.
   base: './',
