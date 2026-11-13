@@ -39,12 +39,26 @@ const page = `<!doctype html>
     var p = location.pathname
     if (base && p.indexOf(base) === 0) p = p.slice(base.length)
     if (p === '/index.html') p = '/'
+    // Loop guard: a browser that still remembers an old redirect from the
+    // new address back to this one would bounce forever. After 3 visits
+    // within a minute, stop and show the link and a hint instead.
+    var now = Date.now(), hits = []
+    try { hits = JSON.parse(sessionStorage.getItem('forward-hits') || '[]') } catch (e) {}
+    hits = hits.filter(function (t) { return now - t < 60000 }).concat(now)
+    try { sessionStorage.setItem('forward-hits', JSON.stringify(hits)) } catch (e) {}
+    if (hits.length > 3) {
+      document.documentElement.className = 'loop'
+      return
+    }
     location.replace(main + (p || '/') + location.search + location.hash)
   })()
 </script>
 </head>
 <body style="font-family: system-ui, sans-serif; padding: 24px">
 <p>Das Bautagebuch ist umgezogen: <a id="to" href="${main}/">${main.replace(/^https:\/\//, '')}</a></p>
+<p class="hint">Falls die Seite immer wieder hierher zurückspringt: Dein Browser merkt sich noch eine alte Weiterleitung.
+Lösche in den Browser-Einstellungen die Website-Daten von ${url.hostname.split('.').slice(-2).join('.')} und öffne den Link dann neu.</p>
+<style>.hint { display: none; color: #555 } .loop .hint { display: block }</style>
 <script>document.getElementById('to').href = ${JSON.stringify(main)} + '/' + location.search + location.hash</script>
 </body>
 </html>
