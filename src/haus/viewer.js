@@ -1961,11 +1961,11 @@ export async function mountViewer(host, opts) {
     return changed;
   }
   function walkHelp() { walkMsg.textContent = PHONE ? 'Ziehen: umsehen · Kreis unten links: gehen' : 'Ziehen: umsehen · W A S D / Pfeile: gehen · Shift: schneller · Esc: beenden'; }
-  // Begehen sees about 84° across, like a wide-angle room photo; on an upright
-  // phone that needs a tall view, kept at 100° so it doesn't bulge.
-  const WALK_HFOV = 84, SHOT_W = LITE ? 1200 : 1500, SHOT_H = Math.round(SHOT_W / 1.5);
+  // Begehen sees about 100° across, like a wide-angle room photo (16 mm); on an
+  // upright phone that needs a tall view, kept at 110° so it doesn't bulge.
+  const WALK_HFOV = 100, SHOT_W = LITE ? 1200 : 1500, SHOT_H = Math.round(SHOT_W / 1.5);
   function vfovFor(hfov, aspect) { return 2 * Math.atan(Math.tan(hfov * Math.PI / 360) / aspect) * 180 / Math.PI; }
-  function walkFov(aspect) { return Math.max(PHONE ? 72 : 66, Math.min(100, vfovFor(WALK_HFOV, aspect || 1))); }
+  function walkFov(aspect) { return Math.max(PHONE ? 72 : 66, Math.min(110, vfovFor(WALK_HFOV, aspect || 1))); }
   function enterWalk(x, feet, z, yaw) {
     if (!walk.saved) walk.saved = { pos: camera.position.clone(), tgt: controls.target.clone(), fov: camera.fov, near: camera.near, level: walk.pendingLevel ?? state.level };
     walk.pending = false; walk.active = true; anim = null; controls.enabled = false;
@@ -2022,7 +2022,7 @@ export async function mountViewer(host, opts) {
     const a = best * 2 * Math.PI / N, eye = feet + EYE;
     // not with the head in a pendant lamp
     const inLamp = (px, pz) => walk.lights.some(o => { const c = o.userData._ws; return c.center.distanceTo(new THREE.Vector3(px, eye, pz)) < c.radius + 0.25 && shown(o); });
-    for (let back = Math.max(0, Math.min(d[(best + N / 2) % N] - 0.45, 3.5)); ; back -= 0.3) {
+    for (let back = Math.max(0, Math.min(d[(best + N / 2) % N] - 0.3, 6)); ; back -= 0.3) {
       const px = x + Math.sin(a) * Math.max(0, back), pz = z + Math.cos(a) * Math.max(0, back);
       if (back <= 0 || !inLamp(px, pz)) return { x: px, z: pz, yaw: a };
     }
@@ -2081,7 +2081,7 @@ export async function mountViewer(host, opts) {
   if (opts.onCapture && !READ_ONLY) { shotBtn.hidden = false; walkHud.classList.add('shoot'); }
   shotBtn.addEventListener('click', () => {
     if (!walk.active || disposed) return;
-    // Always a landscape picture (3:2, 84° across), whatever the screen's shape:
+    // Always a landscape picture (3:2, 100° across), whatever the screen's shape:
     // an upright phone screen would give a narrow slice of the room.
     const w = stage.clientWidth, h = stage.clientHeight, prev = renderer.getPixelRatio(), fov = camera.fov, aspect = camera.aspect;
     let url, seen;
