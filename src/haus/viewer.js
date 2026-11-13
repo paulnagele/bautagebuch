@@ -392,6 +392,16 @@ export async function mountViewer(host, opts) {
       for (let i = 0; i < 64; i += 8) { if (vertical) g.fillRect(i, 0, 1.5, h); else g.fillRect(0, i, w, 1.5); }
     });
   }
+  function doorGrainTexture(base) {   // veneer for interior door leaves and linings: vertical grain, a little light/dark variation
+    return canvasTex(128, 256, (g, w, h) => {
+      g.fillStyle = base; g.fillRect(0, 0, w, h);
+      for (let x = 0; x < w; x += 2) {
+        const v = Math.abs(Math.sin(x * 12.9898) * 43758.5453 % 1);
+        g.fillStyle = v > 0.5 ? `rgba(255,240,215,${(v - 0.5) * 0.16})` : `rgba(80,50,20,${v * 0.16})`;
+        g.fillRect(x + Math.sin(x) * 0.5, 0, 1 + (v > 0.85 ? 1 : 0), h);
+      }
+    });
+  }
   // floor finishes: texture covers 1.2 x 1.2 m (repeat = 1 / 1.2 per metre of shape coordinates)
   function parquetTexture() {   // oak planks 15 cm wide, 1.2 m long, staggered joints
     return canvasTex(512, 512, (g, w, h) => {
@@ -760,7 +770,8 @@ export async function mountViewer(host, opts) {
       shutter: mat(0xffffff, { map: louvreTexture(M.shutter) }), terrain: CONTEXT ? new THREE.MeshStandardMaterial({ color: 0xffffff, map: terrainTexture(), roughness: 1, side: THREE.DoubleSide }) : mat(M.terrain, { side: THREE.FrontSide }), chimney: mat(M.chimney),
       glassRoof: new THREE.MeshStandardMaterial({ color: 0x3c4c58, roughness: 0.2, metalness: 0.2 }),
     };
-    mats.door = mat(0xf4f2ee, { roughness: 0.5 });
+    // interior doors (leaves, linings, casings): D.materials.door gives them a wood veneer in that colour; white lacquer without it
+    mats.door = M.door ? mat(0xffffff, { map: doorGrainTexture(M.door), roughness: 0.6 }) : mat(0xf4f2ee, { roughness: 0.5 });
     const doorArcMat = new THREE.LineBasicMaterial({ color: 0x6b6f6a, transparent: true, opacity: 0.7 });
     mats.steel = new THREE.MeshStandardMaterial({ color: 0xc9ccce, roughness: 0.25, metalness: 0.9 });
     // door leaf in an opening, drawn in the wall's local frame (x along the wall, z across, wall centred on z = 0).
