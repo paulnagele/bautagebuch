@@ -9,9 +9,10 @@ import Overview from '../tabs/Overview.jsx'
 import Diary from '../tabs/Diary.jsx'
 import Contacts from '../tabs/Contacts.jsx'
 import InstallHint from '../components/InstallHint.jsx'
+import SetupHint from '../components/SetupHint.jsx'
 import UpdateHint from '../components/UpdateHint.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
-import { startTab } from '../startLink.js'
+import { startSettings, startTab } from '../startLink.js'
 
 // Finanzen, Zeitplan, Haus, Dokumente and Heizwärme are loaded when first opened, so
 // the app starts with less to download.
@@ -20,6 +21,7 @@ const Timetable = lazyTab(() => import('../tabs/Timetable.jsx'))
 const House = lazyTab(() => import('../tabs/House.jsx'))
 const Documents = lazyTab(() => import('../tabs/Documents.jsx'))
 const Energy = lazyTab(() => import('../tabs/Energy.jsx'))
+const Settings = lazyTab(() => import('./Settings.jsx'))
 
 // A tab loaded on demand. If its file can't be fetched (offline, or the
 // app was updated meanwhile and the old file is gone), the tab says so.
@@ -58,6 +60,8 @@ function Home({ user, onLogout }) {
   // The app opens on the start page, unless a link asks for a tab
   // (e.g. ?tab=haus&vollbild, see startLink.js).
   const [activeTab, setActiveTab] = useState(() => startTab(TABS) ?? TABS[0].id)
+  // Einstellungen cover the tabs while open: null, or { section }.
+  const [settings, setSettings] = useState(() => (startSettings() ? { section: null } : null))
   const [focusEntryId, setFocusEntryId] = useState(null)
   const [focusContactId, setFocusContactId] = useState(null)
   // Which way the last swipe went, so the new tab slides in from that side.
@@ -99,7 +103,30 @@ function Home({ user, onLogout }) {
     window.scrollTo({ top: 0 })
   }
 
+  // Opening Einstellungen adds a history step, so the phone's back
+  // gesture closes them instead of leaving the app.
+  function openSettings(section = null) {
+    if (!window.history.state?.bautagebuchSettings) {
+      window.history.pushState({ ...window.history.state, bautagebuchSettings: true }, '')
+    }
+    setSettings({ section })
+  }
+
+  function closeSettings() {
+    if (window.history.state?.bautagebuchSettings) window.history.back()
+    else setSettings(null)
+  }
+
+  useEffect(() => {
+    const onPop = () => {
+      if (!window.history.state?.bautagebuchSettings) setSettings(null)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
   function chooseTab(id) {
+    if (settings) closeSettings()
     setFocusEntryId(null)
     setFocusContactId(null)
     setSlide(null)
@@ -108,6 +135,7 @@ function Home({ user, onLogout }) {
 
   // On phones, swiping left or right moves to the next or previous tab.
   useSwipeTabs((step) => {
+    if (settings) return
     const next = TABS[TABS.indexOf(current) + step]
     if (!next) return
     chooseTab(next.id)
@@ -199,62 +227,85 @@ function Home({ user, onLogout }) {
       <div className="app-shell">
         <header className="app-header">
           <h1>Bautagebuch</h1>
-          <div className="user-menu">
+          <button
+            type="button"
+            className="user-menu"
+            onClick={() => (settings ? closeSettings() : openSettings())}
+            aria-label="Einstellungen"
+            aria-expanded={Boolean(settings)}
+          >
             {user.picture && (
               <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />
             )}
             <span className="user-email" title={user.email}>
               {user.name ?? user.email}
             </span>
-            <button type="button" className="secondary" onClick={onLogout}>
-              Abmelden
-            </button>
-          </div>
+            <span className="settings-gear" aria-hidden="true">
+              ⚙
+            </span>
+          </button>
         </header>
 
         <UpdateHint />
         <InstallHint />
+        {!settings && <SetupHint onSetup={openSettings} />}
 
-        <nav className="tabs" role="tablist">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              id={`tab-${tab.id}`}
-              aria-selected={tab.id === current.id}
-              aria-controls={`panel-${tab.id}`}
-              className={tab.id === current.id ? 'tab active' : 'tab'}
-              onClick={() => chooseTab(tab.id)}
+        {settings ? (
+          <main className="tab-panel">
+            <Suspense fallback={<p className="empty">Wird geladen…</p>}>
+              <Settings
+                user={user}
+                section={settings.section}
+                onClose={closeSettings}
+                onLogout={onLogout}
+              />
+            </Suspense>
+          </main>
+        ) : (
+          <>
+            <nav className="tabs" role="tablist">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  id={`tab-${tab.id}`}
+                  aria-selected={tab.id === current.id}
+                  aria-controls={`panel-${tab.id}`}
+                  className={tab.id === current.id ? 'tab active' : 'tab'}
+                  onClick={() => chooseTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+
+            <main
+              key={current.id}
+              className={slide ? `tab-panel slide-${slide}` : 'tab-panel'}
+              role="tabpanel"
+              id={`panel-${current.id}`}
+              aria-labelledby={`tab-${current.id}`}
             >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-        <main
-          key={current.id}
-          className={slide ? `tab-panel slide-${slide}` : 'tab-panel'}
-          role="tabpanel"
-          id={`panel-${current.id}`}
-          aria-labelledby={`tab-${current.id}`}
-        >
-          <Suspense fallback={<p className="empty">Wird geladen…</p>}>
-            <ActiveComponent
-              user={user}
-              onOpenDiary={openDiary}
-              onOpenContact={openContact}
-              onOpenTab={chooseTab}
-              focusEntryId={focusEntryId}
-              focusContactId={focusContactId}
-              diaryDraft={diaryDraft}
-              onFocused={() => {
-                setFocusEntryId(null)
-                setFocusContactId(null)
-              }}
-            />
-          </Suspense>
-        </main>
+              <Suspense fallback={<p className="empty">Wird geladen…</p>}>
+                <ActiveComponent
+                  user={user}
+                  onOpenDiary={openDiary}
+                  onOpenContact={openContact}
+                  onOpenTab={chooseTab}
+                  onOpenSettings={openSettings}
+                  focusEntryId={focusEntryId}
+                  focusContactId={focusContactId}
+                  diaryDraft={diaryDraft}
+                  onFocused={() => {
+                    setFocusEntryId(null)
+                    setFocusContactId(null)
+                  }}
+                />
+              </Suspense>
+            </main>
+          </>
+        )}
       </div>
     </DialogProvider>
   )

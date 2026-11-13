@@ -156,27 +156,12 @@ VITE_SUPABASE_URL=<Project URL from step 3>
 VITE_SUPABASE_ANON_KEY=<anon / publishable key from step 3>
 ```
 
-The folder ID and the calendar ID are kept out of the repository and the
-public site: they are stored in the database, where only signed-in members
-can read them. Once the migrations have run, add them in the Supabase
-**SQL Editor**:
-
-```sql
-insert into public.app_settings (key, value)
-values ('drive_folder_id', '<folder ID from step 2>'),
-       ('calendar_id', '<calendar ID from step 2b>')
-on conflict (key) do update set value = excluded.value;
-```
-
-Optional: the building site's location, so new Status entries get the
-day's weather filled in (from Open-Meteo). A place name or
-coordinates both work; without it, the phone's own location is used.
-
-```sql
-insert into public.app_settings (key, value)
-values ('site_location', '48.27, 14.25')
-on conflict (key) do update set value = excluded.value;
-```
+The folder, the calendar and the building site's location (for the
+weather in Status entries) are kept out of the repository and the public
+site: they are stored in the database (`app_settings`), where only
+signed-in members can read them. Once you are a member, set them in the
+app under **Einstellungen** (tap your name at the top) → **Projekt**. The
+app checks with your Google access that the folder and calendar work.
 
 Commit to `main`; the GitHub Actions workflow deploys the site (see
 [Deployment](#deployment)). (Repository variables named `GOOGLE_CLIENT_ID`, `SUPABASE_URL` and `SUPABASE_ANON_KEY`
@@ -185,8 +170,8 @@ the deploy run shows a warning and the site shows "Setup not finished".
 
 ### Adding a family member later
 
-1. Supabase SQL Editor:
-   `insert into public.members (email) values ('name@gmail.com');`
+1. In the app: **Einstellungen → Mitglieder → Hinzufügen**. Every member
+   can add and remove members (not themselves, never the last one).
 2. Google Cloud → Audience → add them as a test user.
 3. Share the Drive folder with them as Editor, and the calendar with
    *Make changes to events*.
@@ -199,8 +184,8 @@ nothing else and can't change, delete or pick the current version.
 1. Supabase → **Authentication → Users → Add user → Create new user**,
    with **Auto Confirm User** ticked (the email needn't be a real
    mailbox). The **Email** provider must be on. Don't add it to `members`.
-2. SQL Editor:
-   `insert into public.house_editors (email) values ('claude-haus@example.com');`
+2. In the app: **Einstellungen → Mitglieder → Haus-Logins**, add its
+   email address.
 3. `scripts/haus/house.mjs` signs in with `HAUS_BOT_EMAIL` and
    `HAUS_BOT_PASSWORD`: `pull` copies the versions and site data into
    `.haus/` (ignored by git), `render` takes pictures of a model with the
@@ -303,9 +288,11 @@ Optional: a custom domain is added in Cloudflare under the Pages project →
 3. Repository variable `SECOND_SITE` = `true`, then *Actions → Deploy →
    Run workflow*. It creates the second database's tables and the
    `bautagebuch-second` Pages project.
-4. Add the address as a Google origin, then in the second project's SQL
-   Editor add its own `drive_folder_id` and `calendar_id` (step 4), so the
-   sites don't share photos or calendar events.
+4. Add the address as a Google origin. In the second project's SQL Editor
+   add the first member (step 3); everything else is set in that site's
+   **Einstellungen**: its own Drive folder and calendar (so the sites don't
+   share photos or calendar events), further members, categories and
+   document types.
 
 Migrations for one site can be run by hand with *Actions → Apply Supabase
 migrations → Run workflow* and choosing the site.

@@ -19,7 +19,6 @@ import {
 
 // Dropdown value that takes a marked photo out of the documents again.
 const NOT_A_DOCUMENT = 'none'
-import DocumentTypeManager from '../components/DocumentTypeManager.jsx'
 import DrivePhoto from '../components/DrivePhoto.jsx'
 import Lightbox from '../components/Lightbox.jsx'
 
@@ -32,7 +31,7 @@ function matches(document, query) {
 // Receipts of expenses are Rechnungen and quote PDFs Angebote by
 // themselves; everything else is
 // Unsortiert until someone picks its type.
-function Documents({ onOpenDiary, onOpenTab }) {
+function Documents({ onOpenDiary, onOpenTab, onOpenSettings }) {
   const entryStore = useCollection('diary_entries', { fromRow, toRow })
   const quoteStore = useCollection('quotes', { fromRow: quoteFromRow, toRow: quoteToRow })
   const itemStore = useCollection('budget_items', { fromRow: itemFromRow, toRow: itemToRow })
@@ -242,16 +241,9 @@ function Documents({ onOpenDiary, onOpenTab }) {
           )
         })}
 
-      <DocumentTypeManager
-        types={types}
-        counts={counts}
-        onAdd={(name) => typeStore.insert({ name })}
-        onRename={(id, name) => typeStore.update(id, { name })}
-        onDelete={async (id) => {
-          await typeStore.remove(id)
-          await assignmentStore.reload()
-        }}
-      />
+      <button type="button" className="link settings-link" onClick={() => onOpenSettings?.('lists')}>
+        Dokumenttypen verwalten (Einstellungen)
+      </button>
 
       {lightbox && <Lightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />}
     </section>

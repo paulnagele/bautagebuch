@@ -18,6 +18,11 @@ export function startTab(tabs) {
   return tabs.find((t) => t.id === tab || t.label.toLowerCase() === tab)?.id ?? null
 }
 
+// True when the link asks for Einstellungen (?tab=einstellungen).
+export function startSettings() {
+  return tab === 'einstellungen' || tab === 'settings'
+}
+
 // True once, for the first model shown after a "vollbild" link.
 export function takeFullStart() {
   const value = full

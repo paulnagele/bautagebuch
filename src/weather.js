@@ -4,7 +4,7 @@
 // Where the site is: app_settings key `site_location`, either a place name
 // ("Leonding") or coordinates ("48.27, 14.25"). Without it, the device's
 // own location is used (the browser asks once).
-import { getSetting } from './settings.js'
+import { onSettingChange, readSetting } from './settings.js'
 import { today } from './storage.js'
 
 const FORECAST_API = 'https://api.open-meteo.com/v1/forecast'
@@ -17,6 +17,13 @@ const FORECAST_DAYS = 15
 
 let coordsRequest = null
 const dayRequests = new Map()
+
+// A new site location in Einstellungen: look the place up again.
+onSettingChange((key) => {
+  if (key !== 'site_location') return
+  coordsRequest = null
+  dayRequests.clear()
+})
 
 function parseCoords(text) {
   const match = /^\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*$/.exec(text)
@@ -46,10 +53,15 @@ function deviceCoords() {
   })
 }
 
+// For Einstellungen: where a typed location is (place name or coordinates).
+export async function findPlace(text) {
+  return parseCoords(text) ?? geocode(text.trim())
+}
+
 async function siteCoords() {
   let setting = null
   try {
-    setting = await getSetting('site_location', 'der Ort der Baustelle')
+    setting = await readSetting('site_location')
   } catch {
     // Not set up (or not loadable): use where the device is.
   }
