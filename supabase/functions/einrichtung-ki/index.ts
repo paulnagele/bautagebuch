@@ -13,8 +13,10 @@
 // pictures as input_references), used when OpenRouter asks for it.
 //
 // Body { check: true } only answers { configured, model }.
-// Body { base, refs: [{ image, title, note }], note } with images as data
-// URLs (JPEG/PNG); each picture's title and note go into the prompt. Answers
+// Body { base, refs: [{ image, title, note }], note, room, openings } with
+// images as data URLs (JPEG/PNG); each picture's title and note, the room's
+// name and the windows/doors seen in the base view (from Aufnehmen) go
+// into the prompt. Answers
 // { image } (a data URL) or { error }.
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2'
 
@@ -58,7 +60,7 @@ const isImage = (v: unknown): v is string =>
 
 type Label = { title: string; note: string }
 
-function prompt(refCount: number, note: string, labels: Label[] = []) {
+function prompt(refCount: number, note: string, labels: Label[] = [], room = '', openings: string[] = []) {
   const described = labels
     .map((label, i) => {
       const text = [label.title, label.note].filter(Boolean).join(' – ')
@@ -66,14 +68,18 @@ function prompt(refCount: number, note: string, labels: Label[] = []) {
     })
     .filter(Boolean)
   return [
-    'The first image is a view of a room in a house that is being planned (a simple 3D rendering or a photo).',
+    `Edit the first image. It is a view of ${room ? `the room "${room}" (German name)` : 'a room'} in a house that is being planned (a simple 3D rendering or a photo).`,
     refCount > 0
       ? `The other ${refCount === 1 ? 'image shows a piece' : `${refCount} images show pieces`} of furniture, lamps, materials or decoration the owners want in this room.`
       : '',
-    'Create a photorealistic interior photo of exactly this room, furnished' +
-      (refCount > 0 ? ' with these items (keep their look, colour and material).' : ' in a warm, modern style.'),
-    'Keep the room itself unchanged: same camera position and perspective, same walls, windows, doors, stairs, ceiling height and floor. Only add or replace furniture, lighting, textiles and decoration, and make the surfaces look real.',
     described.length ? `What the owners wrote about these images (German):\n${described.join('\n')}` : '',
+    'Turn the first image into a photorealistic interior photo of exactly this room, furnished' +
+      (refCount > 0 ? ' with these items (keep their look, colour and material).' : ' in a warm, modern style.'),
+    'Keep the architecture unchanged: same camera position and perspective, same walls, ceiling height, floor, stairs and built-in parts.',
+    openings.length
+      ? `Every window and door must stay exactly where it is, with the same size, clearly visible with daylight coming in. Do not remove, move, shrink or wall up any of them, and do not cover them with furniture or closed curtains. Visible in the first image, from left to right: ${openings.join('; ')}.`
+      : 'Keep every window and door exactly where it is, with the same size, and do not remove, wall up or cover any of them.',
+    'Only add or replace furniture, lighting, textiles and decoration, and make the surfaces look real.',
     note ? `Wishes of the owners (German): ${note}` : '',
   ]
     .filter(Boolean)
@@ -146,7 +152,12 @@ Deno.serve(async (request) => {
     'Content-Type': 'application/json',
     'X-Title': 'Bautagebuch Einrichtung',
   }
-  const text = prompt(refs.length, note, labels)
+  const room = typeof input.room === 'string' ? input.room.trim().slice(0, 80) : ''
+  const openings = (Array.isArray(input.openings) ? input.openings : [])
+    .filter((o: unknown) => typeof o === 'string')
+    .slice(0, 12)
+    .map((o: string) => o.slice(0, 160))
+  const text = prompt(refs.length, note, labels, room, openings)
   const images = [base, ...refs].map((url) => ({ type: 'image_url', image_url: { url } }))
 
   // Models that also write text (Gemini, GPT-5 image, …) answer on chat

@@ -51,7 +51,15 @@ function AiDraftDialog({ user, room, items, itemStore, model, onClose }) {
       const pictures = items
         .filter((item) => refs.includes(item.id))
         .map((item) => ({ photoId: item.photoId, title: item.title, note: item.note }))
-      setResult(await createDraft({ baseId: base.photoId, refs: pictures, note: note.trim() }))
+      setResult(
+        await createDraft({
+          baseId: base.photoId,
+          refs: pictures,
+          note: note.trim(),
+          room: room.name,
+          openings: base.view?.openings,
+        }),
+      )
       setStep('result')
     } catch (err) {
       setError(err.message)
