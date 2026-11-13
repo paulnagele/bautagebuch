@@ -22,7 +22,7 @@
 //                   display options open, nothing can be saved or changed
 //   opts.onCapture  optional, shows "Aufnehmen" while walking (Begehen); called
 //                   with { blob, spot, room, version }: the view as a JPEG, where
-//                   the camera stands ({ x, feet, z, yaw, pitch, fov }, plain
+//                   the camera stands ({ x, feet, z, yaw, pitch, fov = degrees across }, plain
 //                   numbers), the room it stands in (name or null) and the
 //                   open version's name. Used by the Einrichtung tab.
 //   opts.walkTo     optional, starts Begehen at { spot } (as onCapture gives it)
@@ -1961,10 +1961,15 @@ export async function mountViewer(host, opts) {
     return changed;
   }
   function walkHelp() { walkMsg.textContent = PHONE ? 'Ziehen: umsehen · Kreis unten links: gehen' : 'Ziehen: umsehen · W A S D / Pfeile: gehen · Shift: schneller · Esc: beenden'; }
+  // Begehen sees about 84° across, like a wide-angle room photo; on an upright
+  // phone that needs a tall view, kept at 100° so it doesn't bulge.
+  const WALK_HFOV = 84, SHOT_W = LITE ? 1200 : 1500, SHOT_H = Math.round(SHOT_W / 1.5);
+  function vfovFor(hfov, aspect) { return 2 * Math.atan(Math.tan(hfov * Math.PI / 360) / aspect) * 180 / Math.PI; }
+  function walkFov(aspect) { return Math.max(PHONE ? 72 : 66, Math.min(100, vfovFor(WALK_HFOV, aspect || 1))); }
   function enterWalk(x, feet, z, yaw) {
     if (!walk.saved) walk.saved = { pos: camera.position.clone(), tgt: controls.target.clone(), fov: camera.fov, near: camera.near, level: walk.pendingLevel ?? state.level };
     walk.pending = false; walk.active = true; anim = null; controls.enabled = false;
-    camera.fov = PHONE ? 72 : 66; camera.near = 0.05; camera.updateProjectionMatrix();
+    camera.fov = walkFov(camera.aspect); camera.near = 0.05; camera.updateProjectionMatrix();
     select(null); if (state.level !== 'all') setLevel('all');
     walkLists();
     camera.position.set(x, feet + EYE, z); walk.feet = feet; walk.vy = 0; walk.yaw = yaw; walk.pitch = -0.05; walk.last = 0; walkSetCam();
@@ -2076,22 +2081,26 @@ export async function mountViewer(host, opts) {
   if (opts.onCapture && !READ_ONLY) { shotBtn.hidden = false; walkHud.classList.add('shoot'); }
   shotBtn.addEventListener('click', () => {
     if (!walk.active || disposed) return;
-    const w = stage.clientWidth, h = stage.clientHeight, prev = renderer.getPixelRatio();
-    const ratio = LITE ? prev : Math.max(prev, Math.min(2, 1600 / Math.max(w, h, 1)));
-    let url;
+    // Always a landscape picture (3:2, 84° across), whatever the screen's shape:
+    // an upright phone screen would give a narrow slice of the room.
+    const w = stage.clientWidth, h = stage.clientHeight, prev = renderer.getPixelRatio(), fov = camera.fov, aspect = camera.aspect;
+    let url, seen;
     try {
-      if (ratio !== prev) { renderer.setPixelRatio(ratio); renderer.setSize(w, h, false); }
+      renderer.setPixelRatio(1); renderer.setSize(SHOT_W, SHOT_H, false);
+      camera.aspect = SHOT_W / SHOT_H; camera.fov = vfovFor(WALK_HFOV, camera.aspect); camera.updateProjectionMatrix();
       renderer.render(scene, camera);
       url = renderer.domElement.toDataURL('image/jpeg', 0.9);
+      seen = openingsInView();
     } finally {
-      if (ratio !== prev) { renderer.setPixelRatio(prev); renderer.setSize(w, h, false); }
+      renderer.setPixelRatio(prev); renderer.setSize(w, h, false);
+      camera.aspect = aspect; camera.fov = fov; camera.updateProjectionMatrix();
       kick(300);
     }
     const bytes = atob(url.slice(url.indexOf(',') + 1)), arr = new Uint8Array(bytes.length);
     for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
     const p = camera.position, r3 = v => Math.round(v * 1000) / 1000;
-    const spot = { x: r3(p.x), feet: r3(walk.feet), z: r3(p.z), yaw: r3(walk.yaw), pitch: r3(walk.pitch), fov: camera.fov };
-    const seen = openingsInView(); if (seen.length) spot.openings = seen;
+    const spot = { x: r3(p.x), feet: r3(walk.feet), z: r3(p.z), yaw: r3(walk.yaw), pitch: r3(walk.pitch), fov: WALK_HFOV };
+    if (seen.length) spot.openings = seen;
     stage.classList.remove('flash'); void stage.offsetWidth; stage.classList.add('flash');
     opts.onCapture({ blob: new Blob([arr], { type: 'image/jpeg' }), spot, room: roomAt(DATA, p.x, walk.feet, p.z)?.name ?? null, version: versions.find(v => v.id === currentId)?.name ?? DATA.meta?.name ?? '' });
   });
@@ -2146,7 +2155,7 @@ export async function mountViewer(host, opts) {
   on(window, 'keydown', e => { if (e.code === 'Escape' && host.classList.contains('full') && !walk.active && !walk.pending) setFull(false); });
 
   // resize + loop
-  function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; if (walk.active) camera.fov = walkFov(camera.aspect); camera.updateProjectionMatrix(); }
   const ro = new ResizeObserver(() => { resize(); kick(1000); }); ro.observe(stage);
   let renderUntil = 0, frameErrors = 0;
   function kick(ms = 700) { renderUntil = Math.max(renderUntil, performance.now() + ms); }
