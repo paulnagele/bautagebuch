@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { newId, saveJSON } from '../storage.js'
 import { useSwipeTabs } from '../useSwipeTabs.js'
 import { loadGoogleScript } from '../google.js'
@@ -14,13 +14,14 @@ import UpdateHint from '../components/UpdateHint.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
 import { startSettings, startTab } from '../startLink.js'
 
-// Finanzen, Zeitplan, Haus, Dokumente and Heizwärme are loaded when first opened, so
+// Finanzen, Zeitplan, Haus, Einrichtung, Dokumente and Heizwärme are loaded when first opened, so
 // the app starts with less to download.
 const Finances = lazyTab(() => import('../tabs/Finances.jsx'))
 const Timetable = lazyTab(() => import('../tabs/Timetable.jsx'))
 const House = lazyTab(() => import('../tabs/House.jsx'))
 const Documents = lazyTab(() => import('../tabs/Documents.jsx'))
 const Energy = lazyTab(() => import('../tabs/Energy.jsx'))
+const Interior = lazyTab(() => import('../tabs/Interior.jsx'))
 const Settings = lazyTab(() => import('./Settings.jsx'))
 
 // A tab loaded on demand. If its file can't be fetched (offline, or the
@@ -51,6 +52,7 @@ const TABS = [
   { id: 'finances', label: 'Finanzen', component: Finances },
   { id: 'timetable', label: 'Zeitplan', component: Timetable },
   { id: 'house', label: 'Haus', component: House },
+  { id: 'interior', label: 'Einrichtung', component: Interior },
   { id: 'contacts', label: 'Kontakte', component: Contacts },
   { id: 'documents', label: 'Dokumente', component: Documents },
   { id: 'energy', label: 'Heizwärme', component: Energy },
@@ -64,6 +66,13 @@ function Home({ user, onLogout }) {
   const [settings, setSettings] = useState(() => (startSettings() ? { section: null } : null))
   const [focusEntryId, setFocusEntryId] = useState(null)
   const [focusContactId, setFocusContactId] = useState(null)
+  // Einrichtung: the room to open, pictures shared to the app waiting for
+  // a room, and a view of a room the Haus tab should open (see House.jsx).
+  const [focusRoomId, setFocusRoomId] = useState(null)
+  const [interiorInbox, setInteriorInbox] = useState(null)
+  const [houseRequest, setHouseRequest] = useState(null)
+  // Shared pictures: ask first whether they go to the diary or Einrichtung.
+  const [shareChoice, setShareChoice] = useState(null)
   // Which way the last swipe went, so the new tab slides in from that side.
   const [slide, setSlide] = useState(null)
   const current = TABS.find((tab) => tab.id === activeTab) ?? TABS[0]
@@ -103,6 +112,22 @@ function Home({ user, onLogout }) {
     window.scrollTo({ top: 0 })
   }
 
+  // Opens the Haus tab walking in a room, to take a view for Einrichtung.
+  function openHouse(request) {
+    setHouseRequest(request)
+    setSlide(null)
+    setActiveTab('house')
+    window.scrollTo({ top: 0 })
+  }
+
+  // Opens Einrichtung on one room.
+  function openInterior(roomId) {
+    setFocusRoomId(roomId ?? null)
+    setSlide(null)
+    setActiveTab('interior')
+    window.scrollTo({ top: 0 })
+  }
+
   // Opening Einstellungen adds a history step, so the phone's back
   // gesture closes them instead of leaving the app.
   function openSettings(section = null) {
@@ -124,6 +149,14 @@ function Home({ user, onLogout }) {
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
+
+  const onFocused = useCallback(() => {
+    setFocusEntryId(null)
+    setFocusContactId(null)
+    setFocusRoomId(null)
+  }, [])
+  const onInboxTaken = useCallback(() => setInteriorInbox(null), [])
+  const onHouseRequestTaken = useCallback(() => setHouseRequest(null), [])
 
   function chooseTab(id) {
     if (settings) closeSettings()
@@ -154,11 +187,13 @@ function Home({ user, onLogout }) {
   // camera was open. It is restored first, then anything shared added.
   const [draftRestored, setDraftRestored] = useState(false)
 
-  // Shared from another app ("Teilen → Bautagebuch"): open a new diary
-  // entry with the pictures as photos, the other files attached and any
-  // shared text as its text. It starts as a Status entry; the kind can be
-  // changed in the form (e.g. Ausgabe for an invoice). A draft restored
-  // from before keeps what it had and gets the shared things added.
+  // Shared from another app ("Teilen → Bautagebuch"): pictures can go to
+  // Einrichtung (a room's board) or the diary, so that is asked first.
+  // In the diary they open a new entry with the pictures as photos, the
+  // other files attached and any shared text as its text. It starts as a
+  // Status entry; the kind can be changed in the form (e.g. Ausgabe for an
+  // invoice). A draft restored from before keeps what it had and gets the
+  // shared things added.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -173,28 +208,43 @@ function Home({ user, onLogout }) {
       }
       setDraftRestored(true)
       if (!shared) return
-      const photos = []
-      const files = []
-      for (const file of shared.files) {
-        if (file.type.startsWith('image/')) photos.push({ key: newId(), blob: file })
-        else files.push({ key: newId(), blob: file, name: file.name })
-      }
       doneWithShared()
-      setDiaryForm((form) => ({
-        ...form,
-        work: [form.work.trim(), shared.text].filter(Boolean).join('\n\n'),
-        photos: [...form.photos, ...photos],
-        files: [...form.files, ...files],
-      }))
-      setDiaryFormOpen(true)
-      setFocusEntryId(null)
-      setSlide(null)
-      setActiveTab('diary')
+      // Pictures can go to Einrichtung instead; ask. Anything else
+      // (documents, text) goes to the diary as before.
+      if (shared.files.some((file) => file.type.startsWith('image/'))) setShareChoice(shared)
+      else shareToDiary(shared)
     })()
     return () => {
       cancelled = true
     }
   }, [])
+
+  // Shared things into a new diary entry: pictures as photos, other files
+  // attached, text as the entry's text.
+  function shareToDiary(shared) {
+    const photos = []
+    const files = []
+    for (const file of shared.files) {
+      if (file.type.startsWith('image/')) photos.push({ key: newId(), blob: file })
+      else files.push({ key: newId(), blob: file, name: file.name })
+    }
+    setDiaryForm((form) => ({
+      ...form,
+      work: [form.work.trim(), shared.text].filter(Boolean).join('\n\n'),
+      photos: [...form.photos, ...photos],
+      files: [...form.files, ...files],
+    }))
+    setDiaryFormOpen(true)
+    setFocusEntryId(null)
+    setSlide(null)
+    setActiveTab('diary')
+  }
+
+  // Shared pictures into Einrichtung: the tab asks for the room.
+  function shareToInterior(shared) {
+    setInteriorInbox({ files: shared.files.filter((file) => file.type.startsWith('image/')) })
+    openInterior(null)
+  }
 
   // Save the draft shortly after each change, and right away when the app
   // goes to the background (it may not come back). Not before the saved
@@ -297,14 +347,50 @@ function Home({ user, onLogout }) {
                   focusEntryId={focusEntryId}
                   focusContactId={focusContactId}
                   diaryDraft={diaryDraft}
-                  onFocused={() => {
-                    setFocusEntryId(null)
-                    setFocusContactId(null)
-                  }}
+                  onFocused={onFocused}
+                  focusRoomId={focusRoomId}
+                  inbox={interiorInbox}
+                  onInboxTaken={onInboxTaken}
+                  onOpenHouse={openHouse}
+                  onOpenInterior={openInterior}
+                  houseRequest={houseRequest}
+                  onHouseRequestTaken={onHouseRequestTaken}
                 />
               </Suspense>
             </main>
           </>
+        )}
+        {shareChoice && (
+          <div className="share-choice" role="dialog" aria-modal="true" aria-labelledby="share-choice-title">
+            <div className="share-choice-box">
+              <p id="share-choice-title">
+                {shareChoice.files.length === 1 ? 'Wohin mit dem geteilten Bild?' : 'Wohin mit den geteilten Bildern?'}
+              </p>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    shareToDiary(shareChoice)
+                    setShareChoice(null)
+                  }}
+                >
+                  Tagebuch
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    shareToInterior(shareChoice)
+                    setShareChoice(null)
+                  }}
+                >
+                  Einrichtung
+                </button>
+              </div>
+              {shareChoice.files.some((file) => !file.type.startsWith('image/')) && (
+                <p className="muted">Einrichtung nimmt nur die Bilder.</p>
+              )}
+            </div>
+          </div>
         )}
       </div>
     </DialogProvider>

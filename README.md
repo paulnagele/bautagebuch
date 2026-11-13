@@ -29,6 +29,17 @@ there are four tabs:
   `house_context`), not in this repository, since they contain the
   address and the floor plans. When the tables are empty, the tab offers
   a one-time import of the Haus3D export file.
+- **Einrichtung** – a mood board per room (`src/tabs/Interior.jsx`):
+  pictures of things wanted in a room, each with a title, a note and a
+  favourite star. The rooms are copied once from the house model's room
+  names and then kept by hand (`interior_rooms`); nothing links back to
+  the model. Pictures come from the gallery or camera, from "Teilen →
+  Bautagebuch" (shared pictures ask: Tagebuch or Einrichtung?) or from
+  the model: "Ansicht aus Modell" opens the Haus tab walking in that room
+  (found by its name), and "Aufnehmen" saves the view as a picture. A
+  render keeps where the camera stood as plain numbers, so "Neu rendern"
+  shows the same view from the current version. Pictures go to
+  `Haus/Einrichtung/<room>/` in Drive (`interior_items`).
 - **Heizwärme** – an estimate of the heating demand (HWB, kWh/m²a) and
   heating load (`src/tabs/Energy.jsx`, `src/energy/`): a simplified
   monthly balance in the style of ÖNORM B 8110-6 / OIB-RL 6 from the

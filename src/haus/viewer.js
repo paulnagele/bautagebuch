@@ -20,6 +20,14 @@
 //   opts.shares     { list, create, add, remove, revoke } for "Teilen" (houseStore.js), optional
 //   opts.readOnly   true on the shared page (haus.html): the shared versions,
 //                   display options open, nothing can be saved or changed
+//   opts.onCapture  optional, shows "Aufnehmen" while walking (Begehen); called
+//                   with { blob, spot, room, version }: the view as a JPEG, where
+//                   the camera stands ({ x, feet, z, yaw, pitch, fov }, plain
+//                   numbers), the room it stands in (name or null) and the
+//                   open version's name. Used by the Einrichtung tab.
+//   opts.walkTo     optional, starts Begehen at { spot } (as onCapture gives it)
+//                   or in { room } (a room name, see rooms.js); dispose.walkTo
+//                   does the same later
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { mountSharePanel } from './sharePanel.js'
@@ -32,10 +40,11 @@ import { buildGrid, gridExtent, updateGridLabels, pointText, pointPlain } from '
 import { rotateSite } from './siteRotation.js'
 import { sunPosition } from './sun.js'
 import { mountSunPanel } from './sunPanel.js'
+import { findModelRoom, roomAt } from './rooms.js'
 
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
-<div class="walkhud" data-h="walkhud" hidden role="status"><span data-h="walkmsg"></span><button type="button" data-h="walkexit">Beenden</button></div>
+<div class="walkhud" data-h="walkhud" hidden role="status"><span data-h="walkmsg"></span><button type="button" data-h="walkshot" hidden title="Diese Ansicht als Bild für die Einrichtung speichern">Aufnehmen</button><button type="button" data-h="walkexit">Beenden</button></div>
 <div class="joy" data-h="joy" hidden aria-hidden="true"><i></i></div>
 <div class="gtool" data-h="gtool" hidden>
   <div class="gbar">
@@ -1780,6 +1789,7 @@ export async function mountViewer(host, opts) {
   }
   // For the Haus chat: open a version Claude saved or changed. reload: fetch
   // its model again (Claude changed it in place); a new id reloads the list.
+  dispose.walkTo = (spec) => walkTo(spec);
   dispose.openVersion = async (id, { reload = false } = {}) => {
     const dropped = reload && id === currentId && isDirty();
     if (reload) models.delete(id);
@@ -1878,15 +1888,17 @@ export async function mountViewer(host, opts) {
   const WALK_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight']);
   const shown = o => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
   function walkLists() {   // meshes to stand on and meshes that stop you (doors are walked through, rugs ignored); world bounding spheres for a cheap near-filter
-    walk.root = root; walk.ground = []; walk.block = [];
+    walk.root = root; walk.ground = []; walk.block = []; walk.doors = []; walk.lights = [];
     root.traverse(o => {
       if (!o.isMesh || o.isInstancedMesh) return; const k = o.userData?.kind, d = o.userData?.data;
+      if (k === 'light') { walk.lights.push(o); return; }
       if (GROUND_KINDS.has(k) || (k === 'garden' && o.userData.walk === 'ground')) walk.ground.push(o);
       else if (k === 'garden') { if (o.userData.walk === 'block') walk.block.push(o); }
+      else if (k === 'opening' && d?.type === 'door') walk.doors.push(o);   // walked through; roomView counts them as walls
       else if (BLOCK_KINDS.has(k) && !(k === 'opening' && d?.type === 'door') && !(k === 'furniture' && d?.type === 'rug')) walk.block.push(o);
     });
     root.updateMatrixWorld(true);
-    for (const o of walk.ground.concat(walk.block)) { if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); o.userData._ws = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld); }
+    for (const o of walk.ground.concat(walk.block, walk.doors, walk.lights)) { if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); o.userData._ws = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld); }
   }
   const nearXZ = (list, x, z, r) => list.filter(o => { const c = o.userData._ws; return Math.hypot(c.center.x - x, c.center.z - z) < c.radius + r && shown(o); });
   const insideHouse = (x, z) => { const c = DATA.terrain?.cutout; return !!c && polyInside(c, x, z); };
@@ -1969,6 +1981,9 @@ export async function mountViewer(host, opts) {
     if (!hit) return;
     if (!walk.root || walk.root !== root) walkLists();
     const { x, z } = hit.point; let feet = groundBelow(x, z, hit.point.y + 0.3); if (!isFinite(feet)) feet = hit.point.y;
+    enterWalk(x, feet, z, bestYaw(x, feet, z));
+  }
+  function bestYaw(x, feet, z) {
     let yaw = Math.atan2(x, z);   // outside: towards the house
     if (insideHouse(x, z)) {   // inside: face the direction with the most free room (16 rays at chest height)
       walk.feet = feet; let best = -1;
@@ -1976,8 +1991,71 @@ export async function mountViewer(host, opts) {
         wray.set(new THREE.Vector3(x, feet + 1.2, z), dir); wray.far = 20; const h = wray.intersectObjects(nearXZ(walk.block, x, z, 20), false)[0], d = h ? h.distance : 20;
         if (d > best + 0.3) { best = d; yaw = a; } }
     }
-    enterWalk(x, feet, z, yaw);
+    return yaw;
   }
+  // A view across a room from its label point: the longest line through the room (doors count as walls),
+  // standing near the wall at one end and looking along it
+  function roomView(x, feet, z) {
+    const N = 24, d = [], cand = nearXZ(walk.block.concat(walk.doors), x, z, 12);
+    for (let i = 0; i < N; i++) {
+      const a = i * 2 * Math.PI / N; wray.set(new THREE.Vector3(x, feet + 1.2, z), new THREE.Vector3(-Math.sin(a), 0, -Math.cos(a))); wray.far = 12;
+      const h = wray.intersectObjects(cand, false)[0]; d.push(h ? h.distance : 12);
+    }
+    let best = 0, bestLen = -1;
+    for (let i = 0; i < N; i++) { const len = d[i] + d[(i + N / 2) % N]; if (len > bestLen + 0.05 || (Math.abs(len - bestLen) <= 0.05 && d[i] > d[best])) { bestLen = len; best = d[i] >= d[(i + N / 2) % N] ? i : (i + N / 2) % N; } }
+    const a = best * 2 * Math.PI / N, eye = feet + EYE;
+    // not with the head in a pendant lamp
+    const inLamp = (px, pz) => walk.lights.some(o => { const c = o.userData._ws; return c.center.distanceTo(new THREE.Vector3(px, eye, pz)) < c.radius + 0.25 && shown(o); });
+    for (let back = Math.max(0, Math.min(d[(best + N / 2) % N] - 0.45, 3.5)); ; back -= 0.3) {
+      const px = x + Math.sin(a) * Math.max(0, back), pz = z + Math.cos(a) * Math.max(0, back);
+      if (back <= 0 || !inLamp(px, pz)) return { x: px, z: pz, yaw: a };
+    }
+  }
+  // Begehen at a saved spot or in a room found by its name (opts.walkTo); without either, pick a place by tapping
+  function walkTo(spec) {
+    if (disposed || !spec) return;
+    if (walk.active || walk.pending) exitWalk();
+    walkLists();
+    const s = spec.spot, num = v => typeof v === 'number' && isFinite(v);
+    if (s && num(s.x) && num(s.feet) && num(s.z)) {
+      enterWalk(s.x, s.feet, s.z, num(s.yaw) ? s.yaw : 0);
+      if (num(s.pitch)) { walk.pitch = Math.max(-1.35, Math.min(1.35, s.pitch)); walkSetCam(); }
+      return;
+    }
+    const r = spec.room ? findModelRoom(DATA, spec.room) : null;
+    if (r && Array.isArray(r.label)) {
+      const [x, z] = r.label, lvl = DATA.levels.find(l => l.id === r.level), floor = r.floor ?? lvl?.floor ?? 0;
+      let feet = groundBelow(x, z, floor + 0.5); if (!isFinite(feet) || feet < floor - 0.6) feet = floor;
+      const v = roomView(x, feet, z);
+      enterWalk(v.x, feet, v.z, v.yaw); walk.pitch = -0.12; walkSetCam();
+      return;
+    }
+    startWalkPick();
+    if (spec.room) walkMsg.textContent = `„${spec.room}“ gibt es in dieser Version nicht. ${PHONE ? 'Tippe' : 'Klicke'} in einen Raum, um dort zu stehen.`;
+  }
+  // "Aufnehmen": the view as a picture, sharper than the screen where the device allows it
+  const shotBtn = $('walkshot');
+  if (opts.onCapture && !READ_ONLY) { shotBtn.hidden = false; walkHud.classList.add('shoot'); }
+  shotBtn.addEventListener('click', () => {
+    if (!walk.active || disposed) return;
+    const w = stage.clientWidth, h = stage.clientHeight, prev = renderer.getPixelRatio();
+    const ratio = LITE ? prev : Math.max(prev, Math.min(2, 1600 / Math.max(w, h, 1)));
+    let url;
+    try {
+      if (ratio !== prev) { renderer.setPixelRatio(ratio); renderer.setSize(w, h, false); }
+      renderer.render(scene, camera);
+      url = renderer.domElement.toDataURL('image/jpeg', 0.9);
+    } finally {
+      if (ratio !== prev) { renderer.setPixelRatio(prev); renderer.setSize(w, h, false); }
+      kick(300);
+    }
+    const bytes = atob(url.slice(url.indexOf(',') + 1)), arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    const p = camera.position, r3 = v => Math.round(v * 1000) / 1000;
+    const spot = { x: r3(p.x), feet: r3(walk.feet), z: r3(p.z), yaw: r3(walk.yaw), pitch: r3(walk.pitch), fov: camera.fov };
+    stage.classList.remove('flash'); void stage.offsetWidth; stage.classList.add('flash');
+    opts.onCapture({ blob: new Blob([arr], { type: 'image/jpeg' }), spot, room: roomAt(DATA, p.x, walk.feet, p.z)?.name ?? null, version: versions.find(v => v.id === currentId)?.name ?? DATA.meta?.name ?? '' });
+  });
   walkBtn.addEventListener('click', () => { if (walk.active || walk.pending) exitWalk(); else startWalkPick(); });
   $('walkexit').addEventListener('click', exitWalk);
   renderer.domElement.addEventListener('pointerdown', e => { if (walk.active) { walk.look = { id: e.pointerId, x: e.clientX, y: e.clientY }; } });
@@ -2127,6 +2205,7 @@ export async function mountViewer(host, opts) {
   build(DATA); fillEditor(); setLevel('all');
   renderVersions();
   $('loading').hidden = true;
+  if (opts.walkTo) walkTo(opts.walkTo);
   kick(1500);
   rafId = requestAnimationFrame(frame);
   return dispose;

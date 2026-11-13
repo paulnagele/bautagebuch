@@ -455,3 +455,13 @@ html.haus-full {
 }
 .haus-chat-actions button.secondary { border: 1px solid var(--border); }
 .haus-chat-note { font-size: 0.85rem; color: var(--muted); }
+
+/* "Aufnehmen" in Begehen: a short white flash over the view */
+.haus3d .stage.flash::after { content: ''; position: absolute; inset: 0; background: #fff; pointer-events: none; animation: haus-flash 0.35s ease-out forwards; }
+@keyframes haus-flash { from { opacity: 0.8; } to { opacity: 0; } }
+.haus3d .walkhud button[data-h="walkshot"]:not([hidden]) + button { background: var(--h-panel); color: var(--h-ink); border: 1px solid var(--h-line); }
+@media (max-width: 700px) {
+  /* phones: with "Aufnehmen" there is no room for the help text */
+  .haus3d.walking .walkhud.shoot { right: auto; padding-left: 6px; }
+  .haus3d.walking .walkhud.shoot > span { display: none; }
+}

@@ -18,6 +18,7 @@ import {
 } from '../haus/houseStore.js'
 import { mountViewer, showFailure } from '../haus/viewer.js'
 import HouseChat from '../haus/HouseChat.jsx'
+import CaptureDialog from '../components/CaptureDialog.jsx'
 import { takeFullStart } from '../startLink.js'
 
 const store = {
@@ -40,7 +41,11 @@ const shares = {
 
 // The Haus tab: the 3D model of the house with its versions. Like
 // Finanzen, it is loaded when first opened (three.js is large).
-function House() {
+//   houseRequest   set when the Einrichtung tab asks for a view of a room:
+//                  { roomId, room, spot?, title? }; the model opens walking
+//                  there (Begehen), and "Aufnehmen" saves to that room
+//   onOpenInterior opens the Einrichtung tab on a room (after saving)
+function House({ user, houseRequest, onHouseRequestTaken, onOpenInterior }) {
   const [state, setState] = useState({ status: 'loading' })
 
   const load = useCallback(() => {
@@ -70,7 +75,15 @@ function House() {
     )
   }
   if (state.status === 'empty') return <ImportCard onImported={retry} />
-  return <HouseViewer view={state.view} />
+  return (
+    <HouseViewer
+      view={state.view}
+      user={user}
+      request={houseRequest}
+      onRequestTaken={onHouseRequestTaken}
+      onOpenInterior={onOpenInterior}
+    />
+  )
 }
 
 // The version list, the current version's model and the site data.
@@ -97,8 +110,20 @@ function readLite() {
   }
 }
 
-function HouseViewer({ view }) {
+function HouseViewer({ view, user, request, onRequestTaken, onOpenInterior }) {
   const hostRef = useRef(null)
+  // The Einrichtung tab's request, taken once when the model opens.
+  const [asked] = useState(request ?? null)
+  const [shot, setShot] = useState(null)
+  const [savedNote, setSavedNote] = useState('')
+  useEffect(() => {
+    if (request) onRequestTaken?.()
+  }, [request, onRequestTaken])
+  useEffect(() => {
+    if (!savedNote) return
+    const timer = setTimeout(() => setSavedNote(''), 3000)
+    return () => clearTimeout(timer)
+  }, [savedNote])
   const [lite, setLite] = useState(readLite)
   const [chatOpen, setChatOpen] = useState(false)
   const [version, setVersion] = useState(null)
@@ -128,7 +153,9 @@ function HouseViewer({ view }) {
       onChat,
       chatReady: chatConfigured(),
       onVersion,
-      full: takeFullStart(),
+      full: takeFullStart() || Boolean(asked),
+      onCapture: setShot,
+      walkTo: asked ? { spot: asked.spot, room: asked.room } : undefined,
     })
       .then((done) => {
         if (left) done?.()
@@ -144,7 +171,7 @@ function HouseViewer({ view }) {
       viewerRef.current = null
       dispose?.()
     }
-  }, [view, lite])
+  }, [view, lite, asked])
 
   // data-no-swipe: dragging turns the model instead of switching tabs.
   return (
@@ -156,6 +183,24 @@ function HouseViewer({ view }) {
         version={version}
         onOpenVersion={(id) => viewerRef.current?.openVersion?.(id)}
       />
+      {shot && (
+        <CaptureDialog
+          user={user}
+          shot={shot}
+          request={asked}
+          onClose={() => setShot(null)}
+          onSaved={(room) => {
+            setShot(null)
+            if (asked && onOpenInterior) onOpenInterior(room.id)
+            else setSavedNote(`Gespeichert in „${room.name}“ (Einrichtung)`)
+          }}
+        />
+      )}
+      {savedNote && (
+        <p className="capture-toast" role="status">
+          {savedNote}
+        </p>
+      )}
     </>
   )
 }
