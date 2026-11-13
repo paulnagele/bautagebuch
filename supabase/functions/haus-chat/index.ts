@@ -6,10 +6,14 @@
 // Claude account. That starts a cloud session which reads the request,
 // changes the model and answers in house_chat (see docs/haus-chat.md).
 //
-// Secrets (Supabase → Edge Functions → Secrets), never in the repo:
-//   HAUS_CHAT_FIRE_URL    the task's API trigger URL (…/routines/trig_…/fire)
-//   HAUS_CHAT_FIRE_TOKEN  the task's API token
-// SUPABASE_URL and SUPABASE_ANON_KEY are provided by Supabase.
+// The task's API trigger URL (…/routines/trig_…/fire) and token are set
+// in the app (Einstellungen → Haus-Chat, table secret_settings, read here
+// with the service role), or as Edge Function secrets HAUS_CHAT_FIRE_URL /
+// HAUS_CHAT_FIRE_TOKEN, which win. Never in the repo.
+// SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY are
+// provided by Supabase.
+//
+// Body { check: true } only answers { configured } (for the app's button).
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2'
 
 const cors = {
@@ -25,15 +29,28 @@ function reply(status: number, body: Record<string, unknown>) {
   })
 }
 
+// The trigger: secrets first, else what members set in the app.
+async function triggerSettings() {
+  let fireUrl = Deno.env.get('HAUS_CHAT_FIRE_URL') ?? ''
+  let fireToken = Deno.env.get('HAUS_CHAT_FIRE_TOKEN') ?? ''
+  if (fireUrl && fireToken) return { fireUrl, fireToken }
+  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+    auth: { persistSession: false },
+  })
+  const { data } = await admin
+    .from('secret_settings')
+    .select('key, value')
+    .in('key', ['haus_chat_fire_url', 'haus_chat_fire_token'])
+  for (const row of data ?? []) {
+    if (row.key === 'haus_chat_fire_url') fireUrl = row.value
+    if (row.key === 'haus_chat_fire_token') fireToken = row.value
+  }
+  return { fireUrl, fireToken }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (request.method !== 'POST') return reply(405, { error: 'Nur POST.' })
-
-  const fireUrl = Deno.env.get('HAUS_CHAT_FIRE_URL')
-  const fireToken = Deno.env.get('HAUS_CHAT_FIRE_TOKEN')
-  if (!fireUrl || !fireToken) {
-    return reply(503, { error: 'Der Claude-Chat ist noch nicht eingerichtet (Secrets fehlen).' })
-  }
 
   // Acts as the caller, so row level security decides what they may see.
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
@@ -43,12 +60,20 @@ Deno.serve(async (request) => {
   const { data: member, error: memberError } = await supabase.rpc('is_member')
   if (memberError || member !== true) return reply(403, { error: 'Nur für Mitglieder.' })
 
-  let id = ''
+  let input: Record<string, unknown> = {}
   try {
-    id = String((await request.json()).id ?? '')
+    input = await request.json()
   } catch {
     // handled below
   }
+
+  const { fireUrl, fireToken } = await triggerSettings()
+  if (input.check === true) return reply(200, { configured: Boolean(fireUrl && fireToken) })
+  if (!fireUrl || !fireToken) {
+    return reply(503, { error: 'Der Claude-Chat ist noch nicht eingerichtet (Einstellungen → Haus-Chat).' })
+  }
+
+  const id = String(input.id ?? '')
   if (!/^[0-9a-f-]{36}$/.test(id)) return reply(400, { error: 'Anfrage fehlt.' })
 
   const { data: row, error: rowError } = await supabase

@@ -165,3 +165,37 @@
   display: block;
   font-size: 0.9rem;
 }
+
+.settings-form-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.settings-form-stack input {
+  flex: none;
+}
+
+.settings-form-stack button {
+  align-self: flex-start;
+}
+
+.settings-steps {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+}
+
+.settings-steps li + li {
+  margin-top: 0.4rem;
+}
+
+.settings-code {
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

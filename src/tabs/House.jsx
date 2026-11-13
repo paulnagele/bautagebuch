@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   addShareVersion,
+  chatConfigured,
   createShare,
   deleteVersion,
   importHouse,
@@ -118,7 +119,17 @@ function HouseViewer({ view }) {
     }
     const onChat = () => setChatOpen(true)
     const onVersion = (row) => setVersion(row ? { id: row.id, name: row.name } : null)
-    mountViewer(host, { ...view, store, shares, lite, onLost, onChat, onVersion, full: takeFullStart() })
+    mountViewer(host, {
+      ...view,
+      store,
+      shares,
+      lite,
+      onLost,
+      onChat,
+      chatReady: chatConfigured(),
+      onVersion,
+      full: takeFullStart(),
+    })
       .then((done) => {
         if (left) done?.()
         else viewerRef.current = dispose = done

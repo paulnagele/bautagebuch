@@ -235,6 +235,29 @@ export async function listChat() {
   return data
 }
 
+// True when the chat is set up for this site (trigger URL and token, see
+// Einstellungen → Haus-Chat). Asked once; false if the check fails.
+let chatCheck = null
+export function chatConfigured() {
+  if (!chatCheck) {
+    chatCheck = supabase.functions
+      .invoke('haus-chat', { body: { check: true } })
+      .then(({ data, error }) => !error && data?.configured === true)
+      .catch(() => false)
+  }
+  return chatCheck
+}
+
+// Sets (or, with both empty, removes) the chat's trigger URL and token.
+export async function saveChatTrigger(fireUrl, fireToken) {
+  const { error } = await supabase.rpc('set_haus_chat_trigger', {
+    fire_url: fireUrl,
+    fire_token: fireToken,
+  })
+  if (error) throw new Error(error.message)
+  chatCheck = null
+}
+
 // Saves a request and starts Claude for it. The row stays (status
 // 'failed' with the reason) if Claude can't be started.
 export async function sendChat({ text, versionId }) {
