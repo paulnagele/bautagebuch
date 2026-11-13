@@ -28,9 +28,10 @@ if (target && target !== 'production' && prodRef) {
   // The build (CHECK_BUILD=1) must not fall back to the production values
   // in .env.production.
   if (process.env.CHECK_BUILD && !url) errors.push(`SUPABASE_URL of "${target}" is not set. Set it in the "${target}" environment.`)
-  // The build step passes the URL; the anon key must then belong to the same project.
+  // The build step must also use the site's own anon key. (The migration
+  // step has no key, so this is only checked in the build.)
   const key = process.env.VITE_SUPABASE_ANON_KEY || ''
-  if (url && (!key || key === prodValue('VITE_SUPABASE_ANON_KEY'))) errors.push(`SUPABASE_ANON_KEY of "${target}" is missing or the production key. Set its own in the "${target}" environment.`)
+  if (process.env.CHECK_BUILD && (!key || key === prodValue('VITE_SUPABASE_ANON_KEY'))) errors.push(`SUPABASE_ANON_KEY of "${target}" is missing or the production key. Set its own in the "${target}" environment.`)
 }
 if (ref && url && refOf(url) && refOf(url) !== ref) {
   errors.push(`SUPABASE_URL (${refOf(url)}) and SUPABASE_PROJECT_REF (${ref}) point to different projects.`)
