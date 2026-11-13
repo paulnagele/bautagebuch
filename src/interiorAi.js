@@ -43,10 +43,11 @@ async function pictureAsDataUrl(fileId, size = 1024) {
 }
 
 // Resolves to a Blob of the furnished room; throws with a German message.
-export async function createDraft({ baseId, refIds, note }) {
-  const [base, ...refs] = await Promise.all([baseId, ...refIds].map((id) => pictureAsDataUrl(id)))
+// refs: [{ photoId, title, note }]; title and note tell the model what each picture is.
+export async function createDraft({ baseId, refs, note }) {
+  const [base, ...images] = await Promise.all([baseId, ...refs.map((r) => r.photoId)].map((id) => pictureAsDataUrl(id)))
   const { data, error } = await supabase.functions.invoke('einrichtung-ki', {
-    body: { base, refs, note },
+    body: { base, refs: refs.map((r, i) => ({ image: images[i], title: r.title, note: r.note })), note },
   })
   if (error) {
     let message = error.message

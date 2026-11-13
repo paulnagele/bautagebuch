@@ -13,7 +13,8 @@
 // pictures as input_references), used when OpenRouter asks for it.
 //
 // Body { check: true } only answers { configured, model }.
-// Body { base, refs, note } with images as data URLs (JPEG/PNG) answers
+// Body { base, refs: [{ image, title, note }], note } with images as data
+// URLs (JPEG/PNG); each picture's title and note go into the prompt. Answers
 // { image } (a data URL) or { error }.
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2'
 
@@ -55,7 +56,15 @@ async function settings() {
 const isImage = (v: unknown): v is string =>
   typeof v === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v) && v.length < 8_000_000
 
-function prompt(refCount: number, note: string) {
+type Label = { title: string; note: string }
+
+function prompt(refCount: number, note: string, labels: Label[] = []) {
+  const described = labels
+    .map((label, i) => {
+      const text = [label.title, label.note].filter(Boolean).join(' – ')
+      return text ? `Image ${i + 2}: ${text}` : ''
+    })
+    .filter(Boolean)
   return [
     'The first image is a view of a room in a house that is being planned (a simple 3D rendering or a photo).',
     refCount > 0
@@ -64,6 +73,7 @@ function prompt(refCount: number, note: string) {
     'Create a photorealistic interior photo of exactly this room, furnished' +
       (refCount > 0 ? ' with these items (keep their look, colour and material).' : ' in a warm, modern style.'),
     'Keep the room itself unchanged: same camera position and perspective, same walls, windows, doors, stairs, ceiling height and floor. Only add or replace furniture, lighting, textiles and decoration, and make the surfaces look real.',
+    described.length ? `What the owners wrote about these images (German):\n${described.join('\n')}` : '',
     note ? `Wishes of the owners (German): ${note}` : '',
   ]
     .filter(Boolean)
@@ -120,7 +130,14 @@ Deno.serve(async (request) => {
   if (!key) return reply(503, { error: 'Die KI-Entwürfe sind noch nicht eingerichtet (Einstellungen → KI-Entwürfe).' })
 
   const base = input.base
-  const refs = Array.isArray(input.refs) ? input.refs.filter(isImage).slice(0, MAX_REFS) : []
+  // refs: data URLs, or { image, title, note } so the model knows what each picture is
+  const entries = (Array.isArray(input.refs) ? input.refs : [])
+    .map((r: any) => (typeof r === 'string' ? { image: r, title: '', note: '' } : r))
+    .filter((r: any) => r && isImage(r.image))
+    .slice(0, MAX_REFS)
+  const refs: string[] = entries.map((r: any) => r.image)
+  const clip = (v: unknown, n: number) => (typeof v === 'string' ? v.trim().slice(0, n) : '')
+  const labels: Label[] = entries.map((r: any) => ({ title: clip(r.title, 120), note: clip(r.note, 400) }))
   const note = typeof input.note === 'string' ? input.note.trim().slice(0, 1000) : ''
   if (!isImage(base)) return reply(400, { error: 'Das Raumbild fehlt.' })
 
@@ -129,7 +146,7 @@ Deno.serve(async (request) => {
     'Content-Type': 'application/json',
     'X-Title': 'Bautagebuch Einrichtung',
   }
-  const text = prompt(refs.length, note)
+  const text = prompt(refs.length, note, labels)
   const images = [base, ...refs].map((url) => ({ type: 'image_url', image_url: { url } }))
 
   // Models that also write text (Gemini, GPT-5 image, …) answer on chat
