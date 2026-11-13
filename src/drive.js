@@ -104,7 +104,7 @@ export function driveFileUrl(fileId) {
 }
 
 export function driveFolderUrl(folderId) {
-  return `https://drive.google.com/drive/folders/${folderId}`
+  return `https://drive.google.com/drive/folders/${encodeURIComponent(folderId)}`
 }
 
 // ---- access token ---------------------------------------------------------
