@@ -800,7 +800,7 @@ export async function mountViewer(host, opts) {
     };
 
     const levels = Object.fromEntries(D.levels.map(l => [l.id, l]));
-    const roof = makeRoof(D.roof);
+    const roof = D.roof ? makeRoof(D.roof) : null;   // no roof: a site without a house model yet (Gelände only)
 
     // walls
     for (const w of D.walls) {
@@ -1028,7 +1028,7 @@ export async function mountViewer(host, opts) {
     }
 
     // roof
-    {
+    if (D.roof) {
       const r = D.roof, g = groups.roof, th = r.thickness;
       const [x0, x1] = r.eaves.x;
       for (const s of [-1, 1]) {
@@ -1522,7 +1522,7 @@ export async function mountViewer(host, opts) {
     return [];
   }
   const LEVEL_TEXT = {
-    all: ['Gesamtes Haus', () => `First +${DATA.roof.ridgeHeight.toFixed(2)} · ${DATA.roof.pitch}° Ziegeldach`],
+    all: ['Gesamtes Haus', () => DATA.roof ? `First +${DATA.roof.ridgeHeight.toFixed(2)} · ${DATA.roof.pitch}° Ziegeldach` : 'Noch kein Haus, nur Gelände'],
     DG: ['Dachgeschoss', () => `FFB +2.95 · Wohnfläche ${DATA.meta.wohnflaeche?.DG ?? '–'} m²`],
     EG: ['Erdgeschoss', () => `FFB ±0.00 · Wohnfläche ${DATA.meta.wohnflaeche?.EG ?? '–'} m²`],
     KG: ['Kellergeschoss', () => { const k = DATA.levels.find(l => l.id === 'KG'); return `FFB ${k.floor.toFixed(2).replace('-', '−')} · RH ${k.clearHeight.toFixed(2)}`; }],
