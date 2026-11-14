@@ -1364,6 +1364,12 @@ export async function mountViewer(host, opts) {
             add(0.012, h * 0.9, 0.012, casing, -W * 0.12, fy, Dp / 2 + 0.008); add(fr * 2, 0.012, 0.012, casing, -W * 0.12, fy, Dp / 2 + 0.008);
             add(W * 0.18, h * 0.7, 0.01, fm.dark, W * 0.36, pb + h * 0.5, Dp / 2 + 0.003);
             break; }
+          case 'aircon': {   // split air conditioner indoor unit, wall-mounted (f.y = underside above the floor): white casing, air outlet flap at the bottom front (+z local)
+            const h = H ?? 0.29, white = new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: 0.35 });
+            add(W, h, Dp, white, 0, h / 2, 0);
+            add(W - 0.08, 0.035, 0.01, fm.dark, 0, 0.045, Dp / 2 + 0.003);
+            add(W - 0.04, 0.004, 0.006, fm.dark, 0, h * 0.62, Dp / 2 + 0.002);
+            break; }
           case 'stool': {   // bar stool: round seat at ~0.65, footring, steel column
             const h = H ?? 0.65; cyl(0.19, 0.05, fm.oak, 0, h - 0.025, 0); cyl(0.025, h - 0.05, fm.dark, 0, (h - 0.05) / 2, 0);
             cyl(0.2, 0.015, fm.dark, 0, 0.008, 0); const ring = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.01, 6, 20), fm.dark); ring.rotation.x = Math.PI / 2; ring.position.y = 0.3; g.add(ring); break; }
