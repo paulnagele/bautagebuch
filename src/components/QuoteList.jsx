@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Icon from './Icon.jsx'
 import { useDialogs } from '../dialogs.js'
 import { driveFileUrl } from '../drive.js'
 
@@ -118,7 +119,7 @@ function QuoteList({ item, quotes, companies, format, onAdd, onChoose, onDelete 
               <span className="quote-actions">
                 {quote.files.map((file) => (
                   <a key={file.id} className="link" href={driveFileUrl(file.id)} target="_blank" rel="noreferrer">
-                    📄 {file.name}
+                    <Icon name="file" size={16} className="inline-icon" /> {file.name}
                   </a>
                 ))}
                 <button type="button" className="link" onClick={() => handleChoose(quote)} disabled={busy}>
@@ -165,7 +166,7 @@ function QuoteList({ item, quotes, companies, format, onAdd, onChoose, onDelete 
             disabled={busy}
           />
           <label className="quote-file secondary">
-            {adding.file ? `📄 ${adding.file.name}` : 'PDF anhängen'}
+            {adding.file ? adding.file.name : 'PDF anhängen'}
             <input
               type="file"
               accept="application/pdf,image/*"

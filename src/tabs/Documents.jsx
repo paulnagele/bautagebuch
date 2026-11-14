@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import Icon from '../components/Icon.jsx'
 import { useCollection } from '../useCollection.js'
 import { usePersistentState, formatDate } from '../storage.js'
 import { fromRow, toRow } from '../diaryEntries.js'
@@ -207,7 +208,7 @@ function Documents({ onOpenDiary, onOpenTab, onOpenSettings }) {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        {!document.image && <span aria-hidden="true">📄</span>}
+                        {!document.image && <Icon name="file" size={16} className="inline-icon" />}
                         <span className="file-name">{document.name}</span>
                       </a>
                       <span className="muted document-meta">

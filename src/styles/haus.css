@@ -197,7 +197,8 @@ html.haus-full {
 .haus3d .fail button { margin-top: 14px; font-weight: 600; padding: 10px 22px; border-radius: 999px; }
 
 @media (max-width: 700px) {
-  .haus3d { height: calc(100dvh - 8rem); }
+  /* Room for the header and the navigation bar at the bottom. */
+  .haus3d { height: calc(100dvh - 10.5rem - env(safe-area-inset-bottom, 0px)); }
   /* bottom sheet: compact bar by default (version, floor, views, selection), "Mehr" opens everything */
   .haus3d .panel { left: 0; right: 0; width: auto; top: auto; bottom: 0; max-height: 72%; border-radius: 14px 14px 0 0; border-left: 0; border-right: 0; border-bottom: 0;
     box-shadow: 0 -4px 18px rgb(0 0 0 / 0.12); overscroll-behavior: contain; }

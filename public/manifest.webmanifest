@@ -9,8 +9,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f4f5f7",
-  "theme_color": "#f5b301",
+  "background_color": "#eef2f6",
+  "theme_color": "#0f2a44",
   "share_target": {
     "action": "./share-target",
     "method": "POST",
