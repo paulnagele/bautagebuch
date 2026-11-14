@@ -1,4 +1,5 @@
 import { Fragment } from 'react'
+import Icon from './Icon.jsx'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { WEATHER_LABELS, fieldOptions } from '../diaryForm.js'
 import { driveFileUrl } from '../drive.js'
@@ -115,7 +116,7 @@ function EntryCard({
                     aria-label={`Foto ${i + 1} als Dokument`}
                     onClick={() => onToggleDocument(fileId)}
                   >
-                    {isDocument ? '📄 Dokument' : '+ 📄'}
+                    {isDocument ? 'Dokument' : '+ Dokument'}
                   </button>
                 )}
               </li>
@@ -142,7 +143,7 @@ function EntryCard({
           {otherFiles.map((file) => (
             <li key={file.id}>
               <a className="file-chip" href={driveFileUrl(file.id)} target="_blank" rel="noreferrer">
-                <span aria-hidden="true">📄</span>
+                <Icon name="file" size={16} className="inline-icon" />
                 <span className="file-name">{file.name}</span>
               </a>
             </li>

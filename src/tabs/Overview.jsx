@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Icon from '../components/Icon.jsx'
 import { formatDate, today } from '../storage.js'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
@@ -68,7 +69,7 @@ function DocumentIcon({ document }) {
   if (!fileId || preview.fileId !== fileId) {
     return (
       <span className="overview-doc-icon" aria-hidden="true">
-        📄
+        <Icon name="file" size={22} />
       </span>
     )
   }

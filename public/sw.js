@@ -51,6 +51,14 @@ async function keepAssets(cache, html) {
       if (!response.ok) continue
       await cache.put(path, response.clone())
     }
+    // Stylesheets name their fonts ("./inter-latin-wght-normal-1a2B3c4D.woff2").
+    if (name.endsWith('.css')) {
+      const css = await response.clone().text()
+      for (const match of css.matchAll(/url\(["']?(?:\.\/|\/?assets\/)?([\w.-]+\.woff2)["']?\)/g)) {
+        paths.push(`assets/${match[1]}`)
+      }
+      continue
+    }
     if (!name.endsWith('.js')) continue
     // Scripts name the built files they load relative to themselves
     // ("./Finances-1a2B3c4D.js"; the part after the dash is a hash).

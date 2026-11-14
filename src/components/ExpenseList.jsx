@@ -1,4 +1,5 @@
 import { formatDate } from '../storage.js'
+import Icon from './Icon.jsx'
 
 // The expenses behind a budget figure (a category, a Posten or a
 // category's expenses without Posten), newest first. `itemName(expense)`
@@ -20,7 +21,7 @@ function ExpenseList({ expenses, format, itemName, onOpenDiary }) {
                   {!expense.paid && <span className="state-pill state-open">Offen</span>}
                   {expense.hasReceipt && (
                     <span className="state-pill" title="Beleg im Tagebucheintrag">
-                      🧾 Beleg
+                      <Icon name="receipt" size={14} className="inline-icon" /> Beleg
                     </span>
                   )}
                 </span>

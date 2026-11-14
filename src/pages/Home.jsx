@@ -12,6 +12,7 @@ import InstallHint from '../components/InstallHint.jsx'
 import SetupHint from '../components/SetupHint.jsx'
 import UpdateHint from '../components/UpdateHint.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
+import Icon from '../components/Icon.jsx'
 import { startSettings, startTab } from '../startLink.js'
 
 // Finanzen, Zeitplan, Haus, Einrichtung, Dokumente and Heizwärme are loaded when first opened, so
@@ -46,17 +47,27 @@ function lazyTab(load) {
   )
 }
 
+// main: shown in the bar at the bottom on phones; the others are under
+// "Mehr" there. On wider screens all tabs are in one row.
 const TABS = [
-  { id: 'overview', label: 'Home', component: Overview },
-  { id: 'diary', label: 'Tagebuch', component: Diary },
-  { id: 'finances', label: 'Finanzen', component: Finances },
-  { id: 'timetable', label: 'Zeitplan', component: Timetable },
-  { id: 'house', label: 'Haus', component: House },
-  { id: 'interior', label: 'Einrichtung', component: Interior },
-  { id: 'contacts', label: 'Kontakte', component: Contacts },
-  { id: 'documents', label: 'Dokumente', component: Documents },
-  { id: 'energy', label: 'Heizwärme', component: Energy },
+  { id: 'overview', label: 'Home', icon: 'home', main: true, component: Overview },
+  { id: 'diary', label: 'Tagebuch', icon: 'diary', main: true, component: Diary },
+  { id: 'finances', label: 'Finanzen', icon: 'finances', main: true, component: Finances },
+  { id: 'timetable', label: 'Zeitplan', icon: 'timetable', main: true, component: Timetable },
+  { id: 'house', label: 'Haus', icon: 'house', main: true, component: House },
+  { id: 'interior', label: 'Einrichtung', icon: 'interior', component: Interior },
+  { id: 'contacts', label: 'Kontakte', icon: 'contacts', component: Contacts },
+  { id: 'documents', label: 'Dokumente', icon: 'documents', component: Documents },
+  { id: 'energy', label: 'Heizwärme', icon: 'energy', component: Energy },
 ]
+
+// Two letters for the avatar when there is no profile picture.
+function initials(user) {
+  const name = (user.name || user.email || '').replace(/@.*/, '')
+  const parts = name.split(/[\s._-]+/).filter(Boolean)
+  const letters = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : name.slice(0, 2)
+  return letters.toUpperCase()
+}
 
 function Home({ user, onLogout }) {
   // The app opens on the start page, unless a link asks for a tab
@@ -75,6 +86,8 @@ function Home({ user, onLogout }) {
   const [shareChoice, setShareChoice] = useState(null)
   // Which way the last swipe went, so the new tab slides in from that side.
   const [slide, setSlide] = useState(null)
+  // Phones: the sheet with the tabs that are not in the bottom bar.
+  const [moreOpen, setMoreOpen] = useState(false)
   const current = TABS.find((tab) => tab.id === activeTab) ?? TABS[0]
   const ActiveComponent = current.component
   // The diary form's draft (new or edited entry) is kept here, so it is
@@ -159,6 +172,7 @@ function Home({ user, onLogout }) {
   const onHouseRequestTaken = useCallback(() => setHouseRequest(null), [])
 
   function chooseTab(id) {
+    setMoreOpen(false)
     if (settings) closeSettings()
     setFocusEntryId(null)
     setFocusContactId(null)
@@ -274,27 +288,33 @@ function Home({ user, onLogout }) {
 
   return (
     <DialogProvider>
-      <div className="app-shell">
-        <header className="app-header">
-          <h1>Bautagebuch</h1>
+      <header className="app-header">
+        <div className="app-header-inner">
+          <h1>
+            <span className="app-logo">
+              <Icon name="logo" size={18} strokeWidth={2.2} />
+            </span>
+            Bautagebuch
+          </h1>
           <button
             type="button"
             className="user-menu"
             onClick={() => (settings ? closeSettings() : openSettings())}
             aria-label="Einstellungen"
             aria-expanded={Boolean(settings)}
+            title={`${user.name ?? user.email} · Einstellungen`}
           >
-            {user.picture && (
+            {user.picture ? (
               <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />
+            ) : (
+              <span className="avatar avatar-initials" aria-hidden="true">
+                {initials(user)}
+              </span>
             )}
-            <span className="user-email" title={user.email}>
-              {user.name ?? user.email}
-            </span>
-            <span className="settings-gear" aria-hidden="true">
-              ⚙
-            </span>
           </button>
-        </header>
+        </div>
+      </header>
+      <div className="app-shell">
 
         <UpdateHint />
         <InstallHint />
@@ -313,22 +333,68 @@ function Home({ user, onLogout }) {
           </main>
         ) : (
           <>
-            <nav className="tabs" role="tablist">
-              {TABS.map((tab) => (
+            <nav className="tabs" aria-label="Bereiche">
+              <div className="tabs-row" role="tablist">
+                {TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    id={`tab-${tab.id}`}
+                    aria-selected={tab.id === current.id}
+                    aria-controls={`panel-${tab.id}`}
+                    className={[
+                      'tab',
+                      tab.id === current.id && 'active',
+                      !tab.main && 'tab-extra',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    onClick={() => chooseTab(tab.id)}
+                  >
+                    <Icon name={tab.icon} />
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
                 <button
-                  key={tab.id}
                   type="button"
-                  role="tab"
-                  id={`tab-${tab.id}`}
-                  aria-selected={tab.id === current.id}
-                  aria-controls={`panel-${tab.id}`}
-                  className={tab.id === current.id ? 'tab active' : 'tab'}
-                  onClick={() => chooseTab(tab.id)}
+                  className={current.main ? 'tab tab-more' : 'tab tab-more active'}
+                  aria-expanded={moreOpen}
+                  onClick={() => setMoreOpen((open) => !open)}
                 >
-                  {tab.label}
+                  <Icon name={current.main ? 'more' : current.icon} />
+                  <span>{current.main ? 'Mehr' : current.label}</span>
                 </button>
-              ))}
+              </div>
             </nav>
+            {moreOpen && (
+              <div className="more-sheet" role="dialog" aria-label="Weitere Bereiche" onClick={() => setMoreOpen(false)}>
+                <div className="more-sheet-box" onClick={(event) => event.stopPropagation()}>
+                  {TABS.filter((tab) => !tab.main).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={tab.id === current.id ? 'more-item active' : 'more-item'}
+                      onClick={() => chooseTab(tab.id)}
+                    >
+                      <Icon name={tab.icon} />
+                      {tab.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="more-item"
+                    onClick={() => {
+                      setMoreOpen(false)
+                      openSettings()
+                    }}
+                  >
+                    <Icon name="settings" />
+                    Einstellungen
+                  </button>
+                </div>
+              </div>
+            )}
 
             <main
               key={current.id}

@@ -14,9 +14,8 @@
   max-width: 360px;
   padding: 2rem;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.06);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
 }
 
 .login-card h1 {
@@ -54,95 +53,268 @@
 
 /* App shell */
 .app-shell {
-  max-width: 1000px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 1rem 1rem 3rem;
+  padding: 0 1rem 3rem;
   /* A tab sliding in after a swipe must not widen the page. */
   overflow-x: clip;
 }
 
+/* Navy header with logo, sticky at the top, across the whole width. */
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  margin-bottom: 1rem;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--brand);
+  color: var(--brand-fg);
+}
+
+.app-header-inner {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0.65rem 1rem;
 }
 
 .app-header h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.app-logo {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--brand-accent);
+  color: #fff;
+  flex: none;
 }
 
 .user-menu {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  min-width: 0;
-  max-width: 100%;
+  padding: 0;
   background: transparent;
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.25rem 0.75rem 0.25rem 0.25rem;
+  border-radius: 50%;
 }
 
 .user-menu:hover:not(:disabled),
 .user-menu[aria-expanded='true'] {
-  background: var(--surface);
+  background: transparent;
 }
 
-.settings-gear {
-  font-size: 1.15rem;
-  line-height: 1;
-  color: var(--muted);
+.user-menu[aria-expanded='true'] .avatar {
+  box-shadow: 0 0 0 2px var(--brand-accent);
 }
 
 .avatar {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.user-email {
-  color: var(--muted);
-  font-size: 0.9rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.avatar-initials {
+  display: grid;
+  place-items: center;
+  background: var(--brand-2);
+  color: var(--brand-fg);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
+/* Navigation: on wide screens one row of tabs under the header. */
 .tabs {
+  margin-bottom: 1.25rem;
+}
+
+.tabs-row {
   display: flex;
   gap: 0.25rem;
-  margin-bottom: 1.25rem;
-  /* Drawn as a shadow, not a border, so the active tab's underline can sit
-     on it without poking out of the row: that made the row scroll up and
-     down and show a vertical scroll bar. */
-  box-shadow: inset 0 -1px 0 var(--border);
+  padding: 0.3rem;
+  background: var(--surface);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
   overflow-x: auto;
-  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
 .tabs .tab {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
   background: transparent;
   color: var(--muted);
-  border-radius: 0;
-  border-bottom: 2px solid transparent;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 550;
   white-space: nowrap;
 }
 
+.tabs .tab .icon {
+  width: 18px;
+  height: 18px;
+}
+
 .tabs .tab:hover:not(:disabled) {
-  background: transparent;
+  background: var(--surface-2);
   color: var(--text);
 }
 
-.tabs .tab.active {
+.tabs .tab.active,
+.tabs .tab.active:hover:not(:disabled) {
+  background: var(--accent-soft);
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  font-weight: 650;
+}
+
+/* "Mehr" is only needed on phones. */
+.tabs .tab-more {
+  display: none;
+}
+
+/* Phones: a bar at the bottom with the main tabs and "Mehr". */
+@media (max-width: 720px) {
+  .app-shell {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .tabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    margin: 0;
+    background: var(--nav-bg);
+    box-shadow: 0 -1px 0 var(--border);
+    backdrop-filter: saturate(1.6) blur(12px);
+    -webkit-backdrop-filter: saturate(1.6) blur(12px);
+  }
+
+  .tabs-row {
+    padding: 0.3rem 0.25rem calc(0.3rem + env(safe-area-inset-bottom, 0px));
+    gap: 0;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .tabs .tab {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.35rem 0.1rem;
+    border-radius: 12px;
+    font-size: 0.68rem;
+    font-weight: 550;
+    color: var(--nav-fg);
+  }
+
+  .tabs .tab span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tabs .tab .icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .tabs .tab:hover:not(:disabled) {
+    background: transparent;
+    color: var(--nav-fg);
+  }
+
+  .tabs .tab.active,
+  .tabs .tab.active:hover:not(:disabled) {
+    background: transparent;
+    color: var(--accent);
+  }
+
+  .tabs .tab.tab-extra {
+    display: none;
+  }
+
+  .tabs .tab-more {
+    display: flex;
+  }
+}
+
+/* The sheet behind "Mehr" (phones). */
+.more-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  display: flex;
+  align-items: flex-end;
+  background: rgb(11 27 43 / 0.35);
+  animation: fade-in 0.15s ease-out;
+}
+
+.more-sheet-box {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  padding: 1rem 1rem calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  box-shadow: var(--shadow-lg);
+  animation: sheet-up 0.2s ease-out;
+}
+
+.more-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.9rem 0.25rem;
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 14px;
+  font-size: 0.82rem;
   font-weight: 600;
+}
+
+.more-item:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.more-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.more-item .icon {
+  color: var(--accent);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(30%);
+  }
 }
 
 .install-hint {
@@ -153,9 +325,9 @@
   margin-bottom: 1rem;
   padding: 0.6rem 0.75rem;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 4px solid #f5b301;
-  border-radius: 8px;
+  border-left: 4px solid var(--warning);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
 }
 
 .install-hint > span {
@@ -193,19 +365,5 @@
   .tab-panel.slide-next,
   .tab-panel.slide-prev {
     animation: none;
-  }
-}
-
-/* Keep all five tabs visible on phones. */
-@media (max-width: 480px) {
-  /* Tight enough that the five German tab names fit on a phone. */
-  .tabs {
-    gap: 0;
-  }
-
-  .tabs .tab {
-    flex: 1 1 auto;
-    padding: 0.6rem 0.2rem;
-    font-size: 0.875rem;
   }
 }

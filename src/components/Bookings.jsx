@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import Icon from './Icon.jsx'
 import { formatDate, today, usePersistentState } from '../storage.js'
 import { useDialogs } from '../dialogs.js'
 import DateInput from './DateInput.jsx'
@@ -247,7 +248,7 @@ function Bookings({
                             {!item.paid && <span className="state-pill state-open">Offen</span>}
                             {item.hasReceipt && (
                               <span className="state-pill" title="Beleg im Tagebucheintrag">
-                                🧾 Beleg
+                                <Icon name="receipt" size={14} className="inline-icon" /> Beleg
                               </span>
                             )}
                           </span>
