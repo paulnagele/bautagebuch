@@ -517,10 +517,31 @@ button.chip.active:hover:not(:disabled) {
   line-height: 1;
 }
 
+/* "Ältere anzeigen" below the Verlauf */
+button.show-older {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
 /* A contact's name in a diary entry, linking to the contact */
 button.link.contact-link {
   padding: 0;
   font: inherit;
+}
+
+/* Call button next to a contact's name (only when the contact has a number) */
+a.call-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 /* Diary search */

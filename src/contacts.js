@@ -25,3 +25,8 @@ export function contactToRow(contact) {
     pinned: contact.pinned,
   }
 }
+
+// Keeps digits and a leading "+" so the number works as a tel: link.
+export function telHref(phone) {
+  return `tel:${phone.replace(/[^\d+]/g, '')}`
+}

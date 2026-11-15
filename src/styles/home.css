@@ -158,3 +158,31 @@ a.overview-document {
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+/* "Foto aufnehmen": photos straight into a status entry of today */
+.quick-photo {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.quick-photo-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.quick-photo-note {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.quick-photo .error {
+  margin: 0;
+}

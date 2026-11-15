@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
-import { contactFromRow, contactToRow } from '../contacts.js'
+import { contactFromRow, contactToRow, telHref } from '../contacts.js'
 
 const FIELDS = ['name', 'role', 'company', 'phone', 'email', 'notes']
 
@@ -9,10 +9,6 @@ function emptyForm() {
   return { name: '', role: '', company: '', phone: '', email: '', notes: '', pinned: false }
 }
 
-// Keeps digits and a leading "+" so the number works as a tel: link.
-function telHref(phone) {
-  return `tel:${phone.replace(/[^\d+]/g, '')}`
-}
 
 function matches(contact, query) {
   const q = query.trim().toLowerCase()

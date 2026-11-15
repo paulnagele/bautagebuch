@@ -4,6 +4,7 @@ import { formatDate, today } from '../storage.js'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { useCollection } from '../useCollection.js'
 import DrivePhoto from '../components/DrivePhoto.jsx'
+import QuickPhoto from '../components/QuickPhoto.jsx'
 import { fromRow, toRow } from '../diaryEntries.js'
 import { itemFromRow, itemToRow } from '../budgetItems.js'
 import { quoteFromRow, quoteToRow } from '../planning.js'
@@ -79,7 +80,7 @@ function DocumentIcon({ document }) {
 // The start page: what comes next, what is still open, and the newest
 // photos. Everything opens in the diary; data is the diary's own and stays
 // live through the same Realtime subscription.
-function Overview({ onOpenDiary, onOpenTab }) {
+function Overview({ user, onOpenDiary, onOpenTab }) {
   const { rows: entries, status, error } = useCollection('diary_entries', { fromRow, toRow })
   const quoteStore = useCollection('quotes', { fromRow: quoteFromRow, toRow: quoteToRow })
   const itemStore = useCollection('budget_items', { fromRow: itemFromRow, toRow: itemToRow })
@@ -134,6 +135,7 @@ function Overview({ onOpenDiary, onOpenTab }) {
 
   return (
     <section className="tab-content overview">
+      <QuickPhoto user={user} onOpenEntry={(entry) => onOpenDiary({ entry })} />
       <div className="card overview-card">
         <div className="overview-head">
           <h2>Nächste Termine</h2>

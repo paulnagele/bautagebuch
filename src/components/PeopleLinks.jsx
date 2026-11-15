@@ -1,4 +1,6 @@
 import { Fragment } from 'react'
+import Icon from './Icon.jsx'
+import { telHref } from '../contacts.js'
 
 // The contact a typed name stands for: same name (ignoring case), or else
 // the only contact of that company ("Elektro Maier").
@@ -12,7 +14,8 @@ function findContact(name, contacts) {
 }
 
 // People as typed ("Sabine Maier, Hr. Gruber"); names that match a contact
-// become links to it, anything else stays plain text.
+// become links to it, anything else stays plain text. Contacts with a phone
+// number get a small call button right next to the name.
 function PeopleLinks({ text, contacts, onOpen }) {
   return text.split(',').map((part, i) => {
     const contact = onOpen && findContact(part, contacts)
@@ -25,6 +28,17 @@ function PeopleLinks({ text, contacts, onOpen }) {
             <button type="button" className="link contact-link" onClick={() => onOpen(contact)}>
               {part.trim()}
             </button>
+            {contact.phone && (
+              <a
+                className="call-link"
+                href={telHref(contact.phone)}
+                title={`${contact.name} anrufen (${contact.phone})`}
+                aria-label={`${contact.name} anrufen`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Icon name="phone" size={15} strokeWidth={2} />
+              </a>
+            )}
           </>
         ) : (
           part
