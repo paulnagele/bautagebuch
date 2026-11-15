@@ -28,6 +28,9 @@ import Lightbox from '../components/Lightbox.jsx'
 import DateInput from '../components/DateInput.jsx'
 
 // An entry's details with its calendar event's ID set, or removed (null).
+// Verlauf entries shown at first, and added by each "Ältere anzeigen".
+const HISTORY_PAGE = 30
+
 function withEventId(details, eventId) {
   const next = { ...details }
   if (eventId) next.calendarEventId = eventId
@@ -70,6 +73,9 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
   const [query, setQuery] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  // How many Verlauf entries are shown; older ones come on request so the
+  // diary stays quick with many photos. Searching shows all matches.
+  const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE)
 
   const todayDate = today()
   const expenseCategoryRows = expenseCategories(categoryStore.rows)
@@ -102,10 +108,31 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
   const focusSection = sections.find((section) =>
     section.entries.some((entry) => entry.id === focusEntryId),
   )?.key
+  // How far down Verlauf the entry opened from the start page sits.
+  const focusReach =
+    (sections.find((section) => section.key === 'history')?.entries ?? []).findIndex(
+      (entry) => entry.id === focusEntryId,
+    ) + 1
+  // Verlauf grows to an older entry opened from the start page, so it stays
+  // listed once the focus is handed back (state adjusted while rendering).
+  if (focusReach > historyLimit) setHistoryLimit(focusReach)
   // A lone part has no heading, so it cannot be folded away; the part
   // holding an entry opened from the start page is unfolded.
   const isCollapsed = (key) =>
     sections.length > 1 && key !== focusSection && collapsed.includes(key)
+
+  // The entries of a part as listed: Verlauf stops after historyLimit, but
+  // always reaches far enough to show an entry opened from the start page
+  // or being edited.
+  function listedEntries(section) {
+    if (section.key !== 'history' || searching) return section.entries
+    const reach = Math.max(
+      historyLimit,
+      focusReach,
+      section.entries.findIndex((entry) => entry.id === editingId) + 1,
+    )
+    return section.entries.slice(0, reach)
+  }
 
   function toggleSection(key) {
     setCollapsed((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]))
@@ -467,6 +494,8 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
 
       {sections.map((section) => {
         const folded = isCollapsed(section.key)
+        const listed = listedEntries(section)
+        const hidden = section.entries.length - listed.length
         return (
           <section key={section.key} className="entry-section">
             {sections.length > 1 && (
@@ -485,7 +514,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
             )}
             {!folded && (
               <ul className="entry-list">
-                {section.entries.map((entry) => (
+                {listed.map((entry) => (
                   <EntryCard
                     key={entry.id}
                     entry={entry}
@@ -502,6 +531,17 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
                   />
                 ))}
               </ul>
+            )}
+            {!folded && hidden > 0 && (
+              <button
+                type="button"
+                className="secondary show-older"
+                onClick={() => setHistoryLimit(listed.length + HISTORY_PAGE)}
+              >
+                {hidden > HISTORY_PAGE
+                  ? `${HISTORY_PAGE} ältere anzeigen (noch ${hidden})`
+                  : `Ältere anzeigen (${hidden})`}
+              </button>
             )}
           </section>
         )
