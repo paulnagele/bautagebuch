@@ -167,6 +167,11 @@ html.haus-full {
 .haus3d .earth, .haus3d .fullbtn { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px 0 10px; border-radius: 999px; background: var(--h-panel); border: 1px solid var(--h-line); color: var(--h-ink); font: inherit; font-size: 13px; text-decoration: none; cursor: pointer; }
 .haus3d .earth:hover, .haus3d .fullbtn:hover { border-color: var(--h-accent); color: var(--h-accent); background: var(--h-panel); }
 .haus3d .earth svg, .haus3d .fullbtn svg { width: 18px; height: 18px; }
+/* "Auswählen": tapping the model selects parts only while it is on */
+.haus3d .pickbtn[aria-pressed="true"], .haus3d .pickbtn[aria-pressed="true"]:hover { background: var(--h-accent); border-color: var(--h-accent); color: var(--h-accent-ink); }
+.haus3d.picking canvas { cursor: crosshair; }
+/* the open version was changed elsewhere while there is an unsaved preview */
+.haus3d .headrow .stale { margin-left: auto; }
 .haus3d .earth[hidden] { display: none; }
 /* Begehen: only the Datum & Uhrzeit button stays, under the compass (the hint bar takes the top row) */
 .haus3d.walking .corner > :not(.sunbtn) { display: none; }

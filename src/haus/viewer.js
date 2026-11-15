@@ -42,6 +42,9 @@ import { sunPosition } from './sun.js'
 import { mountSunPanel } from './sunPanel.js'
 import { findModelRoom, roomAt } from './rooms.js'
 
+// Display chips kept when the app is left and opened again.
+const SHOW_KEYS = ['roof', 'terrain', 'labels', 'edges', 'neighbors', 'roads', 'power', 'addresses', 'trees', 'furniture', 'lights', 'garden', 'cutfill', 'contours', 'grid']
+
 const VIEW_HTML = `
 <div class="stage" data-h="stage"></div>
 <div class="walkhud" data-h="walkhud" hidden role="status"><span data-h="walkmsg"></span><button type="button" data-h="walkshot" hidden title="Diese Ansicht als Bild für die Einrichtung speichern">Aufnehmen</button><button type="button" data-h="walkexit">Beenden</button></div>
@@ -63,7 +66,7 @@ const VIEW_HTML = `
 
 <aside class="panel" data-h="panel" aria-label="Steuerung">
   <header>
-    <div class="headrow"><span class="state" data-h="state">Version</span><button type="button" class="sheetbtn" data-h="sheetbtn" aria-expanded="false">Mehr</button></div>
+    <div class="headrow"><span class="state" data-h="state">Version</span><button type="button" class="dirty stale" data-h="stale" hidden title="Diese Version wurde inzwischen geändert">Neue Fassung laden</button><button type="button" class="sheetbtn" data-h="sheetbtn" aria-expanded="false">Mehr</button></div>
     <h2 data-h="title"></h2>
     <span class="addr" data-h="addr"></span>
   </header>
@@ -160,7 +163,7 @@ const VIEW_HTML = `
 
   <section class="infosec">
     <div class="vhead"><span class="label">Auswahl</span><button type="button" class="sheetx" data-h="infoclose" aria-label="Auswahl schließen" hidden>×</button></div>
-    <div class="info" data-h="info"><span class="empty">Wand, Fenster, Bauteil oder Gelände antippen, um Maße, Koordinaten und Höhe zu sehen.</span></div>
+    <div class="info" data-h="info"></div>
   </section>
 
   <section class="editsec" data-h="editsec">
@@ -184,6 +187,8 @@ const VIEW_HTML = `
   <svg viewBox="-32 -32 64 64"><circle r="30"/><g data-h="needle"><path d="M0,-24 L6,4 L0,0 L-6,4 Z"/><text x="0" y="-8" text-anchor="middle" dy="-18">N</text></g></svg>
 </div>
 <div class="corner">
+  <button type="button" class="fullbtn pickbtn" data-h="pickbtn" aria-pressed="false" title="Auswählen: Bauteil antippen, um Maße und Höhe zu sehen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l14 7-6 2-2 6z"/><path d="M13 12l5 5"/></svg><span class="txt">Auswählen</span></button>
   <button type="button" class="fullbtn chatbtn" data-h="chatbtn" title="Claude fragen" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></svg><span class="txt">Claude</span></button>
   <button type="button" class="fullbtn sunbtn" data-h="sunbtn" aria-expanded="false" aria-haspopup="dialog"><span class="ico"></span><span class="txt"></span><span class="short mono"></span></button>
@@ -1523,6 +1528,8 @@ export async function mountViewer(host, opts) {
 
   // ---------- UI state ----------
   const state = { level: 'all', roof: true, terrain: true, labels: true, edges: false, cut: 'off', cutPos: 0, neighbors: true, roads: true, power: true, addresses: false, trees: true, furniture: true, lights: true, garden: true, cutfill: false, contours: false, grid: false };
+  // Display chips as they were when the app was last left (House.jsx keeps them per device).
+  for (const [k, v] of Object.entries(opts.restore?.show ?? {})) if (SHOW_KEYS.includes(k) && typeof v === 'boolean') state[k] = v;
   const ORDER = ['KG', 'EG', 'DG'];
   function applyVisibility() {
     if (!root) return;
@@ -1620,11 +1627,17 @@ export async function mountViewer(host, opts) {
 
   // picking
   const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2(); let down = null, selected = null, selMat = null;
+  // Tapping only selects while "Auswählen" (upper right) is on, so turning and zooming never marks a part by accident.
+  const EMPTY_PICK = '<span class="empty">Wand, Fenster, Bauteil oder Gelände antippen, um Maße, Koordinaten und Höhe zu sehen.</span>';
+  const EMPTY_OFF = '<span class="empty">Oben „Auswählen“ einschalten, dann Wand, Fenster, Bauteil oder Gelände antippen, um Maße, Koordinaten und Höhe zu sehen.</span>';
+  let picking = false;
+  function setPicking(v) { picking = v; $('pickbtn').setAttribute('aria-pressed', String(v)); host.classList.toggle('picking', v); select(null); }
+  $('pickbtn').addEventListener('click', () => setPicking(!picking));
   renderer.domElement.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
   renderer.domElement.addEventListener('pointerup', e => {
     if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > (e.pointerType === 'touch' ? 12 : 5)) return;
     if (walk.pending) { walkPick(e); return; }
-    if (gardenEd?.active) return;
+    if (gardenEd?.active || !picking) return;
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
@@ -1659,7 +1672,7 @@ export async function mountViewer(host, opts) {
     const info = $('info');
     pin.visible = !!(obj && pt); if (pin.visible) { pin.position.copy(pt); pinSize(); } kick(300);
     $('panel').classList.toggle('has-sel', !!obj); $('infoclose').hidden = !obj;
-    if (!obj) { info.innerHTML = '<span class="empty">Wand, Fenster, Bauteil oder Gelände antippen, um Maße, Koordinaten und Höhe zu sehen.</span>'; return; }
+    if (!obj) { info.innerHTML = picking ? EMPTY_PICK : EMPTY_OFF; return; }
     if (obj.userData.kind === 'terrain') { info.innerHTML = '<h3>Punkt im Gelände</h3>' + pointHtml(pt, true); return; }
     if (obj.isMesh && !obj.isInstancedMesh) { selected = obj; selMat = obj.material; obj.material = obj.material.clone(); obj.material.emissive = new THREE.Color(cssVar('--accent') || '#2d6a55'); obj.material.emissiveIntensity = 0.45; }
     info.innerHTML = describe(obj.userData.items && inst != null ? { kind: obj.userData.kind, data: obj.userData.items[inst] } : obj.userData) + (pt ? pointHtml(pt, false) : '');
@@ -1802,11 +1815,51 @@ export async function mountViewer(host, opts) {
     } else d = structuredClone(d);
     try { build(d); } catch (e) { setVmsg('Version lässt sich nicht darstellen: ' + e.message, true); build(DATA); return; }
     DATA = d; currentId = id; currentJson = JSON.stringify(d); fillEditor(); setLevel(state.level); select(null);
-    renderVersions();
+    $('stale').hidden = true; renderVersions();
   }
   // For the Haus chat: open a version Claude saved or changed. reload: fetch
   // its model again (Claude changed it in place); a new id reloads the list.
   dispose.walkTo = (spec) => walkTo(spec);
+  // Someone (the Haus chat, Claude's login, another phone) changed versions in the database:
+  // fetch the list again. Versions whose model changed (updated_at) are dropped from the cache;
+  // the open one is redrawn at once, keeping camera, level and chips, unless there is an unsaved
+  // preview or the Gestalten mode is on: then "Neue Fassung laden" offers it.
+  let refreshing = null;
+  dispose.refresh = () => (refreshing = (refreshing ?? Promise.resolve()).then(refreshNow).finally(() => { refreshing = null; }));
+  async function refreshNow() {
+    if (disposed || !store.list) return;
+    let list; try { list = await store.list(); } catch { return; }
+    if (disposed) return;
+    const before = new Map(versions.map(v => [v.id, v.updated_at]));
+    versions = list;
+    const changed = id => { const v = list.find(x => x.id === id); return !!v && before.has(id) && before.get(id) !== v.updated_at; };
+    for (const id of [...models.keys()]) if (id !== currentId && changed(id)) models.delete(id);
+    if (changed(currentId)) {
+      let d; try { d = await store.load(currentId); } catch { renderVersions(); return; }
+      if (disposed) return;
+      const json = JSON.stringify(d);
+      if (json !== currentJson) {
+        models.set(currentId, structuredClone(d));
+        if (isDirty() || gardenEd?.active) $('stale').hidden = false;
+        else {
+          try { build(d); } catch (e) { setVmsg('Die geänderte Version lässt sich nicht darstellen: ' + e.message, true); build(DATA); renderVersions(); return; }
+          DATA = d; currentJson = json; fillEditor(); setLevel(state.level); select(null);
+          $('stale').hidden = true; kick(600);
+        }
+      }
+    }
+    renderVersions();
+  }
+  $('stale').addEventListener('click', () => { $('stale').hidden = true; openVersion(currentId); });
+  // What to keep when the app is left, so it opens the same way again (House.jsx stores it).
+  dispose.viewState = () => {
+    const cam = walk.saved && (walk.active || walk.pending) ? walk.saved : { pos: camera.position, tgt: controls.target, level: state.level };
+    return {
+      versionId: currentId, level: cam.level, full: host.classList.contains('full'),
+      cam: [...cam.pos.toArray(), ...cam.tgt.toArray()].map(v => Math.round(v * 1000) / 1000),
+      show: Object.fromEntries(SHOW_KEYS.map(k => [k, state[k]])),
+    };
+  };
   dispose.openVersion = async (id, { reload = false } = {}) => {
     const dropped = reload && id === currentId && isDirty();
     if (reload) models.delete(id);
@@ -2200,6 +2253,8 @@ export async function mountViewer(host, opts) {
   $('addr').textContent = DATA.meta.address;
   resize();
   fitTarget(); camera.position.set(...VIEWS.persp).multiplyScalar(viewScale()); controls.target.copy(target);
+  const rc = opts.restore?.cam;   // the view from when the app was last left
+  if (!opts.walkTo && Array.isArray(rc) && rc.length === 6 && rc.every(Number.isFinite)) { camera.position.fromArray(rc, 0); controls.target.fromArray(rc, 3); controls.update(); }
   // Labels are drawn with the app's font; don't wait for it for ever.
   await Promise.race([document.fonts?.ready, new Promise((done) => setTimeout(done, 2000))]);
   if (disposed) return dispose;
@@ -2256,7 +2311,7 @@ export async function mountViewer(host, opts) {
     });
     $('gardenbtn').addEventListener('click', () => gardenEd.enter());
   }
-  build(DATA); fillEditor(); setLevel('all');
+  build(DATA); fillEditor(); setLevel(LEVEL_TEXT[opts.restore?.level] ? opts.restore.level : 'all'); select(null);
   renderVersions();
   $('loading').hidden = true;
   if (opts.walkTo) walkTo(opts.walkTo);

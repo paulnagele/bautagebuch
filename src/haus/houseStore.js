@@ -5,7 +5,7 @@
 import { supabase } from '../supabase.js'
 import { friendlyError } from '../useCollection.js'
 
-const LIST_COLUMNS = 'id, name, note, parent_id, is_current, locked, created_at'
+const LIST_COLUMNS = 'id, name, note, parent_id, is_current, locked, created_at, updated_at'
 
 function failed(error) {
   return new Error(friendlyError(error))
@@ -314,6 +314,32 @@ export function watchChat(onChange, isWaiting = () => false) {
   }, 20000)
   return () => {
     clearInterval(timer)
+    document.removeEventListener('visibilitychange', onVisible)
+    supabase.removeChannel(channel)
+  }
+}
+
+// Calls onChange() when versions may have changed (added, renamed, deleted,
+// a model replaced in place by the Haus chat or Claude's login); returns a
+// function that stops it. Phones drop the live connection in the
+// background, so it also calls onChange() when the connection comes back
+// and when the page becomes visible again. The list is small; the viewer
+// only loads a model again when its updated_at changed.
+export function watchVersions(onChange) {
+  let first = true
+  const channel = supabase
+    .channel('live:house_versions')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'house_versions' }, () => onChange())
+    .subscribe((state) => {
+      if (state !== 'SUBSCRIBED') return
+      if (!first) onChange()
+      first = false
+    })
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') onChange()
+  }
+  document.addEventListener('visibilitychange', onVisible)
+  return () => {
     document.removeEventListener('visibilitychange', onVisible)
     supabase.removeChannel(channel)
   }

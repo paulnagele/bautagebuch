@@ -15,11 +15,17 @@ import {
   revokeShare,
   saveVersion,
   setCurrentVersion,
+  watchVersions,
 } from '../haus/houseStore.js'
 import { mountViewer, showFailure } from '../haus/viewer.js'
 import HouseChat from '../haus/HouseChat.jsx'
 import CaptureDialog from '../components/CaptureDialog.jsx'
 import { takeFullStart } from '../startLink.js'
+import { loadJSON, saveJSON } from '../storage.js'
+
+// How the model was shown when the app was last left (version, level,
+// camera, Vollbild, display chips), so it opens the same way again.
+const VIEW_KEY = 'haus.view'
 
 const store = {
   list: listVersions,
@@ -91,9 +97,14 @@ async function fetchHouse() {
   try {
     const [versions, context] = await Promise.all([listVersions(), loadContext()])
     if (versions.length === 0) return { status: 'empty' }
-    const current = versions.find((version) => version.is_current) ?? versions[0]
+    const saved = loadJSON(VIEW_KEY, null)
+    const current =
+      versions.find((version) => version.id === saved?.versionId) ??
+      versions.find((version) => version.is_current) ??
+      versions[0]
     const model = await loadModel(current.id)
-    return { status: 'ready', view: { versions, currentId: current.id, model, context } }
+    const restore = saved?.versionId === current.id ? saved : null
+    return { status: 'ready', view: { versions, currentId: current.id, model, context, restore } }
   } catch (error) {
     return { status: 'error', error: error.message }
   }
@@ -109,6 +120,13 @@ function readLite() {
     return false
   }
 }
+
+function keepView(viewer) {
+  const state = (viewer ?? currentViewer)?.viewState?.()
+  if (state) saveJSON(VIEW_KEY, state)
+}
+// The mounted viewer, for keepView() (there is only one Haus tab).
+let currentViewer = null
 
 function HouseViewer({ view, user, request, onRequestTaken, onOpenInterior }) {
   const hostRef = useRef(null)
@@ -128,6 +146,9 @@ function HouseViewer({ view, user, request, onRequestTaken, onOpenInterior }) {
   const [chatOpen, setChatOpen] = useState(false)
   const [version, setVersion] = useState(null)
   const viewerRef = useRef(null)
+  // The saved view is applied once; a remount (e.g. light mode) keeps the
+  // live view the viewer had instead.
+  const restored = useRef(false)
   const closeChat = useCallback(() => setChatOpen(false), [])
 
   useEffect(() => {
@@ -143,6 +164,9 @@ function HouseViewer({ view, user, request, onRequestTaken, onOpenInterior }) {
       setLite(true)
     }
     const onChat = () => setChatOpen(true)
+    // First mount: the view saved when the app was last left. A remount
+    // (light mode): the view just kept by the cleanup below.
+    const restore = restored.current ? loadJSON(VIEW_KEY, null) : view.restore
     const onVersion = (row) => setVersion(row ? { id: row.id, name: row.name } : null)
     mountViewer(host, {
       ...view,
@@ -153,13 +177,14 @@ function HouseViewer({ view, user, request, onRequestTaken, onOpenInterior }) {
       onChat,
       chatReady: chatConfigured(),
       onVersion,
-      full: takeFullStart() || Boolean(asked),
+      restore,
+      full: takeFullStart() || Boolean(asked) || Boolean(restore?.full),
       onCapture: setShot,
       walkTo: asked ? { spot: asked.spot, room: asked.room } : undefined,
     })
       .then((done) => {
         if (left) done?.()
-        else viewerRef.current = dispose = done
+        else viewerRef.current = currentViewer = dispose = done
       })
       .catch((error) => {
         console.error(error)
@@ -168,10 +193,41 @@ function HouseViewer({ view, user, request, onRequestTaken, onOpenInterior }) {
       })
     return () => {
       left = true
+      keepView(dispose)
+      restored.current = true
+      if (currentViewer === dispose) currentViewer = null
       viewerRef.current = null
       dispose?.()
     }
   }, [view, lite, asked])
+
+  // Changes from elsewhere (Haus chat, Claude's login, another phone) show
+  // up live; a burst of events is fetched once.
+  useEffect(() => {
+    let timer = 0
+    const stop = watchVersions(() => {
+      clearTimeout(timer)
+      timer = setTimeout(() => viewerRef.current?.refresh?.(), 300)
+    })
+    return () => {
+      clearTimeout(timer)
+      stop()
+    }
+  }, [])
+
+  // Keep the view when the app goes to the background (it may be closed
+  // there) and when the tab is left.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') keepView()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', keepView)
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', keepView)
+    }
+  }, [])
 
   // data-no-swipe: dragging turns the model instead of switching tabs.
   return (
