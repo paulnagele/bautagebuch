@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
-import { newId, saveJSON } from '../storage.js'
+import { loadJSON, newId, saveJSON } from '../storage.js'
 import { useSwipeTabs } from '../useSwipeTabs.js'
 import { loadGoogleScript } from '../google.js'
 import { clearShareParam, doneWithShared, takeShared } from '../share.js'
@@ -61,6 +61,71 @@ const TABS = [
   { id: 'energy', label: 'Heizwärme', icon: 'energy', component: Energy },
 ]
 
+// Where the app was left, kept on this device.
+const TAB_KEY = 'app.tab'
+const SCROLL_KEY = 'app.scroll'
+
+function savedTab() {
+  const id = loadJSON(TAB_KEY, null)
+  return TABS.some((tab) => tab.id === id) ? id : null
+}
+
+// Keeps the scroll position of the open tab, and when the app starts on
+// that tab again, scrolls back there. Tabs fill in after their data has
+// loaded, so it waits (up to a few seconds) until the page is long enough,
+// and gives up as soon as the user scrolls or touches the page.
+function useResumeScroll(activeTab, settingsOpen) {
+  const startTab = useRef(activeTab)
+  useEffect(() => {
+    const saved = loadJSON(SCROLL_KEY, null)
+    if (!saved || saved.tab !== startTab.current || !(saved.y > 0)) return
+    let done = false
+    const stop = () => {
+      done = true
+      clearInterval(timer)
+      window.removeEventListener('wheel', stop)
+      window.removeEventListener('touchstart', stop)
+      window.removeEventListener('keydown', stop)
+    }
+    const started = Date.now()
+    const timer = setInterval(() => {
+      if (done) return
+      const max = document.documentElement.scrollHeight - window.innerHeight
+      if (max >= saved.y) {
+        window.scrollTo({ top: saved.y })
+        stop()
+      } else if (Date.now() - started > 4000) {
+        if (max > 0) window.scrollTo({ top: max })
+        stop()
+      }
+    }, 100)
+    window.addEventListener('wheel', stop, { passive: true })
+    window.addEventListener('touchstart', stop, { passive: true })
+    window.addEventListener('keydown', stop)
+    return stop
+  }, [])
+
+  useEffect(() => {
+    if (settingsOpen) return
+    let timer = 0
+    const keep = () => saveJSON(SCROLL_KEY, { tab: activeTab, y: Math.round(window.scrollY) })
+    const onScroll = () => {
+      clearTimeout(timer)
+      timer = setTimeout(keep, 300)
+    }
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') keep()
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('scroll', onScroll)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  }, [activeTab, settingsOpen])
+}
+
 // Two letters for the avatar when there is no profile picture.
 function initials(user) {
   const name = (user.name || user.email || '').replace(/@.*/, '')
@@ -70,9 +135,10 @@ function initials(user) {
 }
 
 function Home({ user, onLogout }) {
-  // The app opens on the start page, unless a link asks for a tab
-  // (e.g. ?tab=haus&vollbild, see startLink.js).
-  const [activeTab, setActiveTab] = useState(() => startTab(TABS) ?? TABS[0].id)
+  // The app opens where it was left (tab and scroll position, kept on
+  // this device), unless a link asks for a tab (e.g. ?tab=haus&vollbild,
+  // see startLink.js).
+  const [activeTab, setActiveTab] = useState(() => startTab(TABS) ?? savedTab() ?? TABS[0].id)
   // Einstellungen cover the tabs while open: null, or { section }.
   const [settings, setSettings] = useState(() => (startSettings() ? { section: null } : null))
   const [focusEntryId, setFocusEntryId] = useState(null)
@@ -189,6 +255,12 @@ function Home({ user, onLogout }) {
     setSlide(step > 0 ? 'next' : 'prev')
     window.scrollTo({ top: 0 })
   })
+
+  // Remember the open tab, and where the page was scrolled to.
+  useEffect(() => {
+    saveJSON(TAB_KEY, activeTab)
+  }, [activeTab])
+  useResumeScroll(activeTab, Boolean(settings))
 
   // Google's script is needed to connect Google Drive for photos. Load it
   // early so the "connect" click can open the popup right away.
