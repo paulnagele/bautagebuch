@@ -5,6 +5,7 @@ import MoneyFlow from '../components/MoneyFlow.jsx'
 import BudgetPlan from '../components/BudgetPlan.jsx'
 import QuoteList from '../components/QuoteList.jsx'
 import Bookings from '../components/Bookings.jsx'
+import LoanCalculator from '../components/LoanCalculator.jsx'
 import { byOrder as itemOrder, itemFromRow, itemToRow } from '../budgetItems.js'
 import { quoteFromRow, quoteToRow } from '../planning.js'
 import { byOrder, categoryFromRow, categoryToRow } from '../categories.js'
@@ -76,6 +77,7 @@ function Finances({ user, onOpenDiary, onOpenSettings }) {
     (sum, c) => sum + Math.max(0, (c.plannedAmount ?? 0) - (spentByCategory.get(c.name) ?? 0)),
     0,
   )
+  const totalPlanned = plannedCategories.reduce((sum, c) => sum + (c.plannedAmount ?? 0), 0)
   const companyNames = [
     ...new Set(contactStore.rows.flatMap((c) => [c.company, c.name]).filter(Boolean)),
   ].sort((a, b) => a.localeCompare(b, 'de'))
@@ -215,6 +217,14 @@ function Finances({ user, onOpenDiary, onOpenSettings }) {
             onDelete={(quote) => quoteStore.remove(quote.id)}
           />
         )}
+      />
+
+      <LoanCalculator
+        suggested={totalPlanned - totalFunding}
+        planned={totalPlanned}
+        funding={totalFunding}
+        format={(value) => euros.format(value)}
+        formatCents={(value) => currency.format(value)}
       />
 
       <Bookings

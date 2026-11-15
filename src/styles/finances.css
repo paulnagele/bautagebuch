@@ -693,3 +693,62 @@ button.link.expense-open {
   padding: 0 0.2rem;
   font-size: 0.82rem;
 }
+
+/* Finanzen: Kreditrechner */
+.loan-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.loan-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.loan-form fieldset.loan-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.loan-mode legend {
+  width: 100%;
+  margin-bottom: 0.25rem;
+  padding: 0;
+}
+
+.loan-form .loan-mode label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.loan-source {
+  margin: 0;
+}
+
+.loan-results .stat {
+  padding: 0.5rem 0;
+}
+
+.loan-after {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.loan-after input {
+  width: 3.5rem;
+  padding: 0.15rem 0.3rem;
+}
+
+.loan-results .stat:last-child {
+  grid-column: 1 / -1;
+}
