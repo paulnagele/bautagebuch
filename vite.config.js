@@ -16,4 +16,13 @@ export default defineConfig({
     chunkSizeWarningLimit: 700,
     rollupOptions: { input: { main: 'index.html', haus: 'haus.html' } },
   },
+  // Unit and component tests (npm test). The browser tests in tests/e2e
+  // run with Playwright instead (npm run test:e2e).
+  test: {
+    environment: 'jsdom',
+    include: ['tests/unit/**/*.test.{js,jsx}'],
+    setupFiles: ['tests/unit/setup.js'],
+    // The app's dates and times are in Austria.
+    env: { TZ: 'Europe/Vienna' },
+  },
 })

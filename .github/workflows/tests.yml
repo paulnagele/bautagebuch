@@ -1,0 +1,73 @@
+name: Tests
+
+# Runs on every pull request (and by hand): the checks show on the PR.
+# Nothing here needs a secret or touches a real database or Google
+# account: the browser tests answer Supabase and Google themselves, the
+# database tests start an empty local Supabase database in Docker.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests, lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Migrations (unique timestamps, newer than main)
+        env:
+          BASE_REF: ${{ github.event.pull_request && format('origin/{0}', github.base_ref) || '' }}
+        run: node scripts/check-migrations.mjs
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Keep the report of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  database:
+    name: Database tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          # Same as the deployment (supabase-migrations.yml).
+          version: 2.118.0
+      - run: bash scripts/test-db.sh

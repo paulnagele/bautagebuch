@@ -240,6 +240,22 @@ The existing migrations only create what is missing, so they are also safe
 on a database that was set up by hand with the old `supabase/schema.sql`:
 existing data, members and categories are kept.
 
+## Tests
+
+Every pull request runs the **Tests** workflow (`.github/workflows/tests.yml`);
+its checks show on the PR. None of it needs a secret, a real database or a
+Google account, and all data in the tests is made up.
+
+| Command | What it checks | Where |
+| --- | --- | --- |
+| `npm test` | The app's logic: Kreditrechner, money flow, diary kinds, form checks, Offen/Demnächst/Verlauf, search, documents, calendar events, drafts, start links, row mappings; and components (Kreditrechner, people field) in a simulated browser (Vitest, jsdom) | `tests/unit/` |
+| `npm run test:e2e` | The app in a phone-sized and a desktop Chromium: signing in, members only, every tab opens without errors, writing, ticking off and searching diary entries, Finanzen totals, deep links (Playwright). Supabase, Google and the weather are answered inside the test (`tests/e2e/mock.js`, made-up project in `tests/e2e/demo-data.js`) | `tests/e2e/` |
+| `npm run test:db` | Every migration on an empty local Supabase database, then who may see and change what: members only with Google, house logins only the house, nobody else anything; diary expenses become bookings; category rename/delete; Haus chat limits (pgTAP). Needs Docker and the Supabase CLI | `tests/db/` |
+| `node scripts/check-migrations.mjs` | Each migration has its own timestamp; with `BASE_REF=origin/main`, new ones are newer than main's | |
+
+`npm run test:watch` reruns the unit tests on every change. For the browser
+tests, Playwright's Chromium is needed once: `npx playwright install chromium`.
+
 ## Local development
 
 ```bash
