@@ -1,4 +1,4 @@
-import { Fragment } from 'react'
+import { Fragment, createElement } from 'react'
 import Icon from './Icon.jsx'
 import { entryType, isOpen, isOverdue, typeKey } from '../diaryTypes.js'
 import { WEATHER_LABELS, fieldOptions } from '../diaryForm.js'
@@ -21,7 +21,11 @@ function detailSummaries(entry, lists, onOpenContact, skip) {
           <PeopleLinks text={value} contacts={lists[field.suggestFrom] ?? []} onOpen={onOpenContact} />
         )
       }
-      if (field.summary) return field.summary(value)
+      if (field.summary) {
+        // A list of parts (text and links) is one piece of the line.
+        const summary = field.summary(value)
+        return Array.isArray(summary) ? createElement(Fragment, null, ...summary) : summary
+      }
       return field.kind === 'select' ? (field.options?.[value] ?? value) : value
     })
 }

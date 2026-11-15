@@ -33,3 +33,7 @@ yarn-error.log*
 
 # House model pulled by scripts/haus/house.mjs (never commit it)
 /.haus/
+
+# Test runs
+test-results/
+playwright-report/

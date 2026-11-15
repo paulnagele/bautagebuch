@@ -110,7 +110,7 @@ function shorten(line) {
 // it has none. Appointments: the first line of the text as the title, the
 // whole text and who takes part as the description. To-dos and defects:
 // "Aufgabe: …" / "Mangel: …" on the due date, with "✓" once done.
-function entryEvent({ type, date, work, details }) {
+export function entryEvent({ type, date, work, details }) {
   const [firstLine] = work.split('\n')
   const footer = 'Aus dem Bautagebuch'
   if (typeKey(type) === 'appointment') {
@@ -151,7 +151,7 @@ const withoutNulls = (key, value) => (value === null ? undefined : value)
 // Each milestone on the Zeitplan tab is an all-day event on its date,
 // "Meilenstein: …", with "✓" once reached.
 
-function milestoneEvent({ name, date, reached }) {
+export function milestoneEvent({ name, date, reached }) {
   return {
     summary: `${reached ? '✓ ' : ''}Meilenstein: ${shorten(name)}`,
     location: '',
