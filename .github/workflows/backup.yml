@@ -1,0 +1,90 @@
+name: Weekly database backup
+
+# Every Sunday night: dumps each site's database (structure, data, roles),
+# encrypts it with BACKUP_PASSPHRASE and uploads it to the private
+# Cloudflare R2 bucket R2_BUCKET. The newest KEEP backups per site are
+# kept, older ones are deleted. Photos and files are not included, they
+# live in Google Drive. Restoring: README, "Datensicherung".
+#
+# The repository is public and anyone signed in to GitHub can download a
+# workflow's artifacts, so nothing is left here: the backup only leaves the
+# runner encrypted, and only to R2.
+on:
+  schedule:
+    - cron: '0 2 * * 0' # Sundays 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KEEP: 12
+
+jobs:
+  backup:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(vars.SECOND_SITE == 'true' && '["production","second"]' || '["production"]') }}
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.target }}
+    env:
+      TARGET: ${{ matrix.target }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF || secrets.SUPABASE_PROJECT_REF }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+    steps:
+      - name: Check settings
+        run: |
+          missing=0
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF BACKUP_PASSPHRASE \
+            R2_BUCKET CLOUDFLARE_ACCOUNT_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [ -z "$(printenv "$name")" ]; then
+              echo "::error title=Missing setting $name::Add it as a secret (README, Datensicherung)."
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          # Same fixed version as the migrations.
+          version: 2.118.0
+      - run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+      - name: Dump database
+        run: |
+          mkdir dump
+          supabase db dump --linked --role-only -f dump/roles.sql
+          supabase db dump --linked -f dump/schema.sql
+          supabase db dump --linked --data-only --use-copy -f dump/data.sql
+          ls -l dump
+      - name: Pack and encrypt
+        run: |
+          name="bautagebuch-$TARGET-$(date -u +%Y-%m-%d).tar.gz.gpg"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+          tar -czf - -C dump . |
+            gpg --batch --yes --symmetric --cipher-algo AES256 \
+              --passphrase-fd 3 -o "$name" 3<<<"$BACKUP_PASSPHRASE"
+          rm -rf dump
+          ls -l "$name"
+      - name: Upload to R2
+        run: |
+          endpoint="https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com"
+          aws s3 cp "$NAME" "s3://$R2_BUCKET/$TARGET/$NAME" --endpoint-url "$endpoint" --only-show-errors
+          echo "Uploaded $TARGET/$NAME"
+      - name: Delete old backups
+        run: |
+          endpoint="https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com"
+          # Names carry the date, so sorting by name sorts by age.
+          aws s3 ls "s3://$R2_BUCKET/$TARGET/" --endpoint-url "$endpoint" |
+            awk '{print $4}' | grep '\.tar\.gz\.gpg$' | sort -r | tail -n +"$((KEEP + 1))" |
+            while read -r old; do
+              aws s3 rm "s3://$R2_BUCKET/$TARGET/$old" --endpoint-url "$endpoint" --only-show-errors
+              echo "Deleted $TARGET/$old"
+            done

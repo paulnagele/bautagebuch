@@ -339,6 +339,50 @@ Optional: a custom domain is added in Cloudflare under the Pages project →
 Migrations for one site can be run by hand with *Actions → Apply Supabase
 migrations → Run workflow* and choosing the site.
 
+## Backups
+
+Supabase's free plan keeps no backups you can download, so
+`.github/workflows/backup.yml` makes one every Sunday night (02:00 UTC) for
+each site, and can be started by hand (Actions → Weekly database backup →
+Run workflow). It dumps roles, structure and data with the Supabase CLI,
+packs and encrypts them with a passphrase (GPG, AES-256) and uploads the
+file to a private Cloudflare R2 bucket as
+`<site>/bautagebuch-<site>-YYYY-MM-DD.tar.gz.gpg`. The newest 12 per site are
+kept. Photos and files are not in it; they live in Google Drive.
+
+The repository is public, so nothing is kept as a workflow artifact.
+
+### One-time setup
+
+1. Cloudflare → R2 Object Storage → create a bucket (e.g. `bautagebuch-backup`).
+2. R2 overview → "{} API" → Manage API tokens → Create Account API token:
+   permission "Object Read & Write", only that bucket, TTL forever. Copy the
+   Access Key ID and Secret Access Key (shown once).
+3. GitHub → Settings → Secrets and variables → Actions → repository secrets:
+   `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (the bucket name)
+   and `BACKUP_PASSPHRASE` (a long passphrase; keep it in a password manager,
+   without it no backup can be opened). `CLOUDFLARE_ACCOUNT_ID` is already set.
+
+### Restoring
+
+1. Download the file from the bucket (Cloudflare dashboard → R2 → bucket).
+2. Decrypt and unpack:
+   ```sh
+   gpg -d bautagebuch-production-2026-11-22.tar.gz.gpg | tar -xzf -
+   ```
+   This gives `roles.sql`, `schema.sql` and `data.sql`.
+3. Into a new, empty Supabase project (connection string from Project →
+   Connect, session pooler):
+   ```sh
+   psql --single-transaction --variable ON_ERROR_STOP=1 \
+     --file roles.sql --file schema.sql \
+     --command 'SET session_replication_role = replica' \
+     --file data.sql --dbname "$CONNECTION_STRING"
+   ```
+4. Point the site at the new project (its `SUPABASE_*` secrets and
+   `.env.production`), then sign in again; Google sign-in has to be set up
+   in the new project as in Setup, step 3.
+
 ## Scripts
 
 - `npm run dev` – start the dev server
