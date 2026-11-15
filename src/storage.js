@@ -26,6 +26,25 @@ export function saveJSON(key, value) {
   }
 }
 
+// What this device remembers about the project's contents (not just how
+// the screen is laid out): the Kreditrechner's inputs (with the income),
+// the last tab and scroll position, the Haus view, the open room and
+// category. Dropped on sign-out, so the next person starts without it.
+const CONTENT_KEYS = [
+  'loan.inputs',
+  'app.tab',
+  'app.scroll',
+  'haus.view',
+  'interior.room',
+  'budget.openCategories',
+  'diary.filter',
+  'documents.filter',
+]
+
+export function forgetDeviceData() {
+  CONTENT_KEYS.forEach((key) => saveJSON(key, null))
+}
+
 export function usePersistentState(key, initialValue) {
   const [value, setValue] = useState(() => loadJSON(key, initialValue))
 

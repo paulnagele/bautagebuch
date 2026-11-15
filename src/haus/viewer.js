@@ -1825,7 +1825,11 @@ export async function mountViewer(host, opts) {
   // the open one is redrawn at once, keeping camera, level and chips, unless there is an unsaved
   // preview or the Gestalten mode is on: then "Neue Fassung laden" offers it.
   let refreshing = null;
-  dispose.refresh = () => (refreshing = (refreshing ?? Promise.resolve()).then(refreshNow).finally(() => { refreshing = null; }));
+  // One at a time: a call while one runs waits for it; only the last in line clears the queue.
+  dispose.refresh = () => {
+    const run = (refreshing ?? Promise.resolve()).then(refreshNow).finally(() => { if (refreshing === run) refreshing = null; });
+    return (refreshing = run);
+  };
   async function refreshNow() {
     if (disposed || !store.list) return;
     let list; try { list = await store.list(); } catch { return; }
