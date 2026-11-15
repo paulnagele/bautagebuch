@@ -14,6 +14,7 @@ const DEFAULTS = {
   payment: '',
   start: '',
   after: '10',
+  income: '',
 }
 
 function thisMonth() {
@@ -84,6 +85,9 @@ function LoanCalculator({ suggested, planned, funding, format, formatCents }) {
     }
   }
 
+  const income = num(input.income)
+  const incomeShare = result && income > 0 ? result.payment / income : 0
+
   return (
     <div className="card budget-plan loan">
       <div className="budget-head">
@@ -98,6 +102,8 @@ function LoanCalculator({ suggested, planned, funding, format, formatCents }) {
         {!open && result && (
           <span className="muted budget-total">
             {format(principal)} · {formatCents(result.payment)} im Monat
+            {income > 0 &&
+              ` · ${incomeShare.toLocaleString('de-DE', { style: 'percent', maximumFractionDigits: 0 })} vom Einkommen`}
           </span>
         )}
       </div>
@@ -159,6 +165,18 @@ function LoanCalculator({ suggested, planned, funding, format, formatCents }) {
               </label>
             )}
             <label>
+              Nettoeinkommen (€/Monat)
+              <input
+                type="number"
+                min="0"
+                step="100"
+                inputMode="decimal"
+                placeholder="Haushalt, netto"
+                value={input.income}
+                onChange={set('income')}
+              />
+            </label>
+            <label>
               Erste Rate
               <input type="month" value={start} onChange={set('start')} />
             </label>
@@ -187,6 +205,19 @@ function LoanCalculator({ suggested, planned, funding, format, formatCents }) {
                 <span className="muted">Monatsrate</span>
                 <strong>{formatCents(result.payment)}</strong>
               </div>
+              {income > 0 && (
+                <div className="stat">
+                  <span className="muted">Anteil am Einkommen</span>
+                  <strong className={incomeShare > 0.4 ? 'negative' : undefined}>
+                    {incomeShare.toLocaleString('de-DE', { style: 'percent', maximumFractionDigits: 1 })}
+                  </strong>
+                  <span className={incomeShare > 0.4 ? 'negative stat-note' : 'muted stat-note'}>
+                    {incomeShare > 0.4
+                      ? 'über 40 %, die Banken meist als Grenze nehmen'
+                      : `bleiben ${format(income - result.payment)} im Monat`}
+                  </span>
+                </div>
+              )}
               <div className="stat">
                 <span className="muted">Laufzeit</span>
                 <strong>{duration(result.months)}</strong>
