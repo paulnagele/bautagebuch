@@ -463,7 +463,7 @@ function MembersSection({ user }) {
       />
       <EmailList
         title="Haus-Logins"
-        hint="Logins, die nur das Haus-Modell sehen und neue Versionen anlegen dürfen, z. B. Claudes Login für den Haus-Chat. Den Login selbst (mit Passwort) legst du in Supabase unter Authentication → Users an."
+        hint="Logins, die nur das Haus-Modell sehen, neue Versionen anlegen und nicht gesperrte Versionen ändern dürfen (jede Änderung lässt sich im Haus-Chat rückgängig machen), z. B. Claudes Login für den Haus-Chat. Tagebuch, Finanzen und Kontakte sehen sie nicht. Den Login selbst (mit Passwort) legst du in Supabase unter Authentication → Users an."
         rows={editors}
         self={null}
         loadError={editorError}

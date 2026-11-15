@@ -73,9 +73,11 @@ function savedTab() {
 // Keeps the scroll position of the open tab, and when the app starts on
 // that tab again, scrolls back there. Tabs fill in after their data has
 // loaded, so it waits (up to a few seconds) until the page is long enough,
-// and gives up as soon as the user scrolls or touches the page.
+// and gives up as soon as the user scrolls, touches or clicks the page,
+// or another tab (or Einstellungen) opens.
 function useResumeScroll(activeTab, settingsOpen) {
   const startTab = useRef(activeTab)
+  const stopResume = useRef(() => {})
   useEffect(() => {
     const saved = loadJSON(SCROLL_KEY, null)
     if (!saved || saved.tab !== startTab.current || !(saved.y > 0)) return
@@ -85,8 +87,10 @@ function useResumeScroll(activeTab, settingsOpen) {
       clearInterval(timer)
       window.removeEventListener('wheel', stop)
       window.removeEventListener('touchstart', stop)
+      window.removeEventListener('pointerdown', stop)
       window.removeEventListener('keydown', stop)
     }
+    stopResume.current = stop
     const started = Date.now()
     const timer = setInterval(() => {
       if (done) return
@@ -101,9 +105,15 @@ function useResumeScroll(activeTab, settingsOpen) {
     }, 100)
     window.addEventListener('wheel', stop, { passive: true })
     window.addEventListener('touchstart', stop, { passive: true })
+    window.addEventListener('pointerdown', stop, { passive: true })
     window.addEventListener('keydown', stop)
     return stop
   }, [])
+
+  // A link or button can switch tabs without a click on the page itself.
+  useEffect(() => {
+    if (activeTab !== startTab.current || settingsOpen) stopResume.current()
+  }, [activeTab, settingsOpen])
 
   useEffect(() => {
     if (settingsOpen) return

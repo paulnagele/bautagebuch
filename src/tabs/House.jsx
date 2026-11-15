@@ -221,11 +221,13 @@ function HouseViewer({ view, user, request, onRequestTaken, onOpenInterior }) {
     const onHide = () => {
       if (document.visibilityState === 'hidden') keepView()
     }
+    // Not keepView itself: the browser would pass the event as the viewer.
+    const onPageHide = () => keepView()
     document.addEventListener('visibilitychange', onHide)
-    window.addEventListener('pagehide', keepView)
+    window.addEventListener('pagehide', onPageHide)
     return () => {
       document.removeEventListener('visibilitychange', onHide)
-      window.removeEventListener('pagehide', keepView)
+      window.removeEventListener('pagehide', onPageHide)
     }
   }, [])
 

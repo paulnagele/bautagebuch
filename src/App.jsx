@@ -9,6 +9,7 @@ import { disconnectCalendar } from './calendar.js'
 import { forgetSettings } from './settings.js'
 import { forgetCollections } from './useCollection.js'
 import { clearDraft } from './diaryDraft.js'
+import { forgetDeviceData } from './storage.js'
 
 function userFromSession(session) {
   const { id, email, user_metadata: meta = {} } = session.user
@@ -47,6 +48,18 @@ function AuthGate() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Signed out, by "Abmelden" or because the session ran out: forget the
+  // Google access, the photos and what this device remembers about the
+  // project. Runs after the tabs have closed, so nothing they keep on
+  // closing (e.g. the Haus view) stays behind.
+  useEffect(() => {
+    if (session !== null) return
+    disconnectDrive()
+    disconnectCalendar()
+    forgetSettings()
+    forgetDeviceData()
+  }, [session])
+
   // Only members (public.members) may use the app. The database enforces
   // this anyway; checking here gives a clear message instead of empty tabs.
   useEffect(() => {
@@ -71,9 +84,7 @@ function AuthGate() {
   }, [userId, session])
 
   async function handleLogout() {
-    disconnectDrive()
-    disconnectCalendar()
-    forgetSettings()
+    // Google access and the rest go once signed out (effect above).
     // The next person on this device starts without this draft.
     await clearDraft()
     await supabase.auth.signOut()

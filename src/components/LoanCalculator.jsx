@@ -3,11 +3,14 @@ import { addMonths, monthlyPayment, monthsToRepay, schedule } from '../loan.js'
 
 // Kreditrechner: an annuity loan for what the plan still needs. The
 // amount follows the budget plan minus the secured funding (`suggested`)
-// until it is typed in; "Aus Plan übernehmen" goes back to that. Inputs
+// until it is typed in (the field may be emptied while typing); "Aus Plan
+// übernehmen" goes back to that. Inputs
 // are remembered on this device only, nothing is saved in the database.
 
 const DEFAULTS = {
   amount: '',
+  // true: the amount follows the plan; false: the typed amount counts, even empty.
+  fromPlan: true,
   rate: '3.5',
   mode: 'years', // 'years': term given, payment computed; 'payment': the other way round
   years: '30',
@@ -41,13 +44,15 @@ const num = (text) => (String(text).trim() === '' ? NaN : Number(String(text).re
 function LoanCalculator({ suggested, planned, funding, format, formatCents }) {
   const [open, setOpen] = usePersistentState('loan.open', false)
   const [saved, setSaved] = usePersistentState('loan.inputs', DEFAULTS)
-  const input = { ...DEFAULTS, ...saved }
+  // Inputs saved before fromPlan existed: an empty amount meant "from the plan".
+  const followsPlan = saved.fromPlan ?? (saved.amount ?? '') === ''
+  const input = { ...DEFAULTS, ...saved, fromPlan: followsPlan }
   const set = (key) => (e) => setSaved({ ...input, [key]: e.target.value })
 
-  const followsPlan = input.amount === ''
   const principal = followsPlan ? Math.max(0, suggested) : num(input.amount)
   const rate = num(input.rate)
-  const start = input.start || thisMonth()
+  // A month field is plain text in some desktop browsers: only "YYYY-MM" counts.
+  const start = /^\d{4}-(0[1-9]|1[0-2])$/.test(input.start) ? input.start : thisMonth()
 
   let result = null
   let problem = ''
@@ -119,7 +124,7 @@ function LoanCalculator({ suggested, planned, funding, format, formatCents }) {
                 step="1000"
                 inputMode="decimal"
                 value={followsPlan ? Math.round(principal) : input.amount}
-                onChange={set('amount')}
+                onChange={(e) => setSaved({ ...input, amount: e.target.value, fromPlan: false })}
               />
             </label>
             <label>
@@ -178,7 +183,7 @@ function LoanCalculator({ suggested, planned, funding, format, formatCents }) {
             </label>
             <label>
               Erste Rate
-              <input type="month" value={start} onChange={set('start')} />
+              <input type="month" value={input.start || start} onChange={set('start')} />
             </label>
           </div>
 
@@ -190,7 +195,7 @@ function LoanCalculator({ suggested, planned, funding, format, formatCents }) {
             ) : (
               <>
                 Eigene Summe.{' '}
-                <button type="button" className="link" onClick={() => setSaved({ ...input, amount: '' })}>
+                <button type="button" className="link" onClick={() => setSaved({ ...input, amount: '', fromPlan: true })}>
                   Aus Plan übernehmen ({format(Math.max(0, suggested))})
                 </button>
               </>

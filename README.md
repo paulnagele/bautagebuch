@@ -194,8 +194,11 @@ the deploy run shows a warning and the site shows "Setup not finished".
 
 ### A login for the house model only (e.g. for Claude)
 
-A house editor can read the house model and add new versions, but sees
-nothing else and can't change, delete or pick the current version.
+A house editor can read the house model, add new versions and change
+unlocked versions in place (each change keeps a backup for "Rückgängig"),
+but sees nothing else and can't delete or pick the current version.
+Members must sign in with Google: a password login never counts as a
+member, even with a member's address.
 
 1. Supabase → **Authentication → Users → Add user → Create new user**,
    with **Auto Confirm User** ticked (the email needn't be a real
