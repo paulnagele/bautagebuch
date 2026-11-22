@@ -8,11 +8,35 @@
 // uploads that did not finish continue when the app is opened again.
 // Photos stay in full size.
 //
+// Where the browser offers Background Fetch (Chrome on Android), the
+// files are handed to the browser instead, which keeps sending them while
+// the app is closed or the phone is locked (backgroundUpload.js); they are
+// added to their entries the next time the app is open.
+//
 // When Drive access has run out, the queue waits until Drive is connected
 // again (one tap, see UploadStatus). On other errors (e.g. no network) it
 // tries again a little later, and as soon as the phone is back online.
 
-import { getEntryFolderId, onDriveConnected, driveAccess, uploadFile, uploadPhoto } from './drive.js'
+import {
+  abortBackgroundUploads,
+  backgroundFetchAvailable,
+  backgroundResult,
+  forgetBackgroundResult,
+  onBackgroundUploadDone,
+  sendInBackground,
+  watchBackgroundUpload,
+} from './backgroundUpload.js'
+import {
+  driveAccess,
+  findUploadedFile,
+  getEntryFolderId,
+  onDriveConnected,
+  rememberPhoto,
+  startUpload,
+  uploadFile,
+  uploadMimeType,
+  uploadPhoto,
+} from './drive.js'
 import { newId } from './storage.js'
 import { supabase } from './supabase.js'
 import { applyRow, friendlyError } from './useCollection.js'
@@ -24,7 +48,8 @@ export const PARALLEL_UPLOADS = 3
 const RETRY_DELAYS = [10_000, 30_000, 60_000, 300_000]
 
 // item: { id, entryId, list: 'photos' | 'files', name (files), driveName,
-// folderPath, fileName, fileType, size, fileId (once uploaded) }
+// folderPath, fileName, fileType, size, fileId (once uploaded); while the
+// browser sends it in the background also bgId, bgUrl, folderId }
 let items = []
 const blobs = new Map() // item id -> Blob
 const loaded = new Map() // item id -> bytes sent so far
@@ -36,6 +61,11 @@ let failures = 0
 let retryTimer = null
 let workers = 0
 let attaching = Promise.resolve()
+// Whether Background Fetch is used (undefined until checked).
+let useBackground
+let handingOff = false
+let collecting = null
+const watched = new Set() // background uploads whose progress is shown
 const listeners = new Set()
 
 // ---- state for the UI ------------------------------------------------------
@@ -52,6 +82,8 @@ function publish() {
     items: items.map((item) => ({ ...item, blob: blobs.get(item.id) })),
     status: shown,
     error: shown === 'retrying' ? lastError : '',
+    // Handed to the browser: keeps going when the app is closed.
+    background: items.some((item) => item.bgId && !item.fileId),
     fraction: total ? sent / total : 0,
   }
   listeners.forEach((listener) => listener())
@@ -164,9 +196,12 @@ export async function resumeUploads() {
     if (known.has(item.id)) continue
     if (!item.fileId) {
       const response = await cache?.match(fileUrl(item.id)).catch(() => null)
-      if (!response) continue // the file is gone; nothing to upload
-      const blob = await response.blob()
-      blobs.set(item.id, new File([blob], item.fileName, { type: item.fileType || blob.type }))
+      // The file is gone: nothing to upload, unless the browser has it.
+      if (!response && !item.bgId) continue
+      if (response) {
+        const blob = await response.blob()
+        blobs.set(item.id, new File([blob], item.fileName, { type: item.fileType || blob.type }))
+      }
     }
     restored.push(item)
   }
@@ -180,19 +215,21 @@ export async function resumeUploads() {
 // On sign-out: the next person on this device starts with an empty queue.
 export async function clearUploads() {
   const ids = items.map((item) => item.id)
+  const background = [...new Set(items.filter((item) => item.bgId).map((item) => item.bgId))]
   items = []
   status = 'idle'
   clearTimeout(retryTimer)
   saveList()
   publish()
   await forgetFiles(ids)
+  await abortBackgroundUploads(background)
   if (window.caches) await caches.delete(FILE_CACHE).catch(() => {})
 }
 
 // ---- uploading -----------------------------------------------------------
 
 function nextItem() {
-  return items.find((item) => !item.fileId && !busy.has(item.id) && blobs.has(item.id))
+  return items.find((item) => !item.fileId && !item.bgId && !busy.has(item.id) && blobs.has(item.id))
 }
 
 // Starts uploading (again), e.g. after Drive was connected or the phone
@@ -202,6 +239,7 @@ export function start() {
   // Uploaded before (e.g. before the app closed or an error), but not yet
   // added to the entry.
   new Set(items.filter((item) => item.fileId).map((item) => item.entryId)).forEach(attach)
+  collectBackground()
   if (!nextItem()) {
     if (status !== 'needs-drive') status = 'idle'
     publish()
@@ -214,6 +252,17 @@ export function start() {
   }
   status = 'uploading'
   publish()
+  if (useBackground === undefined) {
+    backgroundFetchAvailable().then((reg) => {
+      useBackground = Boolean(reg)
+      start()
+    })
+    return
+  }
+  if (useBackground) {
+    if (!handingOff) handOff()
+    return
+  }
   while (workers < PARALLEL_UPLOADS && nextItem()) {
     workers++
     work().finally(() => {
@@ -252,6 +301,116 @@ async function work() {
       busy.delete(item.id)
     }
   }
+}
+
+// Opens a Drive upload session for each waiting file (three at a time)
+// and hands them all to the browser as one background upload, with one
+// notification. If the browser refuses, the page uploads them itself.
+async function handOff() {
+  handingOff = true
+  const batch = items.filter((item) => !item.fileId && !item.bgId && !busy.has(item.id) && blobs.has(item.id))
+  batch.forEach((item) => busy.add(item.id))
+  const jobs = []
+  try {
+    let next = 0
+    const open = async () => {
+      while (next < batch.length) {
+        const item = batch[next++]
+        const blob = blobs.get(item.id)
+        const mimeType = uploadMimeType(blob, item.list)
+        const folderId = await getEntryFolderId(item.folderPath)
+        const url = await startUpload(item.driveName, mimeType, folderId)
+        jobs.push({ item, blob, mimeType, url, folderId })
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(PARALLEL_UPLOADS, batch.length) }, open))
+  } catch (err) {
+    batch.forEach((item) => busy.delete(item.id))
+    handingOff = false
+    failed(err)
+    return
+  }
+  const bgId = `upload-${newId()}`
+  const photos = batch.filter((item) => item.list === 'photos').length
+  const title =
+    photos === batch.length
+      ? `Bautagebuch: ${photos === 1 ? '1 Foto' : `${photos} Fotos`} werden hochgeladen`
+      : `Bautagebuch: ${batch.length} Fotos und Dateien werden hochgeladen`
+  try {
+    const addresses = await sendInBackground(bgId, jobs, title)
+    const byId = new Map(jobs.map((job, i) => [job.item.id, { ...job, address: addresses[i] }]))
+    items = items.map((item) => {
+      const job = byId.get(item.id)
+      return job ? { ...item, bgId, bgUrl: job.address, folderId: job.folderId } : item
+    })
+    saveList()
+    failures = 0
+    watch(bgId)
+  } catch {
+    // Not allowed here (e.g. no notifications, storage full): upload from
+    // the page instead.
+    useBackground = false
+  } finally {
+    batch.forEach((item) => busy.delete(item.id))
+    handingOff = false
+  }
+  publish()
+  start()
+}
+
+// Shows a background upload's progress, spread over its files in order.
+function watch(bgId) {
+  if (watched.has(bgId)) return
+  watched.add(bgId)
+  watchBackgroundUpload(bgId, (bytes) => {
+    let left = bytes
+    for (const item of items.filter((i) => i.bgId === bgId)) {
+      loaded.set(item.id, Math.min(item.size, left))
+      left = Math.max(0, left - item.size)
+    }
+    publish()
+  })
+}
+
+// Picks up what finished in the background: each file's Drive ID, or, if
+// the browser could not read Drive's answer, the file found by its name.
+// Files that did not arrive go back into the queue.
+function collectBackground() {
+  if (!collecting) collecting = collectNow().catch(() => {}).finally(() => (collecting = null))
+  return collecting
+}
+
+async function collectNow() {
+  const ids = [...new Set(items.filter((item) => item.bgId && !item.fileId).map((item) => item.bgId))]
+  let changed = false
+  for (const bgId of ids) {
+    const result = await backgroundResult(bgId)
+    if (result === null) {
+      watch(bgId)
+      continue
+    }
+    for (const item of items.filter((i) => i.bgId === bgId && !i.fileId)) {
+      let fileId = result === 'lost' ? null : (result[item.bgUrl] ?? null)
+      if (!fileId && driveAccess.connected()) {
+        fileId = await findUploadedFile(item.driveName, item.folderId).catch(() => null)
+      }
+      const blob = blobs.get(item.id)
+      if (fileId && item.list === 'photos' && blob) rememberPhoto(fileId, blob)
+      items = items.map((i) =>
+        i.id !== item.id ? i : fileId ? { ...i, fileId } : { ...i, bgId: undefined, bgUrl: undefined },
+      )
+      if (!fileId) loaded.delete(item.id)
+      changed = true
+    }
+    watched.delete(bgId)
+    await forgetBackgroundResult(bgId)
+  }
+  if (!changed) return
+  // Files the browser lost and that are no longer on the device either.
+  items = items.filter((item) => item.fileId || item.bgId || blobs.has(item.id))
+  saveList()
+  publish()
+  start()
 }
 
 function failed(err) {
@@ -326,4 +485,8 @@ if (typeof window !== 'undefined') {
     if (status === 'retrying') start()
   })
   onDriveConnected(() => start())
+  onBackgroundUploadDone(() => collectBackground())
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && items.some((item) => item.bgId)) collectBackground()
+  })
 }

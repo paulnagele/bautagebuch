@@ -18,7 +18,7 @@ function countText(items) {
 // background (see uploadQueue.js), with a button when Drive needs
 // connecting again or an upload is to be tried again now.
 function UploadStatus({ user }) {
-  const { items, status, error, fraction } = useUploads()
+  const { items, status, error, fraction, background } = useUploads()
   const [problem, setProblem] = useState('')
 
   // Continue uploads that did not finish when the app was closed.
@@ -41,7 +41,12 @@ function UploadStatus({ user }) {
   return (
     <div className="install-hint upload-status" role="status">
       <div className="upload-status-text">
-        {status === 'uploading' && <span>{what} {items.length === 1 ? 'wird' : 'werden'} hochgeladen…</span>}
+        {status === 'uploading' && (
+          <span>
+            {what} {items.length === 1 ? 'wird' : 'werden'} hochgeladen…
+            {background && ' Das läuft auch weiter, wenn du die App schließt.'}
+          </span>
+        )}
         {status === 'needs-drive' && <span>{what} warten auf Google Drive.</span>}
         {status === 'retrying' && (
           <span>

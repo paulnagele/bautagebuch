@@ -95,6 +95,8 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return
   if (url.origin !== self.location.origin) return
   if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return
+  // The upload relay (functions/api/drive-upload.js) is never cached.
+  if (url.pathname.includes('/api/')) return
 
   // The shared house page (haus.html) is for visitors, not part of the
   // app: never stored as the app's page. Cloudflare Pages serves it at
@@ -186,3 +188,54 @@ async function receiveShare(request) {
   }
   return Response.redirect(new URL('./?shared=1', self.registration.scope).href, 303)
 }
+
+// ---- uploads in the background (src/backgroundUpload.js) -------------------
+//
+// The browser sends the photos and files to Drive itself, also while the
+// app is closed. When it is done, what Drive answered (each file's ID) is
+// kept here until the app adds the files to their diary entries.
+const UPLOAD_RESULTS = 'bautagebuch-upload-results'
+
+async function keepUploadResults(registration) {
+  const results = {}
+  for (const record of await registration.matchAll().catch(() => [])) {
+    let fileId = null
+    try {
+      const response = await record.responseReady
+      if (response.ok) fileId = (await response.json()).id ?? null
+    } catch {
+      // Not sent, or the answer was not readable: the app checks Drive.
+    }
+    results[record.request.url] = fileId
+  }
+  const cache = await caches.open(UPLOAD_RESULTS)
+  await cache.put(`results/${encodeURIComponent(registration.id)}`, Response.json(results))
+  for (const client of await self.clients.matchAll({ includeUncontrolled: true })) {
+    client.postMessage({ type: 'background-upload-done', id: registration.id })
+  }
+}
+
+self.addEventListener('backgroundfetchsuccess', (event) => {
+  event.waitUntil(
+    keepUploadResults(event.registration).then(() =>
+      event.updateUI({ title: 'Fotos und Dateien sind in Google Drive.' }).catch(() => {}),
+    ),
+  )
+})
+
+self.addEventListener('backgroundfetchfail', (event) => {
+  event.waitUntil(
+    keepUploadResults(event.registration).then(() =>
+      event.updateUI({ title: 'Upload unterbrochen. Öffne das Bautagebuch, um es fortzusetzen.' }).catch(() => {}),
+    ),
+  )
+})
+
+// Cancelled in the notification: the app uploads them itself next time.
+self.addEventListener('backgroundfetchabort', (event) => {
+  event.waitUntil(keepUploadResults(event.registration))
+})
+
+self.addEventListener('backgroundfetchclick', (event) => {
+  event.waitUntil(self.clients.openWindow(new URL('./?tab=diary', self.registration.scope).href))
+})

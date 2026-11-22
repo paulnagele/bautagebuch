@@ -193,7 +193,11 @@ function sendWithProgress(url, blob, mimeType, onBytes) {
   })
 }
 
-async function upload(blob, name, mimeType, folderId, onBytes) {
+// Opens a resumable upload session for one file and returns the address
+// the file is then sent to with PUT. That address itself authorizes the
+// upload (for a week), so it also works from the service worker
+// (backgroundUpload.js) without an access token.
+export async function startUpload(name, mimeType, folderId) {
   const session = await driveFetch(`${UPLOAD_API}?uploadType=resumable&supportsAllDrives=true`, {
     method: 'POST',
     headers: {
@@ -204,7 +208,34 @@ async function upload(blob, name, mimeType, folderId, onBytes) {
   })
   const uploadUrl = session.headers.get('Location')
   if (!uploadUrl) throw new Error('Google Drive hat keine Upload-Adresse geliefert.')
-  return sendWithProgress(`${uploadUrl}&fields=id`, blob, mimeType, onBytes)
+  return `${uploadUrl}&fields=id`
+}
+
+// The Content-Type a photo or file is uploaded with.
+export function uploadMimeType(blob, list) {
+  return blob.type || (list === 'photos' ? 'image/jpeg' : 'application/octet-stream')
+}
+
+async function upload(blob, name, mimeType, folderId, onBytes) {
+  const url = await startUpload(name, mimeType, folderId)
+  return sendWithProgress(url, blob, mimeType, onBytes)
+}
+
+// The ID of a file uploaded in the background, found by its (unique)
+// name in its folder; null if it is not there.
+export async function findUploadedFile(name, folderId) {
+  const quoted = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+  const query = `name = '${quoted}' and '${folderId}' in parents and trashed = false`
+  const found = await driveFetch(
+    `${API}?q=${encodeURIComponent(query)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+  ).then((r) => r.json())
+  return found.files?.[0]?.id ?? null
+}
+
+// A photo uploaded in the background: keep the device's copy so it shows
+// right away.
+export function rememberPhoto(fileId, blob) {
+  photoCache.set(fileId, Promise.resolve(URL.createObjectURL(blob)))
 }
 
 // onBytes(loaded) reports how many bytes of the file are sent so far.
