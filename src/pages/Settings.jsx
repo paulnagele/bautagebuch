@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { config } from '../config.js'
 import { supabase } from '../supabase.js'
 import { useDialogs } from '../dialogs.js'
+import { getUploads } from '../uploadQueue.js'
 import { readSetting, saveSetting } from '../settings.js'
 import {
   checkDriveFolder,
@@ -764,6 +765,19 @@ function GoogleConnection({ title, access, connect, user, note }) {
 }
 
 function DeviceSection({ user, onLogout }) {
+  const dialogs = useDialogs()
+
+  // Photos still waiting for Drive are only on this device.
+  async function logout() {
+    const waiting = getUploads().items.length
+    if (waiting > 0) {
+      const what = waiting === 1 ? '1 Foto oder Datei ist' : `${waiting} Fotos oder Dateien sind`
+      const question = `${what} noch nicht in Google Drive und ${waiting === 1 ? 'geht' : 'gehen'} beim Abmelden verloren. Trotzdem abmelden?`
+      if (!(await dialogs.confirm(question, { confirmLabel: 'Abmelden', danger: true }))) return
+    }
+    onLogout()
+  }
+
   return (
     <>
       <div className="settings-item">
@@ -772,7 +786,7 @@ function DeviceSection({ user, onLogout }) {
           {user.name && user.name !== user.email && <strong>{user.name} </strong>}
           <span className="muted">{user.email}</span>
         </p>
-        <button type="button" className="secondary" onClick={onLogout}>
+        <button type="button" className="secondary" onClick={logout}>
           Abmelden
         </button>
       </div>

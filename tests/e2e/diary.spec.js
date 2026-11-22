@@ -1,6 +1,6 @@
 // The diary: writing entries, ticking them off, searching.
 import { expect, test } from '@playwright/test'
-import { openApp, openTab } from './mock.js'
+import { google, openApp, openTab } from './mock.js'
 
 const panel = (page) => page.getByRole('tabpanel', { name: 'Tagebuch' })
 
@@ -81,4 +81,37 @@ test('Entwurf überlebt Neuladen', async ({ page }) => {
   await page.reload()
   await openTab(page, 'Tagebuch')
   await expect(panel(page).getByRole('textbox', { name: 'Ausgeführte Arbeiten' })).toHaveValue('Halb geschrieben')
+})
+
+test('Fotos werden nach dem Speichern im Hintergrund hochgeladen', async ({ page }) => {
+  const { writes, errors } = test.info().data
+  const diary = panel(page)
+  google.uploadDelay = 1500
+  try {
+    await diary.getByRole('button', { name: /Neuer Eintrag/ }).first().click()
+    await diary.getByRole('textbox', { name: 'Ausgeführte Arbeiten' }).fill('Bodenplatte betoniert')
+    const jpeg = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==', 'base64')
+    await page.locator('input[type=file][multiple][accept="image/*"]').setInputFiles([
+      { name: 'a.jpg', mimeType: 'image/jpeg', buffer: jpeg },
+      { name: 'b.jpg', mimeType: 'image/jpeg', buffer: jpeg },
+    ])
+    await diary.getByRole('button', { name: 'Eintrag hinzufügen' }).click()
+
+    // Saved at once, the photos still on their way.
+    const card = diary.getByRole('listitem').filter({ hasText: 'Bodenplatte betoniert' }).first()
+    await expect(card).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: '2 Fotos werden hochgeladen' })).toBeVisible()
+    await expect(card.getByText('wird hochgeladen')).toHaveCount(2)
+    const saved = writes.find((w) => w.table === 'diary_entries' && w.method === 'POST')
+    expect(saved.body.photo_ids).toEqual([])
+
+    // Then added to the entry.
+    await expect(card.getByText('wird hochgeladen')).toHaveCount(0, { timeout: 10_000 })
+    await expect(page.getByRole('status').filter({ hasText: 'hochgeladen' })).toHaveCount(0)
+    const added = writes.filter((w) => w.table === 'diary_entries' && w.method === 'PATCH').map((w) => w.body.photo_ids)
+    expect(added.at(-1)).toHaveLength(2)
+    expect(errors).toEqual([])
+  } finally {
+    google.uploadDelay = 0
+  }
 })

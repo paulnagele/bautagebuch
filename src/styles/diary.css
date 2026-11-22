@@ -712,3 +712,18 @@ button.new-entry-fab {
     padding-bottom: 5rem;
   }
 }
+
+/* A photo saved with the entry but still on its way to Drive. */
+.thumb.uploading .thumb-img {
+  opacity: 0.55;
+}
+
+.thumb-uploading {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.7rem;
+  color: #fff;
+  background: rgb(0 0 0 / 55%);
+  text-align: center;
+}

@@ -131,6 +131,13 @@ function storeFor(table) {
   return stores.get(table)
 }
 
+// Shows a row changed outside useCollection (e.g. by the upload queue)
+// right away, if the table is loaded.
+export function applyRow(table, row) {
+  const key = KEY_COLUMNS[table] ?? 'id'
+  stores.get(table)?.change((rows) => rows.map((r) => (r[key] === row[key] ? row : r)))
+}
+
 // Called on sign-out, so the next person starts with nothing loaded.
 export function forgetCollections() {
   stores.forEach((store) => store.close())

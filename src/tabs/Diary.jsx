@@ -9,7 +9,8 @@ import { categoryFromRow, categoryToRow, expenseCategories } from '../categories
 import { contactFromRow, contactToRow } from '../contacts.js'
 import { checkDetails, emptyForm, formFromEntry } from '../diaryForm.js'
 import { diarySections } from '../diarySections.js'
-import { entryFolderPath, uploadPending } from '../diaryUploads.js'
+import { entryFolderPath } from '../diaryUploads.js'
+import { enqueue, pendingFor } from '../uploadQueue.js'
 import { inRange, matchesContact, matchesEntry, queryWords } from '../diarySearch.js'
 import { driveAccess, driveFolderUrl, getDriveFolderId } from '../drive.js'
 import { assignDocument, assignmentFromRow, assignmentToRow, unmarkDocument } from '../documents.js'
@@ -47,7 +48,6 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
   const { form, setForm, editingId, setEditingId, open: formOpen, setOpen: setFormOpen } = diaryDraft
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
-  const [uploadProgress, setUploadProgress] = useState(null)
   const [lightbox, setLightbox] = useState(null)
   const closeLightbox = useCallback(() => setLightbox(null), [])
   const dialogs = useDialogs()
@@ -195,30 +195,13 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
     let calendarProblem = problemOf(calendarAccess)
     const calendarConnected = needsCalendar && !calendarProblem
 
-    let uploaded = { photos: form.photos, files: form.files }
-    if (pending > 0) {
-      try {
-        const driveProblem = problemOf(driveAccess)
-        if (driveProblem) throw new Error(driveProblem)
-        const createdAt = original?.createdAt
-        const folderPath = entryFolderPath(form.type, editingId ? createdAt : null)
-        uploaded = await uploadPending(form, folderPath, (progress, sofar) => {
-          setUploadProgress(progress)
-          setBusy(
-            pending === 1
-              ? 'Wird hochgeladen…'
-              : `Datei ${progress.current} von ${progress.total} wird hochgeladen…`,
-          )
-          // Remember finished uploads so a retry does not upload them twice.
-          if (sofar) setForm((f) => ({ ...f, ...sofar }))
-        })
-        setUploadProgress(null)
-      } catch (err) {
-        setUploadProgress(null)
-        setBusy('')
-        setError(`Upload fehlgeschlagen: ${err.message}`)
-        return
-      }
+    // New photos and files go to Drive in the background once the entry
+    // is saved (uploadQueue.js), so nobody waits for them here. Without
+    // Drive access the entry is not saved yet, so nothing waits unseen.
+    const driveProblem = pending > 0 ? problemOf(driveAccess) : ''
+    if (driveProblem) {
+      setError(`Fotos und Dateien können nicht hochgeladen werden: ${driveProblem}`)
+      return
     }
 
     // The entry is saved before the calendar is changed, so a failed save
@@ -233,12 +216,16 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
       workers: form.workers,
       work: form.work.trim(),
       details: withEventId(details, oldEventId),
-      photoIds: uploaded.photos.map((p) => p.fileId),
-      files: uploaded.files.map((f) => ({ id: f.fileId, name: f.name })),
+      photoIds: form.photos.filter((p) => p.fileId).map((p) => p.fileId),
+      files: form.files.filter((f) => f.fileId).map((f) => ({ id: f.fileId, name: f.name })),
     }
     let saved
     try {
       saved = editingId ? await update(editingId, entry) : await insert(entry)
+      if (pending > 0) {
+        const folderPath = entryFolderPath(form.type, editingId ? original?.createdAt : null)
+        await enqueue(saved.id, form, folderPath)
+      }
     } catch (err) {
       setError(err.message)
       setBusy('')
@@ -295,7 +282,12 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function startEdit(entry) {
+  async function startEdit(entry) {
+    // Saving the form now would leave out the photos still on their way.
+    if (pendingFor(entry.id).length > 0) {
+      await dialogs.alert('Die Fotos und Dateien dieses Eintrags werden noch hochgeladen. Bitte warte, bis sie fertig sind, und bearbeite ihn dann.')
+      return
+    }
     setForm(formFromEntry(entry))
     setEditingId(entry.id)
     setError('')
@@ -382,7 +374,7 @@ function Diary({ user, focusEntryId, onFocused, onOpenContact, diaryDraft }) {
 
   return (
     <section className="tab-content">
-      {busy && <BusyOverlay message={busy} progress={uploadProgress} />}
+      {busy && <BusyOverlay message={busy} />}
       {formOpen ? (
         <EntryForm
           form={form}

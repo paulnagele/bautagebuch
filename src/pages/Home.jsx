@@ -11,6 +11,7 @@ import Contacts from '../tabs/Contacts.jsx'
 import InstallHint from '../components/InstallHint.jsx'
 import SetupHint from '../components/SetupHint.jsx'
 import UpdateHint from '../components/UpdateHint.jsx'
+import UploadStatus from '../components/UploadStatus.jsx'
 import DialogProvider from '../components/DialogProvider.jsx'
 import Icon from '../components/Icon.jsx'
 import { startSettings, startTab } from '../startLink.js'
@@ -399,6 +400,7 @@ function Home({ user, onLogout }) {
       <div className="app-shell">
 
         <UpdateHint />
+        <UploadStatus user={user} />
         <InstallHint />
         {!settings && <SetupHint onSetup={openSettings} />}
 
