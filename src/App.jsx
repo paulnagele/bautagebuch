@@ -9,6 +9,7 @@ import { disconnectCalendar } from './calendar.js'
 import { forgetSettings } from './settings.js'
 import { forgetCollections } from './useCollection.js'
 import { clearDraft } from './diaryDraft.js'
+import { clearUploads } from './uploadQueue.js'
 import { forgetDeviceData } from './storage.js'
 
 function userFromSession(session) {
@@ -87,6 +88,7 @@ function AuthGate() {
     // Google access and the rest go once signed out (effect above).
     // The next person on this device starts without this draft.
     await clearDraft()
+    await clearUploads()
     await supabase.auth.signOut()
   }
 

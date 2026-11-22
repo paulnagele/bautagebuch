@@ -7,6 +7,7 @@ import { canMarkPhotos, isImageFile } from '../documents.js'
 import { formatDate } from '../storage.js'
 import PeopleLinks from './PeopleLinks.jsx'
 import DrivePhoto from './DrivePhoto.jsx'
+import { useUploads } from '../useUploads.js'
 
 // The extra fields of an entry as short texts for the list ("14:00 Uhr", …).
 // People who are contacts link to them.
@@ -46,6 +47,10 @@ function EntryCard({
 }) {
   const type = entryType(entry.type)
   const key = typeKey(entry.type)
+  // Saved with the entry, still on the way to Drive (shown from the device).
+  const uploading = useUploads().items.filter((item) => item.entryId === entry.id && item.blob)
+  const uploadingPhotos = uploading.filter((item) => item.list === 'photos')
+  const uploadingFiles = uploading.filter((item) => item.list === 'files')
   // To-dos are headed by when they are due; the entry date moves to the
   // small text.
   const due = type.dueHeadline ? entry.details[type.progress.due] : ''
@@ -98,7 +103,7 @@ function EntryCard({
         </span>
       </div>
       <p className="entry-text">{entry.work}</p>
-      {entry.photoIds.length > 0 && (
+      {(entry.photoIds.length > 0 || uploadingPhotos.length > 0) && (
         <ul className="thumb-grid entry-photos">
           {entry.photoIds.map((fileId, i) => {
             const alt = `Foto ${i + 1} vom ${formatDate(entry.date)}`
@@ -126,6 +131,12 @@ function EntryCard({
               </li>
             )
           })}
+          {uploadingPhotos.map((item) => (
+            <li key={item.id} className="thumb uploading">
+              <DrivePhoto blob={item.blob} alt="Foto, wird hochgeladen" className="thumb-img" />
+              <span className="thumb-uploading">wird hochgeladen</span>
+            </li>
+          ))}
         </ul>
       )}
       {imageFiles.length > 0 && (
@@ -150,6 +161,18 @@ function EntryCard({
                 <Icon name="file" size={16} className="inline-icon" />
                 <span className="file-name">{file.name}</span>
               </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {uploadingFiles.length > 0 && (
+        <ul className="file-list entry-files">
+          {uploadingFiles.map((item) => (
+            <li key={item.id}>
+              <span className="file-chip muted">
+                <Icon name="file" size={16} className="inline-icon" />
+                <span className="file-name">{item.name} (wird hochgeladen)</span>
+              </span>
             </li>
           ))}
         </ul>

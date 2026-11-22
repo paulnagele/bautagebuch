@@ -58,10 +58,12 @@ const cors = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': '*',
   'access-control-allow-methods': '*',
-  'access-control-expose-headers': 'content-range',
+  'access-control-expose-headers': 'content-range, location',
 }
 
 let nextId = 1
+// How long the mocked Drive takes for one file upload (ms).
+export const google = { uploadDelay: 0 }
 const newId = () => `10000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`
 
 // Applies PostgREST filters (eq., is., in.) from the query string.
@@ -122,9 +124,20 @@ export async function openApp(page, { signedIn = true, member = true, path = '/'
     r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }),
   )
   // Drive and Calendar API
-  await page.route(/googleapis\.com/, (r) => {
+  await page.route(/googleapis\.com/, async (r) => {
     const req = r.request()
     if (req.method() !== 'GET' && req.method() !== 'OPTIONS') writes.push({ google: true, method: req.method(), url: req.url() })
+    // Resumable uploads: the first request opens a session (Location),
+    // the file itself is then sent there with PUT.
+    if (req.method() === 'POST' && req.url().includes('/upload/drive/')) {
+      const session = `https://www.googleapis.com/upload/drive/v3/files?upload_id=${newId()}`
+      return r.fulfill({ status: 200, contentType: 'application/json', headers: { ...cors, location: session }, body: '{}' })
+    }
+    if (req.method() === 'PUT' && req.url().includes('upload_id=')) {
+      await new Promise((resolve) => setTimeout(resolve, google.uploadDelay))
+      const body = { id: `google-${newId()}` }
+      return r.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(body) })
+    }
     const body = req.method() === 'POST' ? { id: `google-${newId()}` } : {}
     return r.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(body) })
   })

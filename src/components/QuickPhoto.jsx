@@ -5,7 +5,8 @@ import { useCollection } from '../useCollection.js'
 import { useDialogs } from '../dialogs.js'
 import { fromRow, toRow } from '../diaryEntries.js'
 import { defaultDetails } from '../diaryTypes.js'
-import { entryFolderPath, uploadPending } from '../diaryUploads.js'
+import { entryFolderPath } from '../diaryUploads.js'
+import { enqueue } from '../uploadQueue.js'
 import { driveAccess } from '../drive.js'
 import { connectTogether } from '../google.js'
 import { siteWeather } from '../weather.js'
@@ -21,7 +22,6 @@ function QuickPhoto({ user, onOpenEntry }) {
   const dialogs = useDialogs()
   const input = useRef(null)
   const [busy, setBusy] = useState('')
-  const [progress, setProgress] = useState(null)
   const [error, setError] = useState('')
   // Photos that could not be saved, kept so nothing taken is lost.
   const [failed, setFailed] = useState(null)
@@ -54,20 +54,11 @@ function QuickPhoto({ user, onOpenEntry }) {
     }
 
     const date = today()
-    setBusy(count === 1 ? 'Foto wird hochgeladen…' : `${count} Fotos werden hochgeladen…`)
+    // The entry is saved right away; the photos follow in the background
+    // (uploadQueue.js).
+    setBusy('Wird gespeichert…')
     try {
-      const weatherRequest = siteWeather(date).catch(() => null)
-      const { photos } = await uploadPending(
-        { photos: files.map((blob) => ({ key: newId(), blob })), files: [], date },
-        entryFolderPath('status', null),
-        (step) => {
-          setProgress(step)
-          if (count > 1) setBusy(`Foto ${step.current} von ${step.total} wird hochgeladen…`)
-        },
-      )
-      setProgress(null)
-      setBusy('Wird gespeichert…')
-      const weather = (await weatherRequest)?.weather ?? 'Sunny'
+      const weather = (await siteWeather(date).catch(() => null))?.weather ?? 'Sunny'
       const entry = await insert({
         type: 'status',
         date,
@@ -75,16 +66,20 @@ function QuickPhoto({ user, onOpenEntry }) {
         workers: '',
         work: count === 1 ? 'Foto von der Baustelle' : `${count} Fotos von der Baustelle`,
         details: defaultDetails('status'),
-        photoIds: photos.map((p) => p.fileId),
+        photoIds: [],
         files: [],
       })
+      await enqueue(
+        entry.id,
+        { photos: files.map((blob) => ({ key: newId(), blob })), files: [], date },
+        entryFolderPath('status', null),
+      )
       setFailed(null)
       setSaved(entry)
     } catch (err) {
       setFailed(files)
       setError(`Nicht gespeichert: ${err.message}`)
     } finally {
-      setProgress(null)
       setBusy('')
     }
   }
@@ -120,7 +115,7 @@ function QuickPhoto({ user, onOpenEntry }) {
       </button>
       {saved && (
         <p className="quick-photo-note" role="status">
-          Gespeichert als Status-Eintrag von heute.{' '}
+          Gespeichert als Status-Eintrag von heute, die Fotos werden im Hintergrund hochgeladen.{' '}
           <button type="button" className="link" onClick={() => onOpenEntry(saved)}>
             Im Tagebuch zeigen
           </button>
@@ -142,7 +137,7 @@ function QuickPhoto({ user, onOpenEntry }) {
           </button>
         </p>
       )}
-      {busy && <BusyOverlay message={busy} progress={progress} />}
+      {busy && <BusyOverlay message={busy} />}
     </div>
   )
 }
