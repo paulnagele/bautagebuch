@@ -18,32 +18,66 @@ export function entryFolderPath(type, createdAt) {
   return [entryType(type).label, day]
 }
 
-// Uploads the photos and files not yet in Drive, one after another, into
-// the folder at folderPath. onProgress(n) runs before the n-th upload,
-// onProgress(n, uploaded) after it, with the form's photos and files as
-// far as they are uploaded.
+// How many uploads run at the same time. A few in parallel use the
+// connection much better than one after another (each upload also has a
+// round trip to open its Drive session), without starving each other.
+export const PARALLEL_UPLOADS = 3
+
+// Uploads the photos and files not yet in Drive into the folder at
+// folderPath, a few at a time, in full size (the originals are kept in
+// Drive, on purpose). onProgress(progress) reports how far it is;
+// onProgress(progress, uploaded) runs after each finished upload, with the
+// form's photos and files as far as they are uploaded, so a retry does not
+// upload them twice.
 export async function uploadPending({ photos, files, date }, folderPath, onProgress) {
   const uploaded = { photos: [...photos], files: [...files] }
   const jobs = [
     ...photos.map((item, index) => ({ item, index, list: 'photos' })),
     ...files.map((item, index) => ({ item, index, list: 'files' })),
   ].filter((job) => job.item.blob)
+  if (jobs.length === 0) return uploaded
   // Progress by bytes, so one large photo on a slow connection still moves.
   const totalBytes = jobs.reduce((sum, job) => sum + job.item.blob.size, 0) || 1
-  let doneBytes = 0
-  for (const [n, { item, index, list }] of jobs.entries()) {
-    const report = (loaded) =>
-      onProgress({ current: n + 1, total: jobs.length, fraction: (doneBytes + loaded) / totalBytes })
-    report(0)
-    const folderId = await getEntryFolderId(folderPath)
-    const { blob, ...rest } = item
-    const fileId =
-      list === 'photos'
-        ? await uploadPhoto(blob, `${date} Bautagebuch ${newId()}${extension(blob)}`, folderId, report)
-        : await uploadFile(blob, `${date} ${blob.name}`, folderId, report)
-    doneBytes += blob.size
-    uploaded[list] = uploaded[list].with(index, { ...rest, fileId })
-    onProgress({ current: n + 1, total: jobs.length, fraction: doneBytes / totalBytes }, { ...uploaded })
+  const share = jobs.map(() => 0)
+  let finished = 0
+  const report = (sofar) =>
+    onProgress(
+      {
+        current: Math.min(finished + 1, jobs.length),
+        total: jobs.length,
+        fraction: share.reduce((a, b) => a + b, 0) / totalBytes,
+      },
+      sofar,
+    )
+  report()
+  // The folder is looked up (or created) once for all uploads.
+  const folderId = getEntryFolderId(folderPath)
+  folderId.catch(() => {})
+  let next = 0
+  async function worker() {
+    while (next < jobs.length) {
+      const n = next++
+      const { item, index, list } = jobs[n]
+      const { blob, ...rest } = item
+      const onBytes = (loaded) => {
+        share[n] = Math.min(blob.size, loaded)
+        report()
+      }
+      const fileId =
+        list === 'photos'
+          ? await uploadPhoto(blob, `${date} Bautagebuch ${newId()}${extension(blob)}`, await folderId, onBytes)
+          : await uploadFile(blob, `${date} ${blob.name}`, await folderId, onBytes)
+      share[n] = blob.size
+      finished++
+      uploaded[list] = uploaded[list].with(index, { ...rest, fileId })
+      report({ ...uploaded })
+    }
   }
+  const workers = Array.from({ length: Math.min(PARALLEL_UPLOADS, jobs.length) }, worker)
+  // If one upload fails, the others still finish (and are remembered)
+  // before the error is shown.
+  const results = await Promise.allSettled(workers)
+  const failed = results.find((r) => r.status === 'rejected')
+  if (failed) throw failed.reason
   return uploaded
 }
