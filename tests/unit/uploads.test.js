@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const drive = { connected: true, active: 0, max: 0, folderLookups: 0, failNames: new Set(), delays: {} }
 const db = { rows: new Map(), updates: 0 }
 let connectListener = null
+// Background Fetch stand-in: off unless a test turns it on.
+const bg = { available: false, refuse: false, sent: [], results: new Map(), done: null }
 
 vi.mock('../../src/drive.js', () => {
   const send = async (blob, name, folderId, onBytes) => {
@@ -23,6 +25,10 @@ vi.mock('../../src/drive.js', () => {
     },
     uploadPhoto: send,
     uploadFile: send,
+    uploadMimeType: (blob) => blob.type || 'image/jpeg',
+    startUpload: async (name) => `https://upload/${name}`,
+    findUploadedFile: async () => (bg.findNothing ? null : 'drive-found'),
+    rememberPhoto: () => {},
     onDriveConnected: (listener) => {
       connectListener = listener
       return () => {}
@@ -51,6 +57,23 @@ vi.mock('../../src/supabase.js', () => {
   return { supabase: { from } }
 })
 
+vi.mock('../../src/backgroundUpload.js', () => ({
+  backgroundFetchAvailable: async () => (bg.available ? {} : null),
+  sendInBackground: async (id, jobs) => {
+    if (bg.refuse) throw new Error('nein')
+    bg.sent.push({ id, urls: jobs.map((job) => `relay?${job.url}`) })
+    return jobs.map((job) => `relay?${job.url}`)
+  },
+  backgroundResult: async (id) => bg.results.get(id) ?? null,
+  forgetBackgroundResult: async (id) => bg.results.delete(id),
+  watchBackgroundUpload: async () => () => {},
+  abortBackgroundUploads: async () => {},
+  onBackgroundUploadDone: (listener) => {
+    bg.done = listener
+    return () => {}
+  },
+}))
+
 vi.mock('../../src/useCollection.js', () => ({ applyRow: () => {}, friendlyError: (e) => e.message }))
 
 const file = (name, size = 10) => new File([new Uint8Array(size)], name, { type: 'image/jpeg' })
@@ -71,6 +94,7 @@ beforeEach(() => {
   Object.assign(drive, { connected: true, active: 0, max: 0, folderLookups: 0, failNames: new Set(), delays: {} })
   db.rows = new Map([['e1', { id: 'e1', photo_ids: ['alt'], files: [] }]])
   db.updates = 0
+  Object.assign(bg, { available: false, refuse: false, findNothing: false, sent: [], results: new Map(), done: null })
   localStorage.clear()
 })
 
@@ -150,5 +174,53 @@ describe('Fotos im Hintergrund hochladen', () => {
     await settle(queue)
     expect(queue.getUploads().items).toHaveLength(0)
     expect(db.updates).toBe(0)
+  })
+})
+
+describe('Hochladen mit Background Fetch (läuft weiter, wenn die App zu ist)', () => {
+  const tick = () => new Promise((r) => setTimeout(r, 20))
+
+  it('übergibt alle Dateien in einem Auftrag an den Browser und hängt danach an', async () => {
+    bg.available = true
+    const queue = await freshQueue()
+    const picked = [
+      { key: 'a', blob: file('a', 10) },
+      { key: 'b', blob: file('b', 11) },
+    ]
+    await queue.enqueue('e1', { photos: picked, files: [], date: 'd' }, ['S', 'x'])
+    await tick()
+    expect(bg.sent).toHaveLength(1)
+    expect(drive.max).toBe(0) // nothing sent from the page
+    expect(queue.getUploads()).toMatchObject({ status: 'uploading', background: true })
+    expect(JSON.parse(localStorage.getItem('bautagebuch.uploadQueue')).every((i) => i.bgId)).toBe(true)
+
+    // The browser finished; the second answer could not be read.
+    const [first, second] = bg.sent[0].urls
+    bg.results.set(bg.sent[0].id, { [first]: 'drive-bg-a', [second]: null })
+    bg.done(bg.sent[0].id)
+    await settle(queue)
+    expect(db.rows.get('e1').photo_ids).toEqual(['alt', 'drive-bg-a', 'drive-found'])
+  })
+
+  it('was im Hintergrund nicht ankam, wird noch einmal geschickt', async () => {
+    bg.available = true
+    const queue = await freshQueue()
+    await queue.enqueue('e1', { photos: photos('a'), files: [], date: 'd' }, ['S', 'x'])
+    await tick()
+    bg.findNothing = true
+    bg.results.set(bg.sent[0].id, 'lost')
+    bg.done(bg.sent[0].id)
+    await tick()
+    // Handed to the browser again, since it is still offered.
+    expect(bg.sent).toHaveLength(2)
+  })
+
+  it('lehnt der Browser ab, lädt die Seite selbst hoch', async () => {
+    bg.available = true
+    bg.refuse = true
+    const queue = await freshQueue()
+    await queue.enqueue('e1', { photos: photos('a', 'b'), files: [], date: 'd' }, ['S', 'x'])
+    await settle(queue)
+    expect(db.rows.get('e1').photo_ids).toEqual(['alt', 'drive-a', 'drive-b'])
   })
 })
